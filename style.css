@@ -1,3 +1,10 @@
+:root {
+    /* Shared corner radii — every panel/button/badge picks one of these two,
+       instead of ad hoc per-element values. */
+    --radius: 10px;
+    --radius-pill: 999px;
+}
+
 body {
     margin: 0;
     overflow: hidden;
@@ -109,7 +116,7 @@ canvas {
     height: 10px;
     background: #222;
     border: 1px solid #fff;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     overflow: hidden;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
@@ -131,7 +138,7 @@ canvas {
     -webkit-backdrop-filter: blur(6px);
     border: 1px solid rgba(0, 204, 255, 0.35);
     border-left: 4px solid #00ccff;
-    border-radius: 10px;
+    border-radius: var(--radius);
     padding: 10px 22px;
     margin-top: 20px;
     font-weight: bold;
@@ -208,20 +215,6 @@ canvas {
     50% { opacity: 0.6; }
 }
 
-/* Co-op respawn countdown: purple, brighter, and pulsing for visibility */
-#story-box.story-respawn {
-    border-left-color: #c04dff;
-    color: #d896ff;
-    font-size: 19px;
-    text-shadow: 0 0 8px #c04dff, 0 0 18px #a020f0;
-    animation: respawnPulse 0.8s ease-in-out infinite;
-}
-
-@keyframes respawnPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.65; }
-}
-
 /* MENU SYSTEM - Slide transition */
 #menus-wrapper {
     position: absolute;
@@ -247,11 +240,29 @@ canvas {
     background: rgba(5, 5, 5, 0.95);
     transition: transform 0.4s ease-in-out, opacity 0.3s;
     pointer-events: auto;
+    /* Each page is its own stacking context, so a high z-index button on one
+       page (e.g. .nav-btn / .mode-switch-arrow at 30) can never bleed on top
+       of a sibling page regardless of that page's own z-index. */
+    isolation: isolate;
 }
 
 #mp-menu-layer {
     transform: translateX(100%);
     background: rgba(5, 10, 20, 0.95);
+}
+
+/* Shop slides up on its own (vertical) axis so it can't collide with the
+   SP<->MP horizontal slide — it opens as an overlay on top of the SP menu. */
+#shop-menu-layer {
+    transform: translateY(100%);
+    /* Fully opaque (unlike the other .menu-page backgrounds) — this one
+       overlays the SP menu in place rather than sliding apart from it, so
+       any transparency here would let the menu underneath ghost through. */
+    background: #0a0710;
+    z-index: 25;
+    overflow-y: auto;
+    padding: 30px 20px;
+    box-sizing: border-box;
 }
 
 .mode-switch-arrow {
@@ -288,7 +299,7 @@ canvas {
     border: 1px solid #333;
     padding: 15px;
     margin-bottom: 15px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     width: 250px;
     text-align: center;
 }
@@ -301,10 +312,19 @@ canvas {
     color: #888;
 }
 
+.mp-box label.label-join {
+    color: #ffaa00;
+}
+
+.mp-box label.label-host {
+    color: #00ffaa;
+}
+
 .mp-box input[type="text"] {
     width: 100%;
     background: #000;
     border: 1px solid #555;
+    border-radius: var(--radius);
     color: #fff;
     padding: 10px;
     font-family: inherit;
@@ -325,6 +345,7 @@ canvas {
     background: #222;
     color: #fff;
     border: 1px solid #555;
+    border-radius: var(--radius);
     padding: 10px;
     font-family: inherit;
     font-weight: bold;
@@ -361,6 +382,7 @@ canvas {
 }
 
 #mp-start-prompt {
+    display: none;
     font-size: 20px;
     color: #fff;
     animation: blink 1s infinite;
@@ -372,24 +394,34 @@ canvas {
     margin-top: 20px;
 }
 
-#title {
-    font-size: max(40px, 5vw);
+.page-title {
+    font-family: 'Orbitron', 'Courier New', monospace;
+    font-size: max(36px, 4.2vw);
     color: #fff;
-    letter-spacing: 5px;
+    letter-spacing: 4px;
     margin-bottom: 20px;
-    text-shadow: 0 0 20px #ff3366;
-    font-weight: bold;
+    text-shadow: 0 0 14px #a020f0, 0 0 28px #c04dff;
+    font-weight: 900;
     text-align: center;
+}
+
+.page-title--mp {
+    text-shadow: 0 0 14px #00ccff, 0 0 28px #00ffff;
+}
+
+.page-title--shop {
+    text-shadow: 0 0 14px #00ffaa, 0 0 28px #00ffaa;
+    margin-bottom: 4px;
 }
 
 /* SKIN SELECTOR */
 #skin-container {
     display: flex;
     align-items: center;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
     background: rgba(255, 255, 255, 0.05);
     padding: 20px;
-    border-radius: 10px;
+    border-radius: var(--radius);
     border: 1px solid #333;
     cursor: default;
 }
@@ -397,6 +429,7 @@ canvas {
 .nav-btn {
     background: none;
     border: 1px solid #555;
+    border-radius: var(--radius);
     color: #fff;
     font-size: 20px;
     cursor: pointer;
@@ -462,24 +495,168 @@ canvas {
     letter-spacing: 1px;
 }
 
+#skin-ability {
+    font-size: 11px;
+    color: #00ffaa;
+    letter-spacing: 0.5px;
+    margin-top: 6px;
+    min-height: 14px;
+}
+
+/* SHOP TRIGGER (main menu) */
+.shop-trigger-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #333;
+    border-radius: var(--radius);
+    color: #fff;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bold;
+    padding: 10px 18px;
+    margin-bottom: 15px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: 0.2s;
+}
+
+.shop-trigger-btn:hover {
+    border-color: #00ffaa;
+    background: rgba(0, 255, 170, 0.08);
+}
+
+.shard-badge {
+    background: rgba(0, 255, 255, 0.1);
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+    color: #00ffff;
+    font-size: 13px;
+}
+
+/* SHOP SCREEN */
+.shop-back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: none;
+    border: 1px solid #555;
+    border-radius: var(--radius);
+    color: #fff;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 8px 16px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: 0.2s;
+}
+
+.shop-back-btn:hover {
+    border-color: #00ffaa;
+    color: #00ffaa;
+}
+
+.shop-shard-total {
+    color: #00ffff;
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+
+.shop-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #333;
+    border-radius: var(--radius);
+    padding: 18px;
+    width: min(320px, 85vw);
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.shop-card-title {
+    color: #fff;
+    font-weight: bold;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.shop-card-desc {
+    color: #888;
+    font-size: 12px;
+    line-height: 1.4;
+    margin-bottom: 14px;
+}
+
+.shop-card-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    background: #222;
+    border: 1px solid #00ffff;
+    border-radius: var(--radius);
+    color: #00ffff;
+    padding: 10px 15px;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: 0.2s;
+}
+
+.shop-card-btn:hover {
+    background: #00ffff;
+    color: #000;
+}
+
+.shop-card-btn .btn-cost {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-pill);
+    padding: 2px 10px;
+}
+
+.shop-card-btn.owned {
+    border-color: #00ffaa;
+    color: #00ffaa;
+    cursor: default;
+}
+
+.shop-card-btn.owned:hover {
+    background: #222;
+    color: #00ffaa;
+}
+
+.shop-card-btn.owned .btn-cost {
+    display: none;
+}
+
 /* GEM SHOP */
 #gem-skin-shop {
-    margin-top: 10px;
-    max-height: 130px;
-    overflow-y: auto;
+    width: min(320px, 85vw);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+    padding-bottom: 20px;
 }
 
 .gem-skin-row {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 4px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid #333;
-    border-radius: 6px;
-    padding: 6px 10px;
+    border-radius: var(--radius);
+    padding: 10px 12px;
+}
+
+.gem-skin-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .gem-skin-name {
@@ -487,9 +664,15 @@ canvas {
     font-weight: bold;
 }
 
+.gem-skin-buff {
+    font-size: 11px;
+    color: #888;
+}
+
 .gem-skin-buy-btn {
     background: #222;
     border: 1px solid #00ffff;
+    border-radius: var(--radius);
     color: #00ffff;
     padding: 4px 10px;
     font-family: 'Courier New', Courier, monospace;
@@ -608,7 +791,7 @@ canvas {
     width: 100%;
     padding: 28px 18px;
     border: 1px dashed #2a2a2a;
-    border-radius: 6px;
+    border-radius: var(--radius);
     text-align: center;
 }
 
@@ -651,6 +834,7 @@ canvas {
 #revive-box {
     background: #111;
     border: 2px solid #ff3366;
+    border-radius: var(--radius);
     padding: 30px;
     text-align: center;
     box-shadow: 0 0 30px rgba(255, 51, 102, 0.3);
@@ -668,6 +852,7 @@ canvas {
     background: #ff3366;
     color: #fff;
     border: none;
+    border-radius: var(--radius);
     padding: 15px 30px;
     font-size: 18px;
     font-weight: bold;
@@ -723,7 +908,7 @@ canvas {
     font-weight: bold;
     background: rgba(0, 0, 0, 0.5);
     padding: 10px 20px;
-    border-radius: 20px;
+    border-radius: var(--radius-pill);
 }
 
 #ad-content {
@@ -764,7 +949,7 @@ canvas {
     color: #000;
     padding: 10px 20px;
     font-weight: bold;
-    border-radius: 20px;
+    border-radius: var(--radius-pill);
     box-shadow: 0 0 20px #ffd700;
     display: none;
     z-index: 100;
@@ -785,9 +970,16 @@ canvas {
     background: rgba(255, 255, 255, 0.05);
     padding: 10px;
     border: 1px solid #333;
+    border-radius: var(--radius);
     margin-bottom: 20px;
     width: 250px;
     text-align: center;
+}
+
+.fame-heading {
+    color: #ff3366;
+    font-size: 14px;
+    margin-bottom: 5px;
 }
 
 #fame-list {

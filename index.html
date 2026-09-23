@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pixel Jump</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -66,10 +69,10 @@
             <div id="menu-layer" class="menu-page">
                 <div class="mode-switch-arrow right" id="to-mp-btn">▶<br><span>CO-OP</span></div>
 
-                <div id="title">PIXEL JUMP</div>
+                <div class="page-title">PIXEL JUMP</div>
 
                 <div id="fame-container">
-                    <div style="color:#ff3366; font-size: 14px; margin-bottom: 5px;">HALL OF FAME</div>
+                    <div class="fame-heading">HALL OF FAME</div>
                     <div id="fame-list"></div>
                 </div>
 
@@ -82,29 +85,46 @@
                         </div>
                         <div id="skin-name">Unit 734</div>
                         <div id="skin-status">UNLOCKED</div>
+                        <div id="skin-ability"></div>
                     </div>
                     <button class="nav-btn" id="next-btn">&gt;</button>
                 </div>
 
-                <div id="shop-container" style="margin-top: 15px; margin-bottom: 15px; text-align: center;">
-                    <div style="color:#00ffff; font-size: 14px; margin-bottom: 5px;">SHARDS: <span
-                            id="menu-shards">0</span></div>
-                    <button id="shop-boost-btn"
-                        style="background:#222; border:1px solid #00ffff; color:#00ffff; padding:8px 15px; font-family:'Courier New', Courier, monospace; cursor:pointer;">BUY
-                        BOOST (50 💎)</button>
-                    <div id="gem-skin-shop"></div>
-                </div>
+                <button id="shop-open-btn" class="shop-trigger-btn">
+                    <span class="shop-trigger-label">🛒 SHOP</span>
+                    <span class="shard-badge">💎 <span id="menu-shards">0</span></span>
+                </button>
 
                 <div id="menu-lastscore">LAST RUN: 0m</div>
                 <div id="menu-highscore">HIGH SCORE: 0m</div>
                 <button id="start-prompt">CLICK TO START</button>
             </div>
 
+            <!-- SHOP -->
+            <div id="shop-menu-layer" class="menu-page">
+                <button id="shop-back-btn" class="shop-back-btn">◀ BACK</button>
+
+                <div class="page-title page-title--shop">SHOP</div>
+
+                <div class="shop-shard-total">💎 <span id="shop-shards">0</span> SHARDS</div>
+
+                <div class="shop-card">
+                    <div class="shop-card-title">HARD SHIELD BOOST</div>
+                    <div class="shop-card-desc">Start your next run already shielded — one free hit absorbed.</div>
+                    <button id="shop-boost-btn" class="shop-card-btn">
+                        <span class="btn-label">PURCHASE POWER UP</span>
+                        <span class="btn-cost">50 💎</span>
+                    </button>
+                </div>
+
+                <div id="gem-skin-shop"></div>
+            </div>
+
             <!-- MULTIPLAYER MENU -->
             <div id="mp-menu-layer" class="menu-page">
                 <div class="mode-switch-arrow left" id="to-sp-btn">◀<br><span>SOLO</span></div>
 
-                <div id="title" style="text-shadow: 0 0 20px #00ffff; color: #fff;">PIXEL JUMP CO-OP</div>
+                <div class="page-title page-title--mp">PIXEL JUMP CO-OP</div>
 
                 <div class="mp-box">
                     <label>DISPLAY NAME</label>
@@ -112,7 +132,7 @@
                 </div>
 
                 <div class="mp-box">
-                    <label style="color:#ffaa00;">JOIN A FRIEND</label>
+                    <label class="label-join">JOIN A FRIEND</label>
                     <input type="text" id="mp-join-input" maxlength="6" placeholder="6-CHAR CODE">
                     <button id="mp-join-btn">CONNECT</button>
                 </div>
@@ -120,13 +140,13 @@
                 <div class="mp-section-divider">OR</div>
 
                 <div class="mp-box">
-                    <label style="color:#00ffaa;">HOST A GAME</label>
+                    <label class="label-host">HOST A GAME</label>
                     <button id="mp-host-btn">GENERATE CODE</button>
                     <div id="mp-host-code">---</div>
                 </div>
 
                 <div id="mp-status">READY</div>
-                <button id="mp-start-prompt" style="display:none;">START CO-OP RUN</button>
+                <button id="mp-start-prompt">START CO-OP RUN</button>
             </div>
         </div>
     </div>

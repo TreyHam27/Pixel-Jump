@@ -61,8 +61,13 @@ class Game {
             fame: document.getElementById("fame-list"),
             shardDisplay: document.getElementById("shard-display"),
             menuShards: document.getElementById("menu-shards"),
+            shopShards: document.getElementById("shop-shards"),
             shopBoostBtn: document.getElementById("shop-boost-btn"),
             gemShop: document.getElementById("gem-skin-shop"),
+            skinAbility: document.getElementById("skin-ability"),
+            shopOpenBtn: document.getElementById("shop-open-btn"),
+            shopBackBtn: document.getElementById("shop-back-btn"),
+            shopLayer: document.getElementById("shop-menu-layer"),
 
             // Multiplayer UI
             menusWrapper: document.getElementById("menus-wrapper"),
@@ -81,16 +86,17 @@ class Game {
         this.remotePlayer = null;
         this.viewParams = { skinIndex: this.state.skinIndex };
         this.lastTime = 0;
+        // Which top-level menu panel is showing: 'sp' | 'mp' | 'shop'.
+        // Gates keyboard-start (only from 'sp') and is updated by every
+        // panel-switch handler below.
+        this.activeMenuPanel = 'sp';
 
         this.bindEvents();
         this.updateSkinUI();
         this.updateFameUI();
         this.renderGemShop();
 
-        if (this.state.boughtBoost && this.ui.shopBoostBtn) {
-            this.ui.shopBoostBtn.innerText = "BOOST ACTIVE!";
-            this.ui.shopBoostBtn.style.color = "#00ffaa";
-        }
+        if (this.state.boughtBoost) this.setBoostButtonState(true);
 
         this.ui.menuScore.innerText = "HIGH SCORE: " + this.state.highScore + "m";
 
@@ -110,8 +116,7 @@ class Game {
                     this.state.boughtBoost = true;
                     localStorage.setItem('lp_shards', this.state.shards);
                     localStorage.setItem('lp_boughtBoost', '1');
-                    this.ui.shopBoostBtn.innerText = "BOOST ACTIVE!";
-                    this.ui.shopBoostBtn.style.color = "#00ffaa";
+                    this.setBoostButtonState(true);
                     this.updateSkinUI();
                 } else if (!this.state.boughtBoost) {
                     this.shakeUI();
@@ -119,8 +124,22 @@ class Game {
             };
         }
 
+        // Shop screen open/close (slides up on its own vertical axis, see CSS)
+        if (this.ui.shopOpenBtn) {
+            this.ui.shopOpenBtn.onclick = (e) => {
+                e.stopPropagation();
+                this.activeMenuPanel = 'shop';
+                this.ui.shopLayer.style.transform = 'translateY(0)';
+            };
+            this.ui.shopBackBtn.onclick = (e) => {
+                e.stopPropagation();
+                this.activeMenuPanel = 'sp';
+                this.ui.shopLayer.style.transform = 'translateY(100%)';
+            };
+        }
+
         this.ui.menu.onclick = (e) => {
-            if (e.target.closest('#skin-container') || e.target.closest('#shop-container') || e.target.closest('#gem-skin-shop') || e.target.closest('.mode-switch-arrow')) return;
+            if (e.target.closest('#skin-container') || e.target.closest('.mode-switch-arrow')) return;
             if (this.isSkinLocked()) {
                 this.shakeUI();
             } else {
@@ -128,15 +147,30 @@ class Game {
             }
         };
 
+        // Keyboard-start: any movement/jump key starts the game from the SP
+        // menu, same as clicking it (matches the on-screen "CLICK TO START").
+        window.addEventListener('keydown', (e) => {
+            if (this.activeMenuPanel !== 'sp' || this.state.running) return;
+            const startKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's', ' '];
+            if (!startKeys.includes(e.key)) return;
+            if (this.isSkinLocked()) {
+                this.shakeUI();
+            } else {
+                this.startGame();
+            }
+        });
+
         // Multiplayer UI Bindings
         if (this.ui.toMpBtn) {
             this.ui.toMpBtn.onclick = () => {
+                this.activeMenuPanel = 'mp';
                 this.ui.menuLayer1.style.transform = 'translateX(-100%)';
                 this.ui.menuLayer2.style.transform = 'translateX(0)';
                 let savedName = localStorage.getItem('lp_mp_name');
                 if (savedName) this.ui.mpNameInput.value = savedName;
             };
             this.ui.toSpBtn.onclick = () => {
+                this.activeMenuPanel = 'sp';
                 this.ui.menuLayer1.style.transform = 'translateX(0)';
                 this.ui.menuLayer2.style.transform = 'translateX(100%)';
             };
@@ -367,7 +401,39 @@ class Game {
         }
 
         if (this.ui.menuShards) this.ui.menuShards.innerText = this.state.shards;
+        if (this.ui.shopShards) this.ui.shopShards.innerText = this.state.shards;
         if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = "💎 " + this.state.shards;
+        if (this.ui.skinAbility) this.ui.skinAbility.innerText = masked ? "" : this.describeAbility(s.ability);
+    }
+
+    // Turns an ability object into a short human-readable buff line, shared by
+    // the skin carousel and the gem shop list.
+    describeAbility(ability) {
+        if (!ability) return "";
+        const parts = [];
+        if (ability.jumpMult && ability.jumpMult !== 1) {
+            parts.push((ability.jumpMult > 1 ? "+" : "") + Math.round((ability.jumpMult - 1) * 100) + "% Jump Height");
+        }
+        if (ability.speedMult && ability.speedMult !== 1) {
+            parts.push((ability.speedMult > 1 ? "+" : "") + Math.round((ability.speedMult - 1) * 100) + "% Move Speed");
+        }
+        if (ability.gravityMult && ability.gravityMult !== 1) {
+            const pct = Math.round((ability.gravityMult - 1) * 100);
+            parts.push(pct + "% Gravity" + (ability.gravityMult < 1 ? " (Floaty)" : ""));
+        }
+        if (ability.shardMagnetRadius) {
+            parts.push("Shard Magnet");
+        }
+        if (ability.extraRevive) {
+            parts.push("+" + ability.extraRevive + " Free Revive / Run");
+        }
+        if (ability.powerDurationMult && ability.powerDurationMult !== 1) {
+            parts.push("+" + Math.round((ability.powerDurationMult - 1) * 100) + "% Power-Up Duration");
+        }
+        if (ability.startAtScore) {
+            parts.push("Runs Start at The Rift");
+        }
+        return parts.join(" + ");
     }
 
     // Builds the gem-shop skin list straight from SKINS data (any skin with a
@@ -382,8 +448,11 @@ class Game {
         this.ui.gemShop.innerHTML = rows.map(({ s, i }) => {
             const owned = this.ownedSkins.includes(i);
             return `<div class="gem-skin-row">
-                <span class="gem-skin-name" style="color:${s.color};">${s.name}</span>
-                <button class="gem-skin-buy-btn" data-index="${i}" ${owned ? 'disabled' : ''}>${owned ? 'OWNED' : s.cost + ' 💎'}</button>
+                <div class="gem-skin-row-top">
+                    <span class="gem-skin-name" style="color:${s.color};">${s.name}</span>
+                    <button class="gem-skin-buy-btn" data-index="${i}" ${owned ? 'disabled' : ''}>${owned ? 'OWNED' : s.cost + ' 💎'}</button>
+                </div>
+                <span class="gem-skin-buff">${this.describeAbility(s.ability)}</span>
             </div>`;
         }).join('');
 
@@ -393,6 +462,13 @@ class Game {
                 this.buyGemSkin(parseInt(btn.dataset.index, 10));
             };
         });
+    }
+
+    setBoostButtonState(active) {
+        if (!this.ui.shopBoostBtn) return;
+        const label = this.ui.shopBoostBtn.querySelector('.btn-label');
+        this.ui.shopBoostBtn.classList.toggle('owned', active);
+        if (label) label.innerText = active ? "BOOST ACTIVE!" : "PURCHASE POWER UP";
     }
 
     buyGemSkin(index) {
@@ -418,6 +494,10 @@ class Game {
     }
 
     // Centralized system alert popup (run status, revive countdowns, loop rewards, etc).
+    // Auto-hides 4s after the *last* call, so it always reads as fresh
+    // information rather than stale text left on screen — a countdown that
+    // calls this every second just keeps resetting the timer, so it stays up
+    // continuously and disappears 4s after the final update.
     showAlert(text, type = 'info') {
         const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱' };
         const el = this.ui.alert;
@@ -425,9 +505,16 @@ class Game {
         el.classList.add('alert-' + type, 'alert-visible');
         this.ui.alertIcon.innerText = icons[type] || icons.info;
         this.ui.alertText.innerText = text;
+
+        if (this.alertHideTimer) clearTimeout(this.alertHideTimer);
+        this.alertHideTimer = setTimeout(() => this.hideAlert(), 4000);
     }
 
     hideAlert() {
+        if (this.alertHideTimer) {
+            clearTimeout(this.alertHideTimer);
+            this.alertHideTimer = null;
+        }
         this.ui.alert.classList.remove('alert-visible');
     }
 
@@ -550,10 +637,7 @@ class Game {
             this.player.powerTimer = POWERS.SHIELD.time;
             this.state.boughtBoost = false;
             localStorage.removeItem('lp_boughtBoost');
-            if (this.ui.shopBoostBtn) {
-                this.ui.shopBoostBtn.innerText = "BUY BOOST (50 💎)";
-                this.ui.shopBoostBtn.style.color = "#00ffff";
-            }
+            this.setBoostButtonState(false);
         }
 
         this.ui.menu.style.opacity = 0;

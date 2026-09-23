@@ -16,13 +16,14 @@ function makeMockContext() {
 function makeMockElement() {
     return {
         style: {},
-        classList: { add() {}, remove() {}, contains() { return false; } },
+        classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
         addEventListener() {}, removeEventListener() {},
         appendChild() {}, closest() { return null; },
         dataset: {}, disabled: false, offsetWidth: 0,
         innerText: '', innerHTML: '', textContent: '', value: '',
         getContext() { return makeMockContext(); },
         querySelectorAll() { return []; },
+        querySelector() { return null; },
         focus() {}, blur() {}
     };
 }
@@ -40,6 +41,7 @@ function setupMocks() {
         addEventListener() {}, removeEventListener() {},
         network: null
     };
+    global.location = { hostname: 'localhost' };
     global.document = {
         getElementById: () => makeMockElement(),
         createElement: () => makeMockElement(),
