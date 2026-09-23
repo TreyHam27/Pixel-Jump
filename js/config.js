@@ -1,3 +1,9 @@
+// Master switch for the entire ad system (js/ads.js). Off = zero ad-related
+// UI, delay, or network calls anywhere: side rails stay blank, the revive
+// prompt is skipped in favor of an instant free continue, and the
+// restart interstitial never fires. Flip to true once ready to run ads.
+const ADS_ENABLED = false;
+
 const CONFIG = {
     WIDTH: 600,
     HEIGHT: 800,

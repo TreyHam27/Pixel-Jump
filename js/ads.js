@@ -14,6 +14,10 @@
  *
  * Until a given network is live, its slot degrades gracefully instead of
  * blocking or looking broken - see each method below.
+ *
+ * ADS_ENABLED (js/config.js) is the master switch: when false, every method
+ * below short-circuits to the zero-friction path - no prompt, no delay, no
+ * network call, no rail content - regardless of network status.
  */
 class AdManager {
     constructor() {
@@ -38,6 +42,14 @@ class AdManager {
     }
 
     showRevivePrompt(onWatch, onSkip) {
+        if (!ADS_ENABLED) {
+            // No ad system at all right now: skip the prompt and just grant
+            // the run's one free revive instantly (the existing per-run cap
+            // in app.js's state.revived still applies as normal).
+            onWatch();
+            return;
+        }
+
         this.reviveOverlay.style.display = 'flex';
 
         this.reviveBtn.onclick = () => {
@@ -101,6 +113,7 @@ class AdManager {
      * until GameDistribution/AdInPlay is wired in - see class docblock.
      */
     showInterstitialAd() {
+        if (!ADS_ENABLED) return;
         console.log('[ads] interstitial placeholder - no network wired in yet');
     }
 
@@ -110,6 +123,8 @@ class AdManager {
      * falls back to empty space or placeholder "AD SPACE" text.
      */
     renderSideSkin() {
+        if (!ADS_ENABLED) return; // leave the rails empty - no house ad, no network tag
+
         const houseAd = () => {
             const el = document.createElement('div');
             el.className = 'ad-rail-house';
