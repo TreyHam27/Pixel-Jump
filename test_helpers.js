@@ -22,6 +22,7 @@ function makeMockElement() {
         dataset: {}, disabled: false, offsetWidth: 0,
         innerText: '', innerHTML: '', textContent: '', value: '',
         getContext() { return makeMockContext(); },
+        querySelectorAll() { return []; },
         focus() {}, blur() {}
     };
 }

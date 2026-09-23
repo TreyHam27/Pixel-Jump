@@ -11,6 +11,7 @@ class Game {
         this.enemies = [];
         this.projectiles = [];
         this.achievements = JSON.parse(localStorage.getItem('lp_achievements')) || [];
+        this.ownedSkins = JSON.parse(localStorage.getItem('lp_owned_skins')) || [];
 
         this.state = {
             running: false,
@@ -61,6 +62,7 @@ class Game {
             shardDisplay: document.getElementById("shard-display"),
             menuShards: document.getElementById("menu-shards"),
             shopBoostBtn: document.getElementById("shop-boost-btn"),
+            gemShop: document.getElementById("gem-skin-shop"),
 
             // Multiplayer UI
             menusWrapper: document.getElementById("menus-wrapper"),
@@ -83,6 +85,7 @@ class Game {
         this.bindEvents();
         this.updateSkinUI();
         this.updateFameUI();
+        this.renderGemShop();
 
         if (this.state.boughtBoost && this.ui.shopBoostBtn) {
             this.ui.shopBoostBtn.innerText = "BOOST ACTIVE!";
@@ -117,7 +120,7 @@ class Game {
         }
 
         this.ui.menu.onclick = (e) => {
-            if (e.target.closest('#skin-container') || e.target.closest('#shop-container') || e.target.closest('.mode-switch-arrow')) return;
+            if (e.target.closest('#skin-container') || e.target.closest('#shop-container') || e.target.closest('#gem-skin-shop') || e.target.closest('.mode-switch-arrow')) return;
             if (this.isSkinLocked()) {
                 this.shakeUI();
             } else {
@@ -325,21 +328,30 @@ class Game {
         this.updateSkinUI();
     }
 
-    isSkinLocked() {
-        return this.state.highScore < SKINS[this.viewParams.skinIndex].unlock;
+    isSkinLocked(index = this.viewParams.skinIndex) {
+        const s = SKINS[index];
+        if (s.cost !== undefined) return !this.ownedSkins.includes(index);
+        return this.state.highScore < s.unlock;
     }
 
     updateSkinUI() {
         let s = SKINS[this.viewParams.skinIndex];
         let locked = this.isSkinLocked();
+        let masked = locked && s.secret;
 
-        this.ui.preview.style.backgroundColor = s.color;
-        this.ui.eyesL.style.backgroundColor = s.eye;
-        this.ui.eyesR.style.backgroundColor = s.eye;
-        this.ui.skinName.innerText = s.name;
+        this.ui.preview.style.backgroundColor = masked ? "#222" : s.color;
+        this.ui.eyesL.style.backgroundColor = masked ? "#000" : s.eye;
+        this.ui.eyesR.style.backgroundColor = masked ? "#000" : s.eye;
+        this.ui.skinName.innerText = masked ? "???" : s.name;
 
         if (locked) {
-            this.ui.skinStatus.innerText = "LOCKED (" + s.unlock + "m)";
+            if (masked) {
+                this.ui.skinStatus.innerText = "LOCKED — ???";
+            } else if (s.cost !== undefined) {
+                this.ui.skinStatus.innerText = "LOCKED (" + s.cost + " 💎)";
+            } else {
+                this.ui.skinStatus.innerText = "LOCKED (" + s.unlock + "m)";
+            }
             this.ui.skinStatus.style.color = "#888";
             this.ui.preview.style.opacity = "0.3";
             this.ui.startBtn.innerText = "LOCKED";
@@ -356,6 +368,47 @@ class Game {
 
         if (this.ui.menuShards) this.ui.menuShards.innerText = this.state.shards;
         if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = "💎 " + this.state.shards;
+    }
+
+    // Builds the gem-shop skin list straight from SKINS data (any skin with a
+    // `cost` field) rather than hand-duplicated HTML rows.
+    renderGemShop() {
+        if (!this.ui.gemShop) return;
+
+        const rows = SKINS
+            .map((s, i) => ({ s, i }))
+            .filter(({ s }) => s.cost !== undefined);
+
+        this.ui.gemShop.innerHTML = rows.map(({ s, i }) => {
+            const owned = this.ownedSkins.includes(i);
+            return `<div class="gem-skin-row">
+                <span class="gem-skin-name" style="color:${s.color};">${s.name}</span>
+                <button class="gem-skin-buy-btn" data-index="${i}" ${owned ? 'disabled' : ''}>${owned ? 'OWNED' : s.cost + ' 💎'}</button>
+            </div>`;
+        }).join('');
+
+        this.ui.gemShop.querySelectorAll('.gem-skin-buy-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                this.buyGemSkin(parseInt(btn.dataset.index, 10));
+            };
+        });
+    }
+
+    buyGemSkin(index) {
+        if (this.ownedSkins.includes(index)) return false;
+        const s = SKINS[index];
+        if (!s || s.cost === undefined || this.state.shards < s.cost) {
+            this.shakeUI();
+            return false;
+        }
+        this.state.shards -= s.cost;
+        this.ownedSkins.push(index);
+        localStorage.setItem('lp_shards', this.state.shards);
+        localStorage.setItem('lp_owned_skins', JSON.stringify(this.ownedSkins));
+        this.renderGemShop();
+        this.updateSkinUI();
+        return true;
     }
 
     shakeUI() {
@@ -390,6 +443,15 @@ class Game {
 
     reset(seed = null) {
         this.state.score = 0;
+        // The Void's exclusive ability lets equipped runs start already at The
+        // Rift, skipping the early game — single-player only, never in co-op.
+        const equippedAbility = (SKINS[this.viewParams.skinIndex] && SKINS[this.viewParams.skinIndex].ability) || {};
+        if (seed === null && equippedAbility.startAtScore) {
+            this.state.score = equippedAbility.startAtScore;
+        }
+        this.state.maxScore = Math.floor(this.state.score / 10);
+        this.state.bossActive = false;
+        this.state.usedExtraRevive = false;
         this.state.frames = 0;
         this.state.time = 0;
         this.state.revived = false;
@@ -405,6 +467,15 @@ class Game {
         } else {
             this.ghostPlayback = [];
         }
+
+        // Skip past any story beats already covered by a checkpoint start
+        // (normal 0m starts just find index 0, since STORY[0].h > 0).
+        let startDisplayScore = Math.floor(this.state.score / 10);
+        this.storyIndex = STORY.findIndex(s => s.h > startDisplayScore);
+        if (this.storyIndex === -1) this.storyIndex = STORY.length;
+
+        this.renderer.updateBiome(startDisplayScore);
+        this.lastBiomeName = this.renderer.currentBiome.name;
 
         this.lastTime = performance.now();
 
@@ -430,18 +501,22 @@ class Game {
         let rand = this.seededRandom();
         let w = 100 + rand * 80;
         let x = this.seededRandom() * (CONFIG.WIDTH - w);
+        let scoreMeters = Math.floor(this.state.score / 10);
+        let hazards = this.renderer.currentBiome.hazards;
 
         let vx = 0;
-        let movingChance = Math.max(0, Math.min(0.4, (this.state.score - 5000) / 20000));
-        if (this.state.score > 5000 && this.seededRandom() < movingChance) {
-            vx = (this.seededRandom() > 0.5 ? 1 : -1) * (0.5 + this.seededRandom() * 1.5);
-            w = Math.max(70, w - 30);
+        if (hazards.includes('moving')) {
+            let movingChance = Math.max(0, Math.min(0.4, (scoreMeters - 1800) / 2000));
+            if (this.seededRandom() < movingChance) {
+                vx = (this.seededRandom() > 0.5 ? 1 : -1) * (0.5 + this.seededRandom() * 1.5);
+                w = Math.max(70, w - 30);
+            }
         }
 
         this.platforms.push({ x, y, w, h: 18, vx });
 
-        let chance = 0.08 * (1 - (this.state.score / 8000));
-        if (chance < 0) chance = 0;
+        let chance = 0.08 * (1 - scoreMeters / 8000);
+        chance = Math.max(0.015, chance);
         if (this.seededRandom() < chance) {
             this.powerups.push({
                 x: x + w / 2 - 12,
@@ -451,13 +526,14 @@ class Game {
                 isShard: false,
                 markedForDeletion: false
             });
-        } else if (this.seededRandom() < 0.25) { // 25% chance of a Shard
+        } else if (this.seededRandom() < 0.4) { // gems are common — 40% chance of a Shard
             this.powerups.push({
                 x: x + w / 2 - 8,
                 y: y - 30,
                 startY: y - 30,
                 w: 16, h: 16,
                 isShard: true,
+                shardValue: 1 + Math.floor(this.seededRandom() * 3), // 1-3
                 markedForDeletion: false
             });
         }
@@ -503,6 +579,21 @@ class Game {
             this.player.y = CONFIG.HEIGHT - 60;
             this.player.vy = CONFIG.BOUNCE_FORCE;
             this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
+            return;
+        }
+
+        // Equipped Pixel's free revive: a bonus life on top of (not instead
+        // of) the normal one-ad-revive-per-run flow below.
+        const equippedAbility = this.player.skin.ability || {};
+        if (equippedAbility.extraRevive && !this.state.usedExtraRevive) {
+            this.state.usedExtraRevive = true;
+            this.player.y = CONFIG.HEIGHT - 200;
+            this.player.vy = CONFIG.BOUNCE_FORCE;
+            this.player.vx = 0;
+            this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+            sounds.play('powerup');
+            this.particles.spawn(this.player.x + 13, this.player.y + 13, "#00ffaa", 30, "blast");
+            this.showAlert("BACKUP LIFE ENGAGED", 'success');
             return;
         }
 
@@ -615,12 +706,13 @@ class Game {
         if (!isFirstGame && !isQuickDeath) {
             this.ads.showInterstitialAd();
         }
+        let finalScore = Math.floor(this.state.score / 10);
 
         if (this.state.isNewBest && this.state.ghostRecord) {
             localStorage.setItem('lp_ghost', JSON.stringify(this.state.ghostRecord));
         }
         if (!this.state.multiplayer) {
-            this.updateFame(Math.floor(this.state.score / 10));
+            this.updateFame(finalScore);
         }
 
         this.ui.menu.style.display = 'flex';
@@ -643,10 +735,11 @@ class Game {
         this.ui.power.style.opacity = 0;
         this.hideAlert();
 
-        let finalScore = Math.floor(this.state.score / 10);
         this.ui.menuLast.innerText = "LAST RUN: " + finalScore + "m";
         this.ui.menuScore.innerText = "HIGH SCORE: " + this.state.highScore + "m";
         this.updateFameUI();
+        this.updateSkinUI();
+        this.renderGemShop();
     }
 
     updateFame(score) {
@@ -663,17 +756,8 @@ class Game {
     }
 
     checkAchievements() {
-        const goals = [
-            { id: '1km', name: 'Kilometer Club', condition: () => this.state.score >= 10000 },
-            { id: '5km', name: 'Stratosphere', condition: () => this.state.score >= 50000 },
-            { id: 'magnet', name: 'Attractive', condition: () => this.player.activePower && this.player.activePower.name === "MAGNET" },
-            { id: 'pacifist', name: 'Pacifist Pilot', condition: () => this.state.score >= 50000 && this.state.powersCollected === 0 },
-            { id: 'boss', name: 'Titan Slayer', condition: () => this.state.loops >= 1 },
-            { id: 'rich', name: 'Data Hoarder', condition: () => this.state.shards >= 100 }
-        ];
-
-        goals.forEach(g => {
-            if (g.condition() && !this.achievements.includes(g.id)) {
+        ACHIEVEMENTS.forEach(g => {
+            if (g.condition(this.state, this.player) && !this.achievements.includes(g.id)) {
                 this.achievements.push(g.id);
                 localStorage.setItem('lp_achievements', JSON.stringify(this.achievements));
                 this.showAchievement(g.name);
@@ -703,6 +787,14 @@ class Game {
 
         const scoreMeters = Math.floor(this.state.score / 10);
         const droneSpawnRate = CONFIG.DRONE_SPAWN_RATE;
+        const hazards = this.renderer.currentBiome.hazards;
+
+        if (this.renderer.currentBiome.name !== this.lastBiomeName) {
+            if (this.lastBiomeName) { // skip the callout on the very first frame of a run
+                this.showAlert("ENTERING " + this.renderer.currentBiome.name.toUpperCase(), 'info');
+            }
+            this.lastBiomeName = this.renderer.currentBiome.name;
+        }
 
         if (this.state.frames % 5 === 0) {
             if (!this.state.ghostRecord) this.state.ghostRecord = [];
@@ -714,7 +806,7 @@ class Game {
 
         // Boss Fights & Loop Management
         if (this.state.score > 0) {
-            let targetLoop = Math.floor(scoreMeters / 10000);
+            let targetLoop = Math.floor(scoreMeters / CONFIG.BOSS_LOOP_DISTANCE);
             if (targetLoop > (this.state.loops || 0)) {
                 if (!this.state.bossActive) {
                     this.state.bossActive = true;
@@ -724,17 +816,36 @@ class Game {
         }
 
         // Spawn Enemies (only if Boss isn't active)
-        if (!this.state.bossActive && scoreMeters > 200 && this.state.frames % Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))) === 0) {
+        if (!this.state.bossActive && scoreMeters > 60 && this.state.frames % Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))) === 0) {
             const difficulty = 1 + (scoreMeters / 2000) + (this.state.loops || 0);
 
-            if (scoreMeters > 1000 && Math.random() < Math.min(0.5, (scoreMeters - 1000) / 4000)) {
+            if (scoreMeters > 300 && Math.random() < Math.min(0.5, (scoreMeters - 300) / 2400)) {
                 this.enemies.push(new ShooterDrone(this.player.y - 500, difficulty));
             } else {
                 this.enemies.push(new Drone(this.player.y - 500, difficulty));
             }
         }
 
+        if (hazards.includes('laser') && this.state.frames % 240 === 0) {
+            this.enemies.push(new LaserDrone(this.player.y - 500));
+        }
+
+        // Glitch hazard: briefly invert left/right for this frame's input read only
+        // (swap-and-restore around the call, no permanent state mutation).
+        const glitching = hazards.includes('glitch') && (this.state.time % 480) < 24;
+        if (glitching) {
+            const tmp = this.input.keys.left;
+            this.input.keys.left = this.input.keys.right;
+            this.input.keys.right = tmp;
+        }
+
         let event = this.player.update(dt, this.input, this.platforms, this.powerups);
+
+        if (glitching) {
+            const tmp = this.input.keys.left;
+            this.input.keys.left = this.input.keys.right;
+            this.input.keys.right = tmp;
+        }
 
         // Invisible ceiling in multiplayer so the fast player doesn't go off screen
         if (this.state.multiplayer && this.remotePlayer && !this.player.isDead && !this.remotePlayer.isDead) {
@@ -744,13 +855,17 @@ class Game {
             }
         }
 
-        // Environmental Hazards
-        if (scoreMeters > 1000 && scoreMeters < 3000) {
+        // Environmental Hazards (cumulative per-biome, see BIOMES[].hazards)
+        if (hazards.includes('wind')) {
             let wind = Math.sin(this.state.time * 0.05) * 0.3;
             this.player.vx += wind * dt;
             this.particles.particles.forEach(p => p.vx += wind * dt * 0.1);
         }
-        if (scoreMeters > 6000 && this.state.frames % 90 === 0) {
+        if (hazards.includes('gravityPulse')) {
+            let pulse = Math.sin(this.state.time * 0.05) * 0.3;
+            this.player.vy += pulse * dt;
+        }
+        if (hazards.includes('meteor') && this.state.frames % 90 === 0) {
             let startX = Math.random() * CONFIG.WIDTH;
             let vx = (Math.random() - 0.5) * 4;
             let vy = 4 + Math.random() * 5;
@@ -778,7 +893,7 @@ class Game {
         } else if (event === "thrust") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#ff3300", 2, "blast");
         } else if (event && event.event === "shard") {
-            this.state.shards++;
+            this.state.shards += event.value || 1;
             localStorage.setItem('lp_shards', this.state.shards);
             if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = "💎 " + this.state.shards;
             this.particles.spawn(event.x + 8, event.y + 8, "#00ffff", 10);
@@ -808,6 +923,7 @@ class Game {
                 if (e.constructor.name === "BossDrone") {
                     this.state.bossActive = false;
                     this.state.loops = (this.state.loops || 0) + 1;
+                    localStorage.setItem('lp_loops', this.state.loops);
                     this.showAlert(`LOOP ${this.state.loops} SECURED`, 'reward');
                     this.state.score += 50000; // 5000m bonus
                 }

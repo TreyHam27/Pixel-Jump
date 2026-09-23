@@ -132,7 +132,7 @@ class Player extends Entity {
         for (let i = powerups.length - 1; i >= 0; i--) {
             let p = powerups[i];
 
-            // Magnet Logic
+            // Magnet Logic (temporary MAGNET power-up pulls any pickup)
             if (this.activePower === POWERS.MAGNET) {
                 let dx = this.x - p.x;
                 let dy = this.y - p.y;
@@ -143,10 +143,22 @@ class Player extends Entity {
                 }
             }
 
+            // Always-on shard pull from an equipped Pixel's permanent ability
+            // (separate from, and stacks with, the temporary MAGNET power-up)
+            if (p.isShard && ability.shardMagnetRadius) {
+                let dx = this.x - p.x;
+                let dy = this.y - p.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < ability.shardMagnetRadius) {
+                    p.x += dx * 0.1;
+                    p.y += dy * 0.1;
+                }
+            }
+
             if (rectsIntersect(this, p)) {
                 if (p.isShard) {
                     p.markedForDeletion = true;
-                    return { event: "shard", x: p.x, y: p.y };
+                    return { event: "shard", x: p.x, y: p.y, value: p.shardValue || 1 };
                 } else {
                     this.activatePower();
                     p.markedForDeletion = true;
@@ -161,8 +173,9 @@ class Player extends Entity {
     activatePower() {
         const types = Object.values(POWERS);
         const p = types[Math.floor(Math.random() * types.length)];
+        const ability = this.skin.ability || {};
         this.activePower = p;
-        this.powerTimer = p.time;
+        this.powerTimer = p.time * (ability.powerDurationMult || 1);
         if (p === POWERS.DOUBLE) this.doubleReady = true;
     }
 
@@ -349,6 +362,74 @@ class ShooterDrone extends Drone {
         // Cannon
         ctx.fillStyle = "#222";
         ctx.fillRect(this.x + this.w / 4, this.y + this.h, this.w / 2, 4);
+    }
+}
+
+class LaserDrone extends Entity {
+    // Hovers roughly in place, cycling cooldown -> telegraph -> firing.
+    // While firing, its own x/y/w/h expand into a full-width beam rect, so
+    // the game's generic rectsIntersect(player, enemy) collision check just
+    // works without any special-casing (same as every other enemy type).
+    constructor(y) {
+        const bodyW = 34, bodyH = 20;
+        super(CONFIG.WIDTH / 2 - bodyW / 2, y, bodyW, bodyH, "#ff0055");
+        this.bodyW = bodyW;
+        this.bodyH = bodyH;
+        this.driftPhase = Math.random() * Math.PI * 2;
+        this.phase = "cooldown"; // cooldown -> telegraph -> firing -> cooldown
+        this.timer = 90 + Math.random() * 90;
+    }
+
+    update(dt) {
+        this.driftPhase += 0.02 * dt;
+
+        if (this.phase !== "firing") {
+            this.x = CONFIG.WIDTH / 2 - this.bodyW / 2 + Math.sin(this.driftPhase) * 200;
+            this.w = this.bodyW;
+            this.h = this.bodyH;
+        }
+
+        this.timer -= dt;
+        if (this.timer <= 0) {
+            if (this.phase === "cooldown") {
+                this.phase = "telegraph";
+                this.timer = 45; // warning window before the beam fires
+            } else if (this.phase === "telegraph") {
+                this.phase = "firing";
+                this.timer = 18; // beam stays live briefly
+                this.x = 0;
+                this.w = CONFIG.WIDTH;
+                this.h = 8;
+            } else {
+                this.phase = "cooldown";
+                this.timer = 150 + Math.random() * 90;
+            }
+        }
+
+        if (this.y > CONFIG.HEIGHT + 200) this.markedForDeletion = true;
+    }
+
+    draw(ctx) {
+        if (this.phase === "telegraph") {
+            ctx.fillStyle = "rgba(255, 0, 85, 0.35)";
+            ctx.fillRect(0, this.y + this.bodyH / 2 - 3, CONFIG.WIDTH, 6);
+        }
+
+        if (this.phase === "firing") {
+            ctx.fillStyle = "#ff0055";
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#ff0055";
+            ctx.fillRect(this.x, this.y, this.w, this.h);
+            ctx.shadowBlur = 0;
+        } else {
+            ctx.fillStyle = "#440022";
+            ctx.fillRect(this.x, this.y, this.bodyW, this.bodyH);
+            ctx.fillStyle = this.phase === "telegraph" ? "#ffaa00" : "#ff0055";
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = ctx.fillStyle;
+            ctx.fillRect(this.x + this.bodyW / 2 - 3, this.y + this.bodyH / 2 - 3, 6, 6);
+            ctx.shadowBlur = 0;
+        }
     }
 }
 
