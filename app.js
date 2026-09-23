@@ -35,6 +35,14 @@ class Game {
             runStartTime: 0
         };
 
+        // Badges pop one at a time: a single frame can earn several at once
+        // (5000m clears both "Stratosphere" and the Rift Diver skin), and
+        // without a queue each new one would overwrite the last mid-display.
+        this.achievementQueue = [];
+        this.achievementShowing = false;
+
+        this.seedSkinAchievements();
+
         this.ui = {
             menu: document.getElementById("menu-layer"),
             startBtn: document.getElementById("start-prompt"),
@@ -964,16 +972,50 @@ class Game {
             if (g.condition(this.state, this.player) && !this.achievements.includes(g.id)) {
                 this.achievements.push(g.id);
                 localStorage.setItem('lp_achievements', JSON.stringify(this.achievements));
-                this.showAchievement(g.name);
+                this.showAchievement(g.skin ? "SKIN UNLOCKED: " + g.name : g.name, g.skin ? "🎨" : "🏅");
             }
         });
     }
 
-    showAchievement(name) {
-        this.ui.achievement.innerText = "🏅 " + name;
+    // Skin unlocks only became achievements after launch, so a returning player
+    // has already earned every skin their high score covers. Record those once,
+    // silently, rather than burying them under a stack of popups on the next
+    // run — only genuinely new unlocks should announce themselves.
+    seedSkinAchievements() {
+        if (localStorage.getItem('lp_skin_achievements_seeded')) return;
+
+        ACHIEVEMENTS.forEach(g => {
+            if (g.skin && g.condition(this.state) && !this.achievements.includes(g.id)) {
+                this.achievements.push(g.id);
+            }
+        });
+
+        localStorage.setItem('lp_achievements', JSON.stringify(this.achievements));
+        localStorage.setItem('lp_skin_achievements_seeded', '1');
+    }
+
+    showAchievement(name, icon = "🏅") {
+        this.achievementQueue.push(icon + " " + name);
+        if (!this.achievementShowing) this.showNextAchievement();
+    }
+
+    showNextAchievement() {
+        const text = this.achievementQueue.shift();
+        if (text === undefined) {
+            this.achievementShowing = false;
+            return;
+        }
+
+        this.achievementShowing = true;
+        this.ui.achievement.innerText = text;
         this.ui.achievement.style.display = 'block';
-        setTimeout(() => { this.ui.achievement.style.display = 'none'; }, 3000);
         sounds.play('powerup');
+        setTimeout(() => {
+            this.ui.achievement.style.display = 'none';
+            // A beat of clear air so back-to-back badges read as two separate
+            // pops (and replay the slide-in) rather than one flickering line.
+            setTimeout(() => this.showNextAchievement(), 250);
+        }, 3000);
     }
 
     update(dt) {
