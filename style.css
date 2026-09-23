@@ -125,6 +125,20 @@ canvas {
     transition: opacity 0.5s;
 }
 
+/* Co-op respawn countdown: purple, brighter, and pulsing for visibility */
+#story-box.story-respawn {
+    border-left-color: #c04dff;
+    color: #d896ff;
+    font-size: 19px;
+    text-shadow: 0 0 8px #c04dff, 0 0 18px #a020f0;
+    animation: respawnPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes respawnPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+
 /* MENU SYSTEM - Slide transition */
 #menus-wrapper {
     position: absolute;

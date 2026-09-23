@@ -408,6 +408,7 @@ class Game {
 
         this.ui.power.style.opacity = 0;
         this.ui.story.style.opacity = 1;
+        this.ui.story.classList.remove('story-respawn');
         this.ui.story.innerText = "SYSTEM: Initializing...";
     }
 
@@ -544,6 +545,7 @@ class Game {
         let time = baseTime + ((this.state.deathCount - 1) * 10);
 
         this.ui.story.style.opacity = 1;
+        this.ui.story.classList.add('story-respawn');
 
         let interval = setInterval(() => {
             if (!this.state.running || !this.player.isDead) {
@@ -558,7 +560,10 @@ class Game {
                 this.ui.story.innerText = "SYSTEM: WATCH AD TO REVIVE";
                 this.ads.showRevivePrompt(
                     () => { this.mpRevive(); },
-                    () => { this.ui.story.innerText = "SYSTEM: SPECTATING"; }
+                    () => {
+                        this.ui.story.classList.remove('story-respawn');
+                        this.ui.story.innerText = "SYSTEM: SPECTATING";
+                    }
                 );
             }
         }, 1000);
@@ -575,6 +580,7 @@ class Game {
         this.player.vy = 0;
 
         if (window.network) window.network.send({ type: 'revive' });
+        this.ui.story.classList.remove('story-respawn');
         this.ui.story.innerText = "SYSTEM: LIFE RESTORED";
     }
 
