@@ -48,31 +48,84 @@ const MAX_EXTRA_LIVES = 3;
 const MAX_PARTY_SIZE = 4;
 const PARTY_COLORS = ['#00ffff', '#ff3cf0', '#ffe600', '#ff8a00'];
 
+// Every Pixel carries a stable `id`. Saves (lp_owned_skins, lp_skin) store
+// ids, never array positions, so skins can be added or reordered freely. The
+// running game still addresses skins by SKINS index (Player, co-op sync),
+// which is fine as long as every client ships the same list.
 const SKINS = [
-    { name: "Unit 734", color: "#ff3366", eye: "white", unlock: 0, ability: { jumpMult: 1, speedMult: 1 } },
-    { name: "The Ghost", color: "#ffffff", eye: "black", unlock: 150, ability: { gravityMult: 0.85 } },
-    { name: "Matrix", color: "#00ff00", eye: "black", unlock: 350, ability: { speedMult: 1.2 } },
-    { name: "Deep Void", color: "#330033", eye: "#ff00ff", unlock: 700, ability: { jumpMult: 1.15 } },
-    { name: "Golden", color: "#ffd700", eye: "#8B4500", unlock: 1400, ability: { speedMult: 1.1, gravityMult: 0.9 } },
-    { name: "Glitch", color: "#00ffff", eye: "white", unlock: 2500, ability: { jumpMult: 1.1, speedMult: 1.1 } },
-    { name: "The End", color: "#111", eye: "red", unlock: 4000, ability: { gravityMult: 0.75 } },
+    { id: 'unit734', name: "Unit 734", color: "#ff3366", eye: "white", unlock: 0, ability: {} },
+    { id: 'ghost', name: "The Ghost", color: "#ffffff", eye: "black", unlock: 150, ability: { gravityMult: 0.85 } },
+    { id: 'matrix', name: "Matrix", color: "#00ff00", eye: "black", unlock: 350, ability: { speedMult: 1.2 } },
+    { id: 'deepvoid', name: "Deep Void", color: "#330033", eye: "#ff00ff", unlock: 700, ability: { jumpMult: 1.15 } },
+    { id: 'golden', name: "Golden", color: "#ffd700", eye: "#8B4500", unlock: 1400, ability: { speedMult: 1.1, gravityMult: 0.9 } },
+    { id: 'glitch', name: "Glitch", color: "#00ffff", eye: "white", unlock: 2500, ability: { jumpMult: 1.1, speedMult: 1.1 } },
+    { id: 'theend', name: "The End", color: "#111", eye: "red", unlock: 4000, ability: { gravityMult: 0.75 } },
 
-    // Gem-shop skins: bought directly with shards (not distance-gated), price
-    // steps ~3x per tier so early ones are an easy buy and the top end is a
-    // real grind. See Game.isSkinLocked()/renderGemShop().
-    { name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.15 } },
-    { name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 250, ability: { jumpMult: 1.15 } },
-    { name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 750, ability: { gravityMult: 0.9, speedMult: 1.05 } },
-    { name: "Obsidian", color: "#1a0033", eye: "#ff00ff", cost: 2200, ability: { shardMagnetRadius: 100, jumpMult: 1.05 } },
-    { name: "Prism", color: "#ff00ff", eye: "#ffffff", cost: 6000, ability: { powerDurationMult: 1.75 } },
+    // Gem-shop Pixels, cheapest first. The bottom tiers each carry one plain
+    // stat perk; every tier above buys a unique perk stronger than the last.
+    // At roughly 200 shards per 1000m climbed the top tier is a long grind
+    // (softened once GEMS x2 is owned). See Game.renderGemShop().
+    { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.15 } },
+    { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.15 } },
+    { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { gravityMult: 0.88 } },
+    { id: 'obsidian', name: "Obsidian", color: "#1a0033", eye: "#ff00ff", cost: 1200, ability: { powerDurationMult: 2 } },
+    { id: 'prism', name: "Prism", color: "#ff00ff", eye: "#ffffff", cost: 2500, ability: { lifePowerUp: true } },
+    { id: 'pulsewarden', name: "Pulse Warden", color: "#00ff99", eye: "#003322", cost: 5000, ability: { dronePulseSec: 7 } },
+    { id: 'hoarder', name: "Crystal Hoarder", color: "#33e0ff", eye: "#002233", cost: 9000, ability: { shardMult: 2 } },
+    { id: 'aegis', name: "Aegis", color: "#3366ff", eye: "#ffffff", cost: 15000, ability: { biomeImmune: true } },
+    { id: 'overclock', name: "Overclock", color: "#ff2222", eye: "#ffe600", cost: 25000, ability: { scoreMult: 2 } },
 
-    // Secret skins: masked as "???" in the carousel until their distance is
-    // reached (see Game.isSkinLocked()/updateSkinUI()), one per new biome.
-    { name: "Rift Diver", color: "#6600cc", eye: "#00ffff", unlock: 5000, secret: true, ability: { powerDurationMult: 1.5 } },
-    { name: "Neon Ghost", color: "#ff0099", eye: "#00ffff", unlock: 8000, secret: true, ability: { shardMagnetRadius: 150 } },
-    { name: "Static King", color: "#ffffff", eye: "#ff0000", unlock: 12000, secret: true, ability: { extraRevive: 1 } },
-    { name: "The Void", color: "#000000", eye: "#ff0000", unlock: 17000, secret: true, ability: { startAtScore: 50000, jumpMult: 1.1 } }
+    // Secret skins: never shown in the menu picker until their distance is
+    // reached (see Game.unlockedSkinIndexes()), one per new biome.
+    { id: 'riftdiver', name: "Rift Diver", color: "#6600cc", eye: "#00ffff", unlock: 5000, secret: true, ability: { powerDurationMult: 1.5 } },
+    { id: 'neonghost', name: "Neon Ghost", color: "#ff0099", eye: "#00ffff", unlock: 8000, secret: true, ability: { shardMagnetRadius: 150 } },
+    { id: 'staticking', name: "Static King", color: "#ffffff", eye: "#ff0000", unlock: 12000, secret: true, ability: { extraRevive: 1 } },
+    { id: 'thevoid', name: "The Void", color: "#000000", eye: "#ff0000", unlock: 17000, secret: true, ability: { startAtScore: 50000, jumpMult: 1.1 } }
 ];
+
+function skinIndexById(id) {
+    return SKINS.findIndex(s => s.id === id);
+}
+
+// Perks: the passive buff a Pixel grants, keyed by its SKINS[i].ability key.
+// `label` is the short tag shown on the menu/shop, `describe(value)` the full
+// stat text revealed on hover/tap, and `active(value)` whether a value does
+// anything at all (a 1x multiplier doesn't). Tags render in this order.
+const perkPct = (mult) => Math.round(Math.abs(mult - 1) * 100) + '%';
+const PERKS = [
+    { key: 'speedMult', label: 'SPEED', color: '#00ccff', active: v => !!v && v !== 1,
+      describe: v => (v > 1 ? '+' : '-') + perkPct(v) + ' move speed' },
+    { key: 'jumpMult', label: 'JUMP', color: '#00ff66', active: v => !!v && v !== 1,
+      describe: v => (v > 1 ? '+' : '-') + perkPct(v) + ' jump height' },
+    { key: 'gravityMult', label: 'GRAVITY', color: '#b388ff', active: v => !!v && v !== 1,
+      describe: v => (v < 1 ? '-' : '+') + perkPct(v) + ' gravity' + (v < 1 ? ' (floatier)' : '') },
+    { key: 'powerDurationMult', label: 'POWER', color: '#ffaa00', active: v => !!v && v !== 1,
+      describe: v => Number.isInteger(v) ? 'Power-ups last ' + v + 'x as long' : '+' + perkPct(v) + ' power-up duration' },
+    { key: 'shardMagnetRadius', label: 'MAGNET', color: '#ffff00', active: v => !!v,
+      describe: () => 'Always pulls in nearby shards' },
+    { key: 'extraRevive', label: 'REVIVE', color: '#00ffaa', active: v => !!v,
+      describe: v => v + ' free revive every run' },
+    { key: 'startAtScore', label: 'RIFT', color: '#9933ff', active: v => !!v,
+      describe: v => 'Solo runs start at ' + Math.floor(v / 10) + 'm (The Rift)' },
+    { key: 'lifePowerUp', label: 'PHOENIX', color: '#ff5533', active: v => !!v,
+      describe: () => 'Using an extra life or revive grants a random power-up' },
+    { key: 'dronePulseSec', label: 'EMP', color: '#00ff99', active: v => !!v,
+      describe: v => 'Every ' + v + 's, destroys all drones on screen (solo only)' },
+    { key: 'shardMult', label: 'GEMS x2', color: '#33e0ff', active: v => !!v && v !== 1,
+      describe: v => 'Shard pickups are worth ' + v + 'x' },
+    { key: 'biomeImmune', label: 'SHIELDED', color: '#3399ff', active: v => !!v,
+      describe: () => 'Immune to wind, gravity pulses and glitches' },
+    { key: 'scoreMult', label: 'SCORE x2', color: '#ff3333', active: v => !!v && v !== 1,
+      describe: v => 'Climbing earns ' + v + 'x distance score' }
+];
+
+// The perks a Pixel actually grants, in PERKS order, each with its value.
+function skinPerks(ability) {
+    if (!ability) return [];
+    return PERKS
+        .filter(p => p.active(ability[p.key]))
+        .map(p => ({ perk: p, value: ability[p.key] }));
+}
 
 const POWERS = {
     DOUBLE: { id: 1, name: "DOUBLE JUMP", color: "#00ccff", time: 600 },
