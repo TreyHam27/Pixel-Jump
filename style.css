@@ -1,0 +1,628 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #050505;
+    font-family: 'Courier New', monospace;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    /* Prevent browser zooming/scrolling */
+}
+
+#game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #000;
+}
+
+canvas {
+    background: #080808;
+    box-shadow: 0 0 60px #000;
+    border: 2px solid #333;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* UI LAYOUT - Absolute positioning relative to the container */
+#ui-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+/* HUD */
+#hud {
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    justify-content: space-between;
+    padding: 20px;
+    box-sizing: border-box;
+    opacity: 0;
+    transition: opacity 0.5s;
+    z-index: 10;
+}
+
+#score-display {
+    font-size: 50px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+    letter-spacing: -2px;
+}
+
+#best-display-hud {
+    font-size: 20px;
+    color: #ff3366;
+    font-weight: bold;
+    padding-top: 15px;
+}
+
+/* POWER UP HUD */
+#power-hud {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+#power-text {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    text-shadow: 0 0 8px #000;
+    color: #fff;
+}
+
+#power-bar-bg {
+    width: 200px;
+    height: 10px;
+    background: #222;
+    border: 1px solid #fff;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+#power-bar-fill {
+    height: 100%;
+    width: 100%;
+    background: #fff;
+    transition: width 0.1s linear, background-color 0.2s;
+}
+
+/* STORY BOX */
+#story-box {
+    background: rgba(0, 0, 0, 0.9);
+    border-left: 4px solid #ff3366;
+    color: #ff3366;
+    padding: 10px 20px;
+    margin-top: 20px;
+    font-weight: bold;
+    font-size: 16px;
+    max-width: 90%;
+    width: 500px;
+    text-transform: uppercase;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.5s;
+}
+
+/* MENU SYSTEM - Slide transition */
+#menus-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.menu-page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(5, 5, 5, 0.95);
+    transition: transform 0.4s ease-in-out, opacity 0.3s;
+    pointer-events: auto;
+}
+
+#mp-menu-layer {
+    transform: translateX(100%);
+    background: rgba(5, 10, 20, 0.95);
+}
+
+.mode-switch-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 40px;
+    color: #555;
+    cursor: pointer;
+    text-align: center;
+    transition: color 0.2s, transform 0.2s;
+    user-select: none;
+    z-index: 30;
+}
+
+.mode-switch-arrow span {
+    font-size: 12px;
+    display: block;
+    margin-top: 5px;
+    font-weight: bold;
+}
+
+.mode-switch-arrow.right { right: 20px; }
+.mode-switch-arrow.left { left: 20px; }
+
+.mode-switch-arrow:hover {
+    color: #00ffff;
+    transform: translateY(-50%) scale(1.1);
+}
+
+/* MP UI Styles */
+.mp-box {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #333;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    width: 250px;
+    text-align: center;
+}
+
+.mp-box label {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 10px;
+    font-weight: bold;
+    color: #888;
+}
+
+.mp-box input[type="text"] {
+    width: 100%;
+    background: #000;
+    border: 1px solid #555;
+    color: #fff;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 16px;
+    text-align: center;
+    text-transform: uppercase;
+    box-sizing: border-box;
+}
+
+.mp-box input[type="text"]:focus {
+    outline: none;
+    border-color: #00ffff;
+}
+
+.mp-box button {
+    width: 100%;
+    margin-top: 10px;
+    background: #222;
+    color: #fff;
+    border: 1px solid #555;
+    padding: 10px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.mp-box button:hover {
+    background: #333;
+    border-color: #00ffff;
+    color: #00ffff;
+}
+
+#mp-host-code {
+    margin-top: 10px;
+    font-size: 24px;
+    color: #00ffaa;
+    font-weight: bold;
+    letter-spacing: 5px;
+}
+
+.mp-section-divider {
+    color: #555;
+    font-size: 12px;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+#mp-status {
+    color: #aaa;
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+#mp-start-prompt {
+    font-size: 20px;
+    color: #fff;
+    animation: blink 1s infinite;
+    letter-spacing: 2px;
+    padding: 15px 40px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    margin-top: 20px;
+}
+
+#title {
+    font-size: max(40px, 5vw);
+    color: #fff;
+    letter-spacing: 5px;
+    margin-bottom: 20px;
+    text-shadow: 0 0 20px #ff3366;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* SKIN SELECTOR */
+#skin-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 30px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    cursor: default;
+}
+
+.nav-btn {
+    background: none;
+    border: 1px solid #555;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 10px 20px;
+    transition: 0.2s;
+    pointer-events: auto;
+    z-index: 30;
+    user-select: none;
+}
+
+.nav-btn:hover {
+    background: #333;
+    border-color: #fff;
+}
+
+.nav-btn:active {
+    background: #555;
+}
+
+#skin-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 200px;
+}
+
+#skin-preview-box {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 10px;
+    position: relative;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    transition: transform 0.2s;
+}
+
+#skin-eyes-l,
+#skin-eyes-r {
+    position: absolute;
+    top: 30%;
+    width: 20%;
+    height: 20%;
+    background: white;
+}
+
+#skin-eyes-l {
+    left: 20%;
+}
+
+#skin-eyes-r {
+    right: 20%;
+}
+
+#skin-name {
+    font-size: 18px;
+    color: #fff;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+#skin-status {
+    font-size: 12px;
+    color: #888;
+    letter-spacing: 1px;
+}
+
+#menu-lastscore {
+    font-size: 18px;
+    color: #fff;
+    margin-bottom: 5px;
+    font-weight: bold;
+    opacity: 0.7;
+}
+
+#menu-highscore {
+    font-size: 18px;
+    color: #ff3366;
+    margin-bottom: 40px;
+    font-weight: bold;
+}
+
+#start-prompt {
+    font-size: 20px;
+    color: #fff;
+    animation: blink 1s infinite;
+    letter-spacing: 2px;
+    padding: 15px 40px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: none;
+    /* Let clicks pass through to menu layer */
+}
+
+/* No hover effect needed for start-prompt */
+
+.shake {
+    animation: shake 0.4s ease-in-out;
+    color: #ff3366 !important;
+}
+
+@keyframes shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    25% {
+        transform: translateX(-5px);
+    }
+
+    75% {
+        transform: translateX(5px);
+    }
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* ADS */
+.ad-banner {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20%;
+    max-width: 200px;
+    height: 600px;
+    background: #222;
+    border: 2px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    font-size: 24px;
+    font-weight: bold;
+    text-align: center;
+    z-index: 5;
+    transition: opacity 0.5s;
+    pointer-events: none;
+}
+
+/* Dynamic Positioning: 
+   Game is centered. Game width is dynamic (Renderer logic), but conceptually 600px logical. 
+   We want ads to float to the left/right of the center column.
+*/
+#ad-left {
+    left: 5%;
+}
+
+#ad-right {
+    right: 5%;
+}
+
+/* Mobile / Narrow hide */
+@media (max-width: 1000px) {
+    .ad-banner {
+        opacity: 0 !important;
+        display: none !important;
+    }
+}
+
+#revive-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 50;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    /* Enable clicks */
+}
+
+#revive-box {
+    background: #111;
+    border: 2px solid #ff3366;
+    padding: 30px;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(255, 51, 102, 0.3);
+    max-width: 300px;
+}
+
+#revive-title {
+    color: #fff;
+    font-size: 24px;
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+
+#revive-btn {
+    background: #ff3366;
+    color: #fff;
+    border: none;
+    padding: 15px 30px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+}
+
+#revive-btn:hover {
+    background: #ff5588;
+    transform: scale(1.05);
+}
+
+#revive-skip {
+    margin-top: 15px;
+    color: #888;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+#revive-skip:hover {
+    color: #fff;
+}
+
+/* FAKE AD VIDEO UI */
+#ad-video-mock {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    z-index: 100;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    /* Enable interaction */
+}
+
+#ad-countdown {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: #fff;
+    font-size: 20px;
+    font-weight: bold;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px 20px;
+    border-radius: 20px;
+}
+
+#ad-content {
+    color: #fff;
+    font-size: 30px;
+    font-weight: bold;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.8;
+    }
+}
+
+#touch-hint {
+    position: absolute;
+    bottom: 20px;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 12px;
+    text-align: center;
+    width: 100%;
+    letter-spacing: 1px;
+}
+
+#achievement-pop {
+    position: absolute;
+    top: 50px;
+    background: #ffd700;
+    color: #000;
+    padding: 10px 20px;
+    font-weight: bold;
+    border-radius: 20px;
+    box-shadow: 0 0 20px #ffd700;
+    display: none;
+    z-index: 100;
+    animation: slideIn 0.5s forwards;
+}
+
+@keyframes slideIn {
+    0% {
+        transform: translateY(-100px);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+#fame-container {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px;
+    border: 1px solid #333;
+    margin-bottom: 20px;
+    width: 250px;
+    text-align: center;
+}
+
+#fame-list {
+    font-size: 12px;
+    color: #888;
+}

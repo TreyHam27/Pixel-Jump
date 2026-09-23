@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pixel Jump</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div id="game-container">
+        <!-- STATIC ADS -->
+        <div id="ad-left" class="ad-banner">AD SPACE<br>(160x600)</div>
+        <div id="ad-right" class="ad-banner">AD SPACE<br>(160x600)</div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="ui-layer">
+            <div id="hud">
+                <div id="score-display">0m</div>
+                <div id="best-display-hud">BEST: 0m</div>
+            </div>
+
+            <div id="power-hud">
+                <div id="power-text">DOUBLE JUMP</div>
+                <div id="power-bar-bg">
+                    <div id="power-bar-fill"></div>
+                </div>
+            </div>
+
+            <div id="story-box">SYSTEM: Infinite Mode loaded.</div>
+
+            <div id="touch-hint">LEFT SIDE: MOVE | RIGHT SIDE: JUMP</div>
+
+            <!-- REVIVE UI -->
+            <div id="revive-overlay">
+                <div id="revive-box">
+                    <div id="revive-title">CONTINUE?</div>
+                    <button id="revive-btn">
+                        <span>▶️</span> WATCH AD
+                    </button>
+                    <div id="revive-skip">No thanks, I'll die.</div>
+                </div>
+            </div>
+
+            <!-- MOCK VIDEO AD -->
+            <div id="ad-video-mock">
+                <div id="ad-countdown">0:05</div>
+                <div id="ad-content">ADVERTISEMENT PLAYING...</div>
+            </div>
+            <!-- ACHIEVEMENT POP UP -->
+            <div id="achievement-pop"> badge unlocked </div>
+        </div>
+
+        <div id="menus-wrapper">
+            <!-- SINGLE PLAYER MENU (Main) -->
+            <div id="menu-layer" class="menu-page">
+                <div class="mode-switch-arrow right" id="to-mp-btn">▶<br><span>CO-OP</span></div>
+
+                <div id="title">PIXEL JUMP</div>
+
+                <div id="fame-container">
+                    <div style="color:#ff3366; font-size: 14px; margin-bottom: 5px;">HALL OF FAME</div>
+                    <div id="fame-list"></div>
+                </div>
+
+                <div id="skin-container">
+                    <button class="nav-btn" id="prev-btn">&lt;</button>
+                    <div id="skin-display">
+                        <div id="skin-preview-box">
+                            <div id="skin-eyes-l"></div>
+                            <div id="skin-eyes-r"></div>
+                        </div>
+                        <div id="skin-name">Unit 734</div>
+                        <div id="skin-status">UNLOCKED</div>
+                    </div>
+                    <button class="nav-btn" id="next-btn">&gt;</button>
+                </div>
+
+                <div id="shop-container" style="margin-top: 15px; margin-bottom: 15px; text-align: center;">
+                    <div style="color:#00ffff; font-size: 14px; margin-bottom: 5px;">SHARDS: <span
+                            id="menu-shards">0</span></div>
+                    <button id="shop-boost-btn"
+                        style="background:#222; border:1px solid #00ffff; color:#00ffff; padding:8px 15px; font-family:'Courier New', Courier, monospace; cursor:pointer;">BUY
+                        BOOST (50 💎)</button>
+                </div>
+
+                <div id="menu-lastscore">LAST RUN: 0m</div>
+                <div id="menu-highscore">HIGH SCORE: 0m</div>
+                <button id="start-prompt">CLICK TO START</button>
+            </div>
+
+            <!-- MULTIPLAYER MENU -->
+            <div id="mp-menu-layer" class="menu-page">
+                <div class="mode-switch-arrow left" id="to-sp-btn">◀<br><span>SOLO</span></div>
+
+                <div id="title" style="text-shadow: 0 0 20px #00ffff; color: #fff;">PIXEL JUMP CO-OP</div>
+
+                <div class="mp-box">
+                    <label>DISPLAY NAME</label>
+                    <input type="text" id="mp-name-input" maxlength="10" placeholder="P1">
+                </div>
+
+                <div class="mp-box">
+                    <label style="color:#ffaa00;">JOIN A FRIEND</label>
+                    <input type="text" id="mp-join-input" maxlength="6" placeholder="6-CHAR CODE">
+                    <button id="mp-join-btn">CONNECT</button>
+                </div>
+
+                <div class="mp-section-divider">OR</div>
+
+                <div class="mp-box">
+                    <label style="color:#00ffaa;">HOST A GAME</label>
+                    <button id="mp-host-btn">GENERATE CODE</button>
+                    <div id="mp-host-code">---</div>
+                </div>
+
+                <div id="mp-status">READY</div>
+                <button id="mp-start-prompt" style="display:none;">START CO-OP RUN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PeerJS -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/sounds.js"></script>
+    <script src="js/background.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/entities.js"></script>
+    <script src="js/ads.js"></script>
+    <script src="js/network.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
