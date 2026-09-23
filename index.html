@@ -11,9 +11,10 @@
 <body>
 
     <div id="game-container">
-        <!-- STATIC ADS -->
-        <div id="ad-left" class="ad-banner">AD SPACE<br>(160x600)</div>
-        <div id="ad-right" class="ad-banner">AD SPACE<br>(160x600)</div>
+        <!-- SIDE AD RAILS: fill the gutter beside the game. Populated by AdManager -->
+        <!-- (real network skin once live, house ad until then). See js/ads.js. -->
+        <div id="ad-rail-left" class="ad-rail"></div>
+        <div id="ad-rail-right" class="ad-rail"></div>
 
         <canvas id="gameCanvas"></canvas>
 
@@ -50,7 +51,7 @@
 
             <!-- MOCK VIDEO AD -->
             <div id="ad-video-mock">
-                <div id="ad-countdown">0:05</div>
+                <div id="ad-countdown">0:03</div>
                 <div id="ad-content">ADVERTISEMENT PLAYING...</div>
             </div>
             <!-- ACHIEVEMENT POP UP -->

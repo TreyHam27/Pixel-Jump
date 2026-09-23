@@ -29,7 +29,9 @@ class Game {
             time: 0,
             seed: this.getDailySeed(),
             powersCollected: 0,
-            ghostRecord: []
+            ghostRecord: [],
+            gamesPlayedThisSession: 0,
+            runStartTime: 0
         };
 
         this.ui = {
@@ -487,8 +489,8 @@ class Game {
         }, 300);
         this.ui.hud.style.opacity = 1;
 
-        // Potential Interstitial Placeholders
-        this.ads.showInterstitialAd();
+        this.state.gamesPlayedThisSession++;
+        this.state.runStartTime = performance.now();
     }
 
     die(forceDie = false) {
@@ -606,6 +608,14 @@ class Game {
     }
 
     gameOver() {
+        // Skip the interstitial on the session's first game and on very
+        // quick deaths, so restarting fast never turns into ad-spam.
+        const isFirstGame = this.state.gamesPlayedThisSession <= 1;
+        const isQuickDeath = (performance.now() - this.state.runStartTime) < 10000;
+        if (!isFirstGame && !isQuickDeath) {
+            this.ads.showInterstitialAd();
+        }
+
         if (this.state.isNewBest && this.state.ghostRecord) {
             localStorage.setItem('lp_ghost', JSON.stringify(this.state.ghostRecord));
         }
