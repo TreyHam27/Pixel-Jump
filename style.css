@@ -1003,23 +1003,194 @@ canvas {
     }
 }
 
+/* HALL OF FAME — same card shell as .shop-card / .gem-skin-row so the menu
+   reads as one family, and sized to match their min(340px, 85vw). */
 #fame-container {
     background: rgba(255, 255, 255, 0.05);
-    padding: 10px;
+    padding: 16px 14px;
     border: 1px solid #333;
     border-radius: var(--radius);
-    margin-bottom: 20px;
-    width: 250px;
+    margin-bottom: 18px;
+    width: min(340px, 85vw);
+    box-sizing: border-box;
     text-align: center;
 }
 
 .fame-heading {
-    color: #ff3366;
-    font-size: 14px;
-    margin-bottom: 5px;
+    color: #ffd700;
+    font-size: 17px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.55);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #333;
 }
 
 #fame-list {
-    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fame-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 7px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    text-align: left;
+}
+
+/* Rank chip — gold/silver/bronze on the podium, neutral below it. */
+.fame-rank {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    border-radius: var(--radius-pill);
+    background: #222;
     color: #888;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.fame-swatch {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    background: #555;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+
+/* The skin name takes the slack, so the score stays hard right and the digits
+   line up down the column. */
+.fame-skin {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    color: #bbb;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fame-date {
+    flex: none;
+    font-size: 10px;
+    color: #666;
+}
+
+.fame-score {
+    flex: none;
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.fame-row--1 {
+    background: rgba(255, 215, 0, 0.08);
+    border-color: rgba(255, 215, 0, 0.45);
+}
+
+.fame-row--1 .fame-rank {
+    background: #ffd700;
+    color: #000;
+}
+
+.fame-row--1 .fame-score {
+    color: #ffd700;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.fame-row--2 .fame-rank {
+    background: #c0c0c0;
+    color: #000;
+}
+
+.fame-row--3 .fame-rank {
+    background: #cd7f32;
+    color: #000;
+}
+
+.fame-empty {
+    font-size: 12px;
+    color: #666;
+    letter-spacing: 1px;
+    padding: 6px 0;
+}
+
+/* The main menu is one non-scrolling flex column, so the roomy card above only
+   fits on tall viewports. Below that, tighten the card (never the legibility of
+   the score itself) so it can't push the start button off screen. */
+@media (max-height: 820px) {
+    #fame-container {
+        padding: 10px 12px;
+        margin-bottom: 10px;
+    }
+
+    .fame-heading {
+        font-size: 15px;
+        padding-bottom: 5px;
+        margin-bottom: 5px;
+    }
+
+    #fame-list {
+        gap: 3px;
+    }
+
+    .fame-row {
+        padding: 3px 6px;
+    }
+
+    .fame-rank {
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        font-size: 10px;
+    }
+
+    .fame-score {
+        font-size: 14px;
+    }
+}
+
+/* Very short viewports: the date is the first thing worth losing, then all the
+   remaining chrome, so the card costs about what the old one did. */
+@media (max-height: 680px) {
+    #fame-container {
+        padding: 6px 10px;
+        margin-bottom: 6px;
+    }
+
+    .fame-heading {
+        font-size: 13px;
+        padding-bottom: 3px;
+        margin-bottom: 3px;
+    }
+
+    #fame-list {
+        gap: 2px;
+    }
+
+    .fame-date {
+        display: none;
+    }
+
+    .fame-row {
+        padding: 1px 6px;
+    }
+
+    .fame-rank {
+        width: 14px;
+        height: 14px;
+        line-height: 14px;
+        font-size: 9px;
+    }
+
+    .fame-score {
+        font-size: 13px;
+    }
 }
