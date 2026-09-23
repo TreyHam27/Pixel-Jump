@@ -36,6 +36,12 @@ const BIOMES = [
     { threshold: 17000, name: "The Void", bg: "#000000", grid: "#220022", platform: "#ff0055", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"] }
 ];
 
+// Shop consumables. Extra lives are bought with shards and carried between
+// runs as stock — each one is spent automatically on a death that would
+// otherwise end the run (see Game.die()).
+const EXTRA_LIFE_COST = 50;
+const MAX_EXTRA_LIVES = 3;
+
 const SKINS = [
     { name: "Unit 734", color: "#ff3366", eye: "white", unlock: 0, ability: { jumpMult: 1, speedMult: 1 } },
     { name: "The Ghost", color: "#ffffff", eye: "black", unlock: 150, ability: { gravityMult: 0.85 } },
