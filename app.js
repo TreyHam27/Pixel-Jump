@@ -41,7 +41,9 @@ class Game {
             power: document.getElementById("power-hud"),
             powerFill: document.getElementById("power-bar-fill"),
             powerText: document.getElementById("power-text"),
-            story: document.getElementById("story-box"),
+            alert: document.getElementById("system-alert"),
+            alertIcon: document.getElementById("system-alert-icon"),
+            alertText: document.getElementById("system-alert-text"),
             achievement: document.getElementById("achievement-pop"),
             menuScore: document.getElementById("menu-highscore"),
             menuLast: document.getElementById("menu-lastscore"),
@@ -73,7 +75,6 @@ class Game {
             mpStartBtn: document.getElementById("mp-start-prompt")
         };
         this.remotePlayer = null;
-        this.storyIndex = 0;
         this.viewParams = { skinIndex: this.state.skinIndex };
         this.lastTime = 0;
 
@@ -361,6 +362,20 @@ class Game {
         this.ui.startBtn.classList.add('shake');
     }
 
+    // Centralized system alert popup (run status, revive countdowns, loop rewards, etc).
+    showAlert(text, type = 'info') {
+        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱' };
+        const el = this.ui.alert;
+        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse');
+        el.classList.add('alert-' + type, 'alert-visible');
+        this.ui.alertIcon.innerText = icons[type] || icons.info;
+        this.ui.alertText.innerText = text;
+    }
+
+    hideAlert() {
+        this.ui.alert.classList.remove('alert-visible');
+    }
+
     getDailySeed() {
         const d = new Date();
         return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
@@ -389,7 +404,6 @@ class Game {
             this.ghostPlayback = [];
         }
 
-        this.storyIndex = 0;
         this.lastTime = performance.now();
 
         this.player = new Player(CONFIG.WIDTH / 2, CONFIG.HEIGHT - 150, this.viewParams.skinIndex);
@@ -407,9 +421,7 @@ class Game {
         this.remotePlayer = null;
 
         this.ui.power.style.opacity = 0;
-        this.ui.story.style.opacity = 1;
-        this.ui.story.classList.remove('story-respawn');
-        this.ui.story.innerText = "SYSTEM: Initializing...";
+        this.showAlert("Initializing...", 'info');
     }
 
     spawnPlatform(y) {
@@ -544,8 +556,7 @@ class Game {
         let baseTime = 15;
         let time = baseTime + ((this.state.deathCount - 1) * 10);
 
-        this.ui.story.style.opacity = 1;
-        this.ui.story.classList.add('story-respawn');
+        this.showAlert(`RESPAWN IN ${time}s`, 'pulse');
 
         let interval = setInterval(() => {
             if (!this.state.running || !this.player.isDead) {
@@ -553,17 +564,14 @@ class Game {
                 return;
             }
             time--;
-            this.ui.story.innerText = `SYSTEM: RESPAWN IN ${time}s`;
+            this.showAlert(`RESPAWN IN ${time}s`, 'pulse');
 
             if (time <= 0) {
                 clearInterval(interval);
-                this.ui.story.innerText = "SYSTEM: WATCH AD TO REVIVE";
+                this.showAlert("WATCH AD TO REVIVE", 'pulse');
                 this.ads.showRevivePrompt(
                     () => { this.mpRevive(); },
-                    () => {
-                        this.ui.story.classList.remove('story-respawn');
-                        this.ui.story.innerText = "SYSTEM: SPECTATING";
-                    }
+                    () => { this.showAlert("SPECTATING", 'warning'); }
                 );
             }
         }, 1000);
@@ -580,8 +588,7 @@ class Game {
         this.player.vy = 0;
 
         if (window.network) window.network.send({ type: 'revive' });
-        this.ui.story.classList.remove('story-respawn');
-        this.ui.story.innerText = "SYSTEM: LIFE RESTORED";
+        this.showAlert("LIFE RESTORED", 'success');
     }
 
     revive() {
@@ -595,8 +602,7 @@ class Game {
 
         this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
 
-        this.ui.story.innerText = "SYSTEM: Life Systems Restored.";
-        this.ui.story.style.opacity = 1;
+        this.showAlert("Life Systems Restored.", 'success');
     }
 
     gameOver() {
@@ -625,7 +631,7 @@ class Game {
 
         this.ui.hud.style.opacity = 0;
         this.ui.power.style.opacity = 0;
-        this.ui.story.style.opacity = 0;
+        this.hideAlert();
 
         let finalScore = Math.floor(this.state.score / 10);
         this.ui.menuLast.innerText = "LAST RUN: " + finalScore + "m";
@@ -792,8 +798,7 @@ class Game {
                 if (e.constructor.name === "BossDrone") {
                     this.state.bossActive = false;
                     this.state.loops = (this.state.loops || 0) + 1;
-                    this.ui.story.innerText = `SYSTEM: LOOP ${this.state.loops} SECURED.`;
-                    this.ui.story.style.opacity = 1;
+                    this.showAlert(`LOOP ${this.state.loops} SECURED`, 'reward');
                     this.state.score += 50000; // 5000m bonus
                 }
                 this.enemies.splice(i, 1);
@@ -905,13 +910,6 @@ class Game {
 
         this.ui.score.innerText = displayScore + "m";
         this.ui.best.innerText = "BEST: " + this.state.highScore + "m";
-
-        if (STORY[this.storyIndex] && this.state.maxScore >= STORY[this.storyIndex].h) {
-            this.ui.story.innerHTML = STORY[this.storyIndex].t;
-            this.ui.story.style.color = (this.storyIndex % 2 === 0) ? "#ff3366" : "#00ffcc";
-            this.ui.story.style.borderLeftColor = this.ui.story.style.color;
-            this.storyIndex++;
-        }
 
         if (this.player.activePower) {
             this.ui.power.style.opacity = 1;

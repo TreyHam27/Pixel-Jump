@@ -108,21 +108,91 @@ canvas {
     transition: width 0.1s linear, background-color 0.2s;
 }
 
-/* STORY BOX */
-#story-box {
-    background: rgba(0, 0, 0, 0.9);
-    border-left: 4px solid #ff3366;
-    color: #ff3366;
-    padding: 10px 20px;
+/* SYSTEM ALERT - centralized notification for status/revive/reward messages */
+#system-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(10, 10, 14, 0.85);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(0, 204, 255, 0.35);
+    border-left: 4px solid #00ccff;
+    border-radius: 10px;
+    padding: 10px 22px;
     margin-top: 20px;
     font-weight: bold;
-    font-size: 16px;
-    max-width: 90%;
-    width: 500px;
+    font-size: 15px;
+    width: fit-content;
+    max-width: min(90%, 500px);
     text-transform: uppercase;
+    letter-spacing: 0.5px;
     text-align: center;
+    color: #00ccff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(0, 204, 255, 0.15);
     opacity: 0;
-    transition: opacity 0.5s;
+    transform: translateY(-8px);
+    transition: opacity 0.35s ease, transform 0.35s ease, border-color 0.3s, color 0.3s, box-shadow 0.3s;
+}
+
+#system-alert.alert-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+#system-alert-icon {
+    font-size: 17px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+/* Type variants */
+#system-alert.alert-success {
+    border-color: rgba(0, 255, 170, 0.4);
+    border-left-color: #00ffaa;
+    color: #00ffaa;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(0, 255, 170, 0.2);
+}
+
+#system-alert.alert-warning {
+    border-color: rgba(255, 170, 0, 0.4);
+    border-left-color: #ffaa00;
+    color: #ffaa00;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(255, 170, 0, 0.2);
+}
+
+#system-alert.alert-danger {
+    border-color: rgba(255, 51, 102, 0.4);
+    border-left-color: #ff3366;
+    color: #ff5c85;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(255, 51, 102, 0.2);
+}
+
+#system-alert.alert-reward {
+    border-color: rgba(255, 215, 0, 0.45);
+    border-left-color: #ffd700;
+    color: #ffd700;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 215, 0, 0.25);
+}
+
+/* Urgent, attention-grabbing pulse (co-op respawn countdown) */
+#system-alert.alert-pulse {
+    border-color: rgba(192, 77, 255, 0.5);
+    border-left-color: #c04dff;
+    color: #d896ff;
+    font-size: 18px;
+    text-shadow: 0 0 8px #c04dff, 0 0 18px #a020f0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 20px rgba(192, 77, 255, 0.3);
+}
+
+/* Only animate while actually shown, so hiding it doesn't get fought by the keyframe's own opacity */
+#system-alert.alert-pulse.alert-visible {
+    animation: alertPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes alertPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
 }
 
 /* Co-op respawn countdown: purple, brighter, and pulsing for visibility */
