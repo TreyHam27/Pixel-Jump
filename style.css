@@ -340,105 +340,233 @@ canvas {
     transform: translateY(-50%) scale(1.1);
 }
 
-/* MP UI Styles */
+/* MP UI Styles — built from the same card / button / section-label pieces as
+   the shop, so co-op reads as part of the same menu family. Each card sets
+   --accent (and --accent-rgb for the tints); everything else keys off it. */
 .mp-box {
+    --accent: #00ffff;
+    --accent-rgb: 0, 255, 255;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid #333;
-    padding: 15px;
-    margin-bottom: 15px;
     border-radius: var(--radius);
-    width: 250px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    width: min(320px, 85vw);
+    box-sizing: border-box;
     text-align: center;
+}
+
+.mp-box--join {
+    --accent: #ffaa00;
+    --accent-rgb: 255, 170, 0;
+}
+
+.mp-box--host {
+    --accent: #00ffaa;
+    --accent-rgb: 0, 255, 170;
+}
+
+/* Same tinted-panel treatment as .shop-card, in the card's own accent. */
+.mp-box--join,
+.mp-box--host {
+    background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.1), rgba(255, 255, 255, 0.03));
+    border-color: rgba(var(--accent-rgb), 0.4);
+    box-shadow: 0 0 22px rgba(var(--accent-rgb), 0.1);
 }
 
 .mp-box label {
     display: block;
-    font-size: 14px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 900;
+    letter-spacing: 2px;
     margin-bottom: 10px;
-    font-weight: bold;
-    color: #888;
 }
 
-.mp-box label.label-join {
-    color: #ffaa00;
-}
-
-.mp-box label.label-host {
-    color: #00ffaa;
+.mp-box--join label,
+.mp-box--host label {
+    color: var(--accent);
+    text-shadow: 0 0 12px rgba(var(--accent-rgb), 0.45);
 }
 
 .mp-box input[type="text"] {
     width: 100%;
-    background: #000;
-    border: 1px solid #555;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid #444;
     border-radius: var(--radius);
     color: #fff;
     padding: 10px;
     font-family: inherit;
     font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 2px;
     text-align: center;
     text-transform: uppercase;
     box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.mp-box input[type="text"]::placeholder {
+    color: #555;
 }
 
 .mp-box input[type="text"]:focus {
     outline: none;
-    border-color: #00ffff;
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.3);
 }
 
+/* Solid primary action, matching .shop-card-btn / .gem-skin-buy-btn. */
 .mp-box button {
     width: 100%;
     margin-top: 10px;
-    background: #222;
-    color: #fff;
-    border: 1px solid #555;
+    background: var(--accent);
+    border: 1px solid var(--accent);
     border-radius: var(--radius);
-    padding: 10px;
+    color: #0a0a0a;
+    padding: 11px 15px;
     font-family: inherit;
-    font-weight: bold;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 1px;
     cursor: pointer;
     transition: 0.2s;
 }
 
-.mp-box button:hover {
-    background: #333;
-    border-color: #00ffff;
-    color: #00ffff;
+.mp-box button:hover:not(:disabled) {
+    filter: brightness(1.15);
+    box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.5);
 }
 
+/* In flight (connecting / code already generated): ghosted like the shop's
+   unaffordable state, so it plainly can't be pressed again. */
+.mp-box button:disabled {
+    background: transparent;
+    color: var(--accent);
+    border-color: rgba(var(--accent-rgb), 0.35);
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* Room code slot — a dashed placeholder until a code exists, then the code
+   itself gets the glow. */
 #mp-host-code {
-    margin-top: 10px;
+    margin-top: 12px;
+    /* letter-spacing trails the last glyph; the extra left padding evens it. */
+    padding: 8px 0 8px 8px;
+    border: 1px dashed rgba(var(--accent-rgb), 0.3);
+    border-radius: var(--radius);
+    color: #555;
     font-size: 24px;
-    color: #00ffaa;
-    font-weight: bold;
-    letter-spacing: 5px;
+    font-weight: 900;
+    letter-spacing: 8px;
 }
 
+#mp-host-code.has-code {
+    border-style: solid;
+    border-color: rgba(var(--accent-rgb), 0.5);
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--accent);
+    text-shadow: 0 0 14px rgba(var(--accent-rgb), 0.6);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* "OR" between join and host — .shop-section-label's rule, drawn both sides. */
 .mp-section-divider {
-    color: #555;
+    width: min(320px, 85vw);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+    color: #666;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 3px;
+}
+
+.mp-section-divider::before,
+.mp-section-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+}
+
+.mp-section-divider::before {
+    background: linear-gradient(to left, #333, transparent);
+}
+
+.mp-section-divider::after {
+    background: linear-gradient(to right, #333, transparent);
+}
+
+/* Connection status — a pill in the #system-alert palette. app.js sets
+   data-state; no state means idle. */
+#mp-status {
+    --status: #888;
+    --status-rgb: 136, 136, 136;
+    margin-top: 4px;
+    padding: 6px 16px;
+    max-width: min(320px, 85vw);
+    box-sizing: border-box;
+    border: 1px solid rgba(var(--status-rgb), 0.4);
+    border-radius: var(--radius-pill);
+    background: rgba(var(--status-rgb), 0.08);
+    color: var(--status);
     font-size: 12px;
     font-weight: bold;
-    margin: 10px 0;
+    letter-spacing: 1px;
+    text-align: center;
+    transition: color 0.3s, border-color 0.3s, background 0.3s;
 }
 
-#mp-status {
-    color: #aaa;
-    margin-top: 10px;
-    font-size: 14px;
-    font-weight: bold;
+#mp-status[data-state="pending"] {
+    --status: #ffaa00;
+    --status-rgb: 255, 170, 0;
 }
 
-#mp-start-prompt {
-    display: none;
-    font-size: 20px;
-    color: #fff;
-    animation: blink 1s infinite;
-    letter-spacing: 2px;
-    padding: 15px 40px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    margin-top: 20px;
+#mp-status[data-state="success"] {
+    --status: #00ffaa;
+    --status-rgb: 0, 255, 170;
+}
+
+#mp-status[data-state="danger"] {
+    --status: #ff5c85;
+    --status-rgb: 255, 51, 102;
+}
+
+/* Like the main menu, this page is one non-scrolling column: on short
+   viewports tighten the cards so the host's start button stays on screen. */
+@media (max-height: 760px) {
+    .mp-box {
+        padding: 10px 14px;
+        margin-bottom: 8px;
+    }
+
+    .mp-box label {
+        font-size: 13px;
+        margin-bottom: 6px;
+    }
+
+    .mp-box input[type="text"] {
+        padding: 8px;
+        font-size: 14px;
+    }
+
+    .mp-box button {
+        margin-top: 6px;
+        padding: 8px 12px;
+    }
+
+    #mp-host-code {
+        margin-top: 6px;
+        padding: 4px 0 4px 8px;
+        font-size: 20px;
+    }
+
+    .mp-section-divider {
+        margin-bottom: 8px;
+    }
 }
 
 .page-title {
@@ -904,7 +1032,9 @@ canvas {
     font-weight: bold;
 }
 
-#start-prompt {
+/* Shared by the solo and co-op start prompts so both screens end the same way. */
+#start-prompt,
+#mp-start-prompt {
     font-size: 20px;
     color: #fff;
     animation: blink 1s infinite;
@@ -915,6 +1045,14 @@ canvas {
     cursor: pointer;
     pointer-events: none;
     /* Let clicks pass through to menu layer */
+}
+
+/* Unlike solo (click anywhere), co-op only starts from this button, which
+   stays hidden until a partner has connected. */
+#mp-start-prompt {
+    display: none;
+    margin-top: 12px;
+    pointer-events: auto;
 }
 
 /* No hover effect needed for start-prompt */

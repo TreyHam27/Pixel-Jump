@@ -206,17 +206,15 @@ class Game {
 
             this.ui.mpHostBtn.onclick = async () => {
                 this.ui.mpHostBtn.disabled = true;
-                this.ui.mpStatus.innerText = "GENERATING CODE...";
-                this.ui.mpStatus.style.color = "#ffaa00";
+                this.setMpStatus("GENERATING CODE...", 'pending');
 
                 try {
                     let code = await window.network.host();
                     this.ui.mpHostCode.innerText = code;
-                    this.ui.mpStatus.innerText = "WAITING FOR GUEST...";
-                    this.ui.mpStatus.style.color = "#00ffaa";
+                    this.ui.mpHostCode.classList.add('has-code');
+                    this.setMpStatus("WAITING FOR GUEST...", 'success');
                 } catch (err) {
-                    this.ui.mpStatus.innerText = "HOST FAILED — TRY AGAIN";
-                    this.ui.mpStatus.style.color = "#ff3300";
+                    this.setMpStatus("HOST FAILED — TRY AGAIN", 'danger');
                     this.ui.mpHostBtn.disabled = false;
                 }
             };
@@ -225,18 +223,15 @@ class Game {
                 const code = this.ui.mpJoinInput.value.trim();
                 if (code.length === 6) {
                     this.ui.mpJoinBtn.disabled = true;
-                    this.ui.mpStatus.innerText = "CONNECTING...";
-                    this.ui.mpStatus.style.color = "#ffaa00";
+                    this.setMpStatus("CONNECTING...", 'pending');
                     try {
                         await window.network.join(code);
                     } catch (err) {
-                        this.ui.mpStatus.innerText = "CONNECTION FAILED — TRY AGAIN";
-                        this.ui.mpStatus.style.color = "#ff3300";
+                        this.setMpStatus("CONNECTION FAILED — TRY AGAIN", 'danger');
                         this.ui.mpJoinBtn.disabled = false;
                     }
                 } else {
-                    this.ui.mpStatus.innerText = "INVALID CODE";
-                    this.ui.mpStatus.style.color = "#ff3300";
+                    this.setMpStatus("INVALID CODE", 'danger');
                 }
             };
 
@@ -249,8 +244,7 @@ class Game {
             };
 
             window.network.onConnected = () => {
-                this.ui.mpStatus.innerText = "CONNECTED!";
-                this.ui.mpStatus.style.color = "#00ffcc";
+                this.setMpStatus("CONNECTED!", 'success');
 
                 let name = this.ui.mpNameInput.value.trim() || 'Player';
 
@@ -259,7 +253,7 @@ class Game {
                     this.ui.mpStartBtn.style.display = 'block';
                 } else {
                     this.state.isHost = false;
-                    this.ui.mpStatus.innerText = "SYNCHRONIZING...";
+                    this.setMpStatus("SYNCHRONIZING...", 'pending');
 
                     // Handshake Retry Loop for Guest
                     // Ensures the host DEFINITELY gets the name even if the first packet is lost
@@ -282,8 +276,7 @@ class Game {
                 if (this.state.running && this.state.multiplayer) {
                     this.die(true); // Disconnect kills
                 }
-                this.ui.mpStatus.innerText = "DISCONNECTED";
-                this.ui.mpStatus.style.color = "#ff3300";
+                this.setMpStatus("DISCONNECTED", 'danger');
                 this.ui.mpStartBtn.style.display = 'none';
                 this.ui.mpHostBtn.disabled = false;
                 this.ui.mpJoinBtn.disabled = false;
@@ -300,15 +293,13 @@ class Game {
                 } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
                     msg = "NETWORK ERROR — CHECK CONNECTION";
                 }
-                this.ui.mpStatus.innerText = msg;
-                this.ui.mpStatus.style.color = "#ff3300";
+                this.setMpStatus(msg, 'danger');
                 this.ui.mpHostBtn.disabled = false;
                 this.ui.mpJoinBtn.disabled = false;
             };
 
             window.network.onStatus = (msg) => {
-                this.ui.mpStatus.innerText = msg;
-                this.ui.mpStatus.style.color = "#ffaa00";
+                this.setMpStatus(msg, 'pending');
             };
 
             // Two-finger swipe gesture for menu transition
@@ -337,6 +328,14 @@ class Game {
         }
     }
 
+    // Co-op menu status pill. `state` is one of 'pending' | 'success' | 'danger'
+    // (or omitted for idle); the colors live in style.css under #mp-status.
+    setMpStatus(text, state) {
+        this.ui.mpStatus.innerText = text;
+        if (state) this.ui.mpStatus.dataset.state = state;
+        else delete this.ui.mpStatus.dataset.state;
+    }
+
     handleNetworkData(data) {
         if (data.type === 'handshake') {
             console.log("MP: Received Handshake from", data.name);
@@ -348,7 +347,7 @@ class Game {
             console.log("MP: Received Handshake ACK");
             if (this.handshakeInterval) clearInterval(this.handshakeInterval);
             this.handshakeInterval = null;
-            this.ui.mpStatus.innerText = "READY TO START";
+            this.setMpStatus("READY TO START", 'success');
         } else if (data.type === 'start') {
             this.startMultiplayerGame(data.seed);
         } else if (data.type === 'sync') {
@@ -965,7 +964,7 @@ class Game {
                 this.ui.mpStartBtn.style.display = 'block';
                 this.ui.mpStartBtn.innerText = "PLAY AGAIN";
             } else {
-                this.ui.mpStatus.innerText = "WAITING FOR HOST TO RESTART...";
+                this.setMpStatus("WAITING FOR HOST TO RESTART...", 'pending');
             }
         }
 
