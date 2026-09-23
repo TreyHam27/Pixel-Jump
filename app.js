@@ -835,7 +835,25 @@ class Game {
 
     updateFameUI() {
         let fame = JSON.parse(localStorage.getItem('lp_fame')) || [];
-        this.ui.fame.innerHTML = fame.map((f, i) => `<div>${i + 1}. ${f.score}m - ${f.skin}</div>`).join('');
+
+        if (!fame.length) {
+            this.ui.fame.innerHTML = `<div class="fame-empty">NO RUNS YET — SET A RECORD</div>`;
+            return;
+        }
+
+        this.ui.fame.innerHTML = fame.map((f, i) => {
+            // Entries store the skin by name, so a renamed/removed skin just
+            // falls back to the neutral swatch colour from the stylesheet.
+            const skin = SKINS.find(s => s.name === f.skin);
+            const swatch = skin ? ` style="background:${skin.color}"` : '';
+            return `<div class="fame-row fame-row--${i + 1}">
+                <div class="fame-rank">${i + 1}</div>
+                <div class="fame-swatch"${swatch}></div>
+                <div class="fame-skin">${f.skin}</div>
+                <div class="fame-date">${f.date || ''}</div>
+                <div class="fame-score">${f.score}m</div>
+            </div>`;
+        }).join('');
     }
 
     checkAchievements() {
