@@ -41,12 +41,3 @@ const POWERS = {
     SHIELD: { id: 6, name: "HARD SHIELD", color: "#00ffaa", time: 600 },
     TIME_WARP: { id: 7, name: "TIME WARP", color: "#ffffff", time: 500 }
 };
-
-const STORY = [
-    { h: 100, t: "SYSTEM: Unit 734. Maintain baseline altitude." },
-    { h: 500, t: "SYSTEM: Detected foreign objects. Use them." },
-    { h: 1000, t: "SYSTEM: Why climb? Gravity is the only law." },
-    { h: 2500, t: "SYSTEM: You are exceeding recommended parameters." },
-    { h: 5000, t: "SYSTEM: Safety protocols disengaged." },
-    { h: 8000, t: "SYSTEM: Pixel Jump: The next level." }
-];
