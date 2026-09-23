@@ -60,8 +60,6 @@ class Game {
             next: document.getElementById("next-btn"),
             fame: document.getElementById("fame-list"),
             shardDisplay: document.getElementById("shard-display"),
-            menuShards: document.getElementById("menu-shards"),
-            shopShards: document.getElementById("shop-shards"),
             shopBoostBtn: document.getElementById("shop-boost-btn"),
             gemShop: document.getElementById("gem-skin-shop"),
             skinAbility: document.getElementById("skin-ability"),
@@ -400,9 +398,7 @@ class Game {
             this.ui.startBtn.style.cursor = "pointer";
         }
 
-        if (this.ui.menuShards) this.ui.menuShards.innerText = this.state.shards;
-        if (this.ui.shopShards) this.ui.shopShards.innerText = this.state.shards;
-        if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = "💎 " + this.state.shards;
+        if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = this.state.shards + " 💎";
         if (this.ui.skinAbility) this.ui.skinAbility.innerText = masked ? "" : this.describeAbility(s.ability);
     }
 
@@ -448,11 +444,14 @@ class Game {
         this.ui.gemShop.innerHTML = rows.map(({ s, i }) => {
             const owned = this.ownedSkins.includes(i);
             return `<div class="gem-skin-row">
-                <div class="gem-skin-row-top">
-                    <span class="gem-skin-name" style="color:${s.color};">${s.name}</span>
-                    <button class="gem-skin-buy-btn" data-index="${i}" ${owned ? 'disabled' : ''}>${owned ? 'OWNED' : s.cost + ' 💎'}</button>
+                <div class="gem-skin-preview" style="background-color:${s.color}; opacity:${owned ? 1 : 0.3};">
+                    <div class="gem-skin-eye gem-skin-eye-l" style="background-color:${s.eye};"></div>
+                    <div class="gem-skin-eye gem-skin-eye-r" style="background-color:${s.eye};"></div>
                 </div>
+                <span class="gem-skin-name" style="color:${s.color};">${s.name}</span>
+                <span class="gem-skin-status" style="color:${owned ? '#00ffcc' : '#888'};">${owned ? 'OWNED' : 'LOCKED'}</span>
                 <span class="gem-skin-buff">${this.describeAbility(s.ability)}</span>
+                <button class="gem-skin-buy-btn" data-index="${i}" ${owned ? 'disabled' : ''}>${owned ? 'OWNED' : s.cost + ' 💎'}</button>
             </div>`;
         }).join('');
 
@@ -980,7 +979,7 @@ class Game {
             this.state.shards += event.value || 1;
             localStorage.setItem('lp_shards', this.state.shards);
             if (this.ui.shardDisplay) {
-                this.ui.shardDisplay.innerText = "💎 " + this.state.shards;
+                this.ui.shardDisplay.innerText = this.state.shards + " 💎";
                 this.ui.shardDisplay.classList.remove('gem-pop');
                 void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
                 this.ui.shardDisplay.classList.add('gem-pop');

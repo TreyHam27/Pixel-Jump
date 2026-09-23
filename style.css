@@ -103,6 +103,10 @@ canvas {
     font-weight: bold;
     text-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
     transform-origin: center;
+    /* Persistent across every screen (menu/shop/gameplay), so it must sit
+       above #menus-wrapper (20), #shop-menu-layer (25) and .nav-btn /
+       .mode-switch-arrow (30). */
+    z-index: 40;
 }
 
 @keyframes gem-collect-pop {
@@ -300,6 +304,11 @@ canvas {
     overflow-y: auto;
     padding: 30px 20px;
     box-sizing: border-box;
+    /* Override .menu-page's centered content: with the full skin-card list
+       this panel routinely overflows the viewport, and centered content
+       that overflows a scroll container clips its start with no way to
+       scroll back up to it. Top-aligning keeps the whole list reachable. */
+    justify-content: flex-start;
 }
 
 .mode-switch-arrow {
@@ -563,14 +572,6 @@ canvas {
     background: rgba(0, 255, 170, 0.08);
 }
 
-.shard-badge {
-    background: rgba(0, 255, 255, 0.1);
-    border-radius: var(--radius-pill);
-    padding: 3px 10px;
-    color: #00ffff;
-    font-size: 13px;
-}
-
 /* SHOP SCREEN */
 .shop-back-btn {
     position: absolute;
@@ -592,13 +593,6 @@ canvas {
 .shop-back-btn:hover {
     border-color: #00ffaa;
     color: #00ffaa;
-}
-
-.shop-shard-total {
-    color: #00ffff;
-    font-size: 16px;
-    font-weight: bold;
-    margin-bottom: 20px;
 }
 
 .shop-card {
@@ -683,22 +677,46 @@ canvas {
 .gem-skin-row {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid #333;
     border-radius: var(--radius);
-    padding: 10px 12px;
+    padding: 16px 12px;
 }
 
-.gem-skin-row-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+.gem-skin-preview {
+    width: 50px;
+    height: 50px;
+    position: relative;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.gem-skin-eye {
+    position: absolute;
+    top: 30%;
+    width: 20%;
+    height: 20%;
+    background: white;
+}
+
+.gem-skin-eye-l {
+    left: 20%;
+}
+
+.gem-skin-eye-r {
+    right: 20%;
 }
 
 .gem-skin-name {
-    font-size: 13px;
+    font-size: 15px;
     font-weight: bold;
+}
+
+.gem-skin-status {
+    font-size: 12px;
+    letter-spacing: 1px;
 }
 
 .gem-skin-buff {
@@ -707,11 +725,13 @@ canvas {
 }
 
 .gem-skin-buy-btn {
+    width: 100%;
+    margin-top: 4px;
     background: #222;
     border: 1px solid #00ffff;
     border-radius: var(--radius);
     color: #00ffff;
-    padding: 4px 10px;
+    padding: 8px 10px;
     font-family: 'Orbitron', 'Courier New', Courier, monospace;
     font-size: 12px;
     font-weight: bold;
