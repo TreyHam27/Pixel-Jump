@@ -12,6 +12,8 @@ class Game {
         this.projectiles = [];
         this.safetyNet = this.makeSafetyNetState();
         this.achievements = JSON.parse(localStorage.getItem('lp_achievements')) || [];
+        this.migrateSkinSaves();
+        // Owned gem-shop Pixels, by SKINS id.
         this.ownedSkins = JSON.parse(localStorage.getItem('lp_owned_skins')) || [];
 
         this.state = {
@@ -21,10 +23,11 @@ class Game {
             isHost: false,
             score: 0,
             maxScore: 0,
+            bonusScore: 0,
             highScore: parseInt(localStorage.getItem('lp_best')) || 0,
             shards: parseInt(localStorage.getItem('lp_shards')) || 0,
             loops: parseInt(localStorage.getItem('lp_loops')) || 0,
-            skinIndex: parseInt(localStorage.getItem('lp_skin')) || 0,
+            skinIndex: Math.max(0, skinIndexById(localStorage.getItem('lp_skin'))),
             extraLives: parseInt(localStorage.getItem('lp_extraLives')) || 0,
             frames: 0,
             bgOffset: 0,
@@ -171,13 +174,27 @@ class Game {
             };
         }
 
+        // Perk tags: hover shows the full stats via CSS; tapping one toggles it
+        // (touch has no hover) and closes any other open tag. Delegated, since
+        // the menu and shop re-render their tags on every change.
+        if (this.ui.menusWrapper) {
+            this.ui.menusWrapper.addEventListener('click', (e) => {
+                const tag = e.target.closest('.perk-tag');
+                this.ui.menusWrapper.querySelectorAll('.perk-tag.open').forEach(t => {
+                    if (t !== tag) t.classList.remove('open');
+                });
+                if (tag) {
+                    e.stopPropagation();
+                    tag.classList.toggle('open');
+                }
+            }, true);
+        }
+
+        // The picker only ever holds unlocked Pixels, so a click anywhere else
+        // on the menu always starts a run.
         this.ui.menu.onclick = (e) => {
             if (e.target.closest('#skin-container') || e.target.closest('.mode-switch-arrow')) return;
-            if (this.isSkinLocked()) {
-                this.shakeUI();
-            } else {
-                this.startGame();
-            }
+            this.startGame();
         };
 
         // Keyboard-start: any movement/jump key starts the game from the SP
@@ -186,11 +203,7 @@ class Game {
             if (this.activeMenuPanel !== 'sp' || this.state.running) return;
             const startKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's', ' '];
             if (!startKeys.includes(e.key)) return;
-            if (this.isSkinLocked()) {
-                this.shakeUI();
-            } else {
-                this.startGame();
-            }
+            this.startGame();
         });
 
         // Multiplayer UI Bindings
@@ -586,87 +599,97 @@ class Game {
         });
     }
 
-    changeSkin(dir) {
-        this.viewParams.skinIndex = (this.viewParams.skinIndex + dir + SKINS.length) % SKINS.length;
-        this.updateSkinUI();
+    // Saves used to store Pixels by SKINS position; they now store SKINS ids so
+    // the roster can change shape. Converts old saves once, via the order the
+    // list had back then (numbers are only ever written by the old format).
+    migrateSkinSaves() {
+        const LEGACY_SKIN_IDS = [
+            'unit734', 'ghost', 'matrix', 'deepvoid', 'golden', 'glitch', 'theend',
+            'nebula', 'chrome', 'solarflare', 'obsidian', 'prism',
+            'riftdiver', 'neonghost', 'staticking', 'thevoid'
+        ];
+        let owned;
+        try { owned = JSON.parse(localStorage.getItem('lp_owned_skins')); } catch (e) { owned = null; }
+        if (Array.isArray(owned) && owned.some(v => typeof v === 'number')) {
+            const ids = owned.map(v => typeof v === 'number' ? LEGACY_SKIN_IDS[v] : v).filter(Boolean);
+            localStorage.setItem('lp_owned_skins', JSON.stringify([...new Set(ids)]));
+        }
+        const equipped = localStorage.getItem('lp_skin');
+        if (equipped !== null && /^\d+$/.test(equipped)) {
+            localStorage.setItem('lp_skin', LEGACY_SKIN_IDS[parseInt(equipped, 10)] || SKINS[0].id);
+        }
     }
 
     isSkinLocked(index = this.viewParams.skinIndex) {
         const s = SKINS[index];
-        if (s.cost !== undefined) return !this.ownedSkins.includes(index);
+        if (!s) return true;
+        if (s.cost !== undefined) return !this.ownedSkins.includes(s.id);
         return this.state.highScore < s.unlock;
     }
 
-    updateSkinUI() {
-        let s = SKINS[this.viewParams.skinIndex];
-        let locked = this.isSkinLocked();
-        let masked = locked && s.secret;
-
-        this.ui.preview.style.backgroundColor = masked ? "#222" : s.color;
-        this.ui.eyesL.style.backgroundColor = masked ? "#000" : s.eye;
-        this.ui.eyesR.style.backgroundColor = masked ? "#000" : s.eye;
-        this.ui.skinName.innerText = masked ? "???" : s.name;
-
-        if (locked) {
-            if (masked) {
-                this.ui.skinStatus.innerText = "LOCKED — ???";
-            } else if (s.cost !== undefined) {
-                this.ui.skinStatus.innerText = "LOCKED (" + s.cost + " 💎)";
-            } else {
-                this.ui.skinStatus.innerText = "LOCKED (" + s.unlock + "m)";
-            }
-            this.ui.skinStatus.style.color = "#888";
-            this.ui.preview.style.opacity = "0.3";
-            this.ui.startBtn.innerText = "LOCKED";
-            this.ui.startBtn.style.opacity = "0.5";
-            this.ui.startBtn.style.cursor = "default";
-        } else {
-            this.ui.skinStatus.innerText = "UNLOCKED";
-            this.ui.skinStatus.style.color = "#00ffcc";
-            this.ui.preview.style.opacity = "1";
-            this.ui.startBtn.innerText = "CLICK TO START";
-            this.ui.startBtn.style.opacity = "1";
-            this.ui.startBtn.style.cursor = "pointer";
-        }
-
-        if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = this.state.shards + " 💎";
-        if (this.ui.skinAbility) this.ui.skinAbility.innerText = masked ? "" : this.describeAbility(s.ability);
+    // The menu picker only ever offers Pixels the player can actually use:
+    // locked gem Pixels live in the shop, and locked distance/secret ones stay
+    // a surprise until they're earned.
+    unlockedSkinIndexes() {
+        return SKINS.map((s, i) => i).filter(i => !this.isSkinLocked(i));
     }
 
-    // Turns an ability object into a short human-readable buff line, shared by
-    // the skin carousel and the gem shop list.
-    describeAbility(ability) {
-        if (!ability) return "";
-        const parts = [];
-        if (ability.jumpMult && ability.jumpMult !== 1) {
-            parts.push((ability.jumpMult > 1 ? "+" : "") + Math.round((ability.jumpMult - 1) * 100) + "% Jump Height");
-        }
-        if (ability.speedMult && ability.speedMult !== 1) {
-            parts.push((ability.speedMult > 1 ? "+" : "") + Math.round((ability.speedMult - 1) * 100) + "% Move Speed");
-        }
-        if (ability.gravityMult && ability.gravityMult !== 1) {
-            const pct = Math.round((ability.gravityMult - 1) * 100);
-            parts.push(pct + "% Gravity" + (ability.gravityMult < 1 ? " (Floaty)" : ""));
-        }
-        if (ability.shardMagnetRadius) {
-            parts.push("Shard Magnet");
-        }
-        if (ability.extraRevive) {
-            parts.push("+" + ability.extraRevive + " Free Revive / Run");
-        }
-        if (ability.powerDurationMult && ability.powerDurationMult !== 1) {
-            parts.push("+" + Math.round((ability.powerDurationMult - 1) * 100) + "% Power-Up Duration");
-        }
-        if (ability.startAtScore) {
-            parts.push("Runs Start at The Rift");
-        }
-        return parts.join(" + ");
+    // Selecting a Pixel equips it straight away (and survives a reload even
+    // if no run is started with it).
+    equipSkin(index) {
+        this.viewParams.skinIndex = index;
+        localStorage.setItem('lp_skin', SKINS[index].id);
+        this.updateSkinUI();
+    }
+
+    changeSkin(dir) {
+        const unlocked = this.unlockedSkinIndexes();
+        const pos = unlocked.indexOf(this.viewParams.skinIndex);
+        const next = unlocked[(Math.max(0, pos) + dir + unlocked.length) % unlocked.length];
+        this.equipSkin(next);
+    }
+
+    updateSkinUI() {
+        // A saved Pixel can go missing (e.g. a cleared shop save); never show
+        // or start a run with one the player doesn't have.
+        if (this.isSkinLocked()) this.viewParams.skinIndex = 0;
+
+        const s = SKINS[this.viewParams.skinIndex];
+        const unlockedCount = this.unlockedSkinIndexes().length;
+
+        this.ui.preview.style.backgroundColor = s.color;
+        this.ui.eyesL.style.backgroundColor = s.eye;
+        this.ui.eyesR.style.backgroundColor = s.eye;
+        this.ui.skinName.innerText = s.name;
+        this.ui.skinStatus.innerText = "PIXELS " + unlockedCount + " / " + SKINS.length;
+
+        const showArrows = unlockedCount > 1 ? 'visible' : 'hidden';
+        this.ui.prev.style.visibility = showArrows;
+        this.ui.next.style.visibility = showArrows;
+
+        if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = this.state.shards + " 💎";
+        if (this.ui.skinAbility) this.ui.skinAbility.innerHTML = this.renderPerkTags(s.ability);
+    }
+
+    // Short, colour-coded perk chips shared by the menu picker and the shop.
+    // The full stat text sits in a tooltip that opens on hover (CSS) or on tap
+    // (the delegated handler in bindEvents), since the game runs on touch too.
+    renderPerkTags(ability) {
+        const perks = skinPerks(ability);
+        if (!perks.length) return '<span class="perk-none">NO PERK</span>';
+        return perks.map(({ perk, value }) =>
+            `<span class="perk-tag" style="--perk:${perk.color};" tabindex="0">${perk.label}` +
+            `<span class="perk-tip">${perk.describe(value)}</span></span>`
+        ).join('');
     }
 
     // Every shards-purchasable skin (anything in SKINS with a `cost`), paired
-    // with its SKINS index so the carousel can address it.
+    // with its SKINS index so the carousel can address it, cheapest first so
+    // the carousel reads as a tier ladder.
     gemShopSkins() {
-        return SKINS.map((s, i) => ({ s, i })).filter(({ s }) => s.cost !== undefined);
+        return SKINS.map((s, i) => ({ s, i }))
+            .filter(({ s }) => s.cost !== undefined)
+            .sort((a, b) => a.s.cost - b.s.cost);
     }
 
     // Steps the shop's pixel carousel, wrapping at both ends exactly like the
@@ -693,28 +716,40 @@ class Game {
 
         if (!(this.gemShopIndex >= 0 && this.gemShopIndex < rows.length)) this.gemShopIndex = 0;
         const { s, i } = rows[this.gemShopIndex];
-        const owned = this.ownedSkins.includes(i);
+        const tier = this.gemShopIndex + 1;
+        const owned = this.ownedSkins.includes(s.id);
+        const equipped = owned && this.viewParams.skinIndex === i;
         const affordable = this.state.shards >= s.cost;
+        // Tiers glow harder the higher they sit, and anything past the plain
+        // stat perks gets the premium frame, so the ladder reads at a glance.
+        const premium = skinPerks(s.ability).some(({ perk }) => !['speedMult', 'jumpMult', 'gravityMult'].includes(perk.key));
 
-        this.ui.gemShop.innerHTML = `<div class="gem-skin-card">
+        let btnLabel = 'BUY';
+        if (equipped) btnLabel = 'EQUIPPED';
+        else if (owned) btnLabel = 'EQUIP';
+        const btnCls = ['gem-skin-buy-btn'];
+        if (owned) btnCls.push('owned');
+        else if (!affordable) btnCls.push('unaffordable');
+
+        this.ui.gemShop.innerHTML = `<div class="gem-skin-card${premium ? ' premium' : ''}" style="--skin:${s.color}; --tier:${tier / rows.length};">
+            <div class="gem-skin-tier">TIER ${tier} / ${rows.length}</div>
             <div class="gem-skin-preview" style="background-color:${s.color}; opacity:${owned ? 1 : 0.35};">
                 <div class="gem-skin-eye gem-skin-eye-l" style="background-color:${s.eye};"></div>
                 <div class="gem-skin-eye gem-skin-eye-r" style="background-color:${s.eye};"></div>
             </div>
             <div class="gem-skin-name" style="color:${s.color};">${s.name}</div>
-            <div class="gem-skin-status" style="color:${owned ? '#00ffcc' : '#888'};">${owned ? 'OWNED' : 'LOCKED'}</div>
-            <div class="gem-skin-buff">${this.describeAbility(s.ability)}</div>
-            <button class="gem-skin-buy-btn${owned || affordable ? '' : ' unaffordable'}" data-index="${i}" ${owned ? 'disabled' : ''}>
-                <span class="btn-label">${owned ? 'OWNED' : 'BUY PIXEL'}</span>
-                ${owned ? '' : `<span class="btn-cost">${s.cost} 💎</span>`}
+            <div class="gem-skin-perks">${this.renderPerkTags(s.ability)}</div>
+            <button class="${btnCls.join(' ')}" data-index="${i}" ${equipped ? 'disabled' : ''}>
+                <span class="btn-label">${btnLabel}</span>
+                ${owned ? '' : `<span class="btn-cost">${s.cost.toLocaleString()} 💎</span>`}
             </button>
         </div>`;
 
         if (this.ui.gemDots) {
-            this.ui.gemDots.innerHTML = rows.map(({ i: idx }, pos) => {
+            this.ui.gemDots.innerHTML = rows.map(({ s: row }, pos) => {
                 const cls = ['gem-dot'];
                 if (pos === this.gemShopIndex) cls.push('active');
-                if (this.ownedSkins.includes(idx)) cls.push('owned');
+                if (this.ownedSkins.includes(row.id)) cls.push('owned');
                 return `<span class="${cls.join(' ')}" data-pos="${pos}"></span>`;
             }).join('');
 
@@ -730,7 +765,13 @@ class Game {
         this.ui.gemShop.querySelectorAll('.gem-skin-buy-btn').forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
-                this.buyGemSkin(parseInt(btn.dataset.index, 10));
+                const index = parseInt(btn.dataset.index, 10);
+                if (this.ownedSkins.includes(SKINS[index].id)) {
+                    this.equipSkin(index);
+                    this.renderGemShop();
+                } else {
+                    this.buyGemSkin(index);
+                }
             };
         });
     }
@@ -778,20 +819,21 @@ class Game {
         return true;
     }
 
+    // Buying a Pixel also equips it — that's why you bought it.
     buyGemSkin(index) {
-        if (this.ownedSkins.includes(index)) return false;
         const s = SKINS[index];
-        if (!s || s.cost === undefined || this.state.shards < s.cost) {
+        if (!s || this.ownedSkins.includes(s.id)) return false;
+        if (s.cost === undefined || this.state.shards < s.cost) {
             this.shakeUI();
             return false;
         }
         this.state.shards -= s.cost;
-        this.ownedSkins.push(index);
+        this.ownedSkins.push(s.id);
         localStorage.setItem('lp_shards', this.state.shards);
         localStorage.setItem('lp_owned_skins', JSON.stringify(this.ownedSkins));
+        this.equipSkin(index);
         this.renderGemShop();
         this.updateExtraLifeUI();
-        this.updateSkinUI();
         return true;
     }
 
@@ -861,6 +903,42 @@ class Game {
         }
     }
 
+    // The run's score in meters: real height climbed plus any SCORE x2 bonus.
+    runScore() {
+        return Math.floor((this.state.score + (this.state.bonusScore || 0)) / 10);
+    }
+
+    // EMP perk: every N seconds, wipe every regular drone on screen (and the
+    // shots they've fired). The boss is immune, and so are meteors/lasers-in-
+    // flight that belong to the biome. Solo only: in co-op every client runs
+    // its own enemies, so one player's EMP would desync what the party sees.
+    updateDronePulse(dt, perks) {
+        if (!perks.dronePulseSec || this.state.multiplayer) return;
+        this.state.pulseTimer = (this.state.pulseTimer || 0) + dt;
+        if (this.state.pulseTimer < perks.dronePulseSec * 60) return;
+        this.state.pulseTimer = 0;
+
+        let hits = 0;
+        this.enemies.forEach(e => {
+            if (!(e instanceof Drone || e instanceof LaserDrone) || e.hidden) return;
+            if (e.y + e.h < 0 || e.y > CONFIG.HEIGHT) return;
+            e.markedForDeletion = true;
+            this.particles.spawn(e.x + e.w / 2, e.y + e.h / 2, "#00ff99", 15, "blast");
+            hits++;
+        });
+        this.projectiles.forEach(p => { if (p instanceof Projectile) p.markedForDeletion = true; });
+        if (hits) sounds.play('powerup');
+    }
+
+    // PHOENIX perk: coming back from a fall also hands out a random power-up.
+    // Returns the power's name for the revive alert, or '' without the perk.
+    phoenixBoost() {
+        if (!(this.player.skin.ability || {}).lifePowerUp) return '';
+        this.player.activePower = null;
+        this.player.activatePower();
+        return this.player.activePower.name;
+    }
+
     // Kick the trampoline into its bounce wobble, centred on where the player
     // hit it.
     bounceSafetyNet() {
@@ -879,6 +957,8 @@ class Game {
         if (seed === null && equippedAbility.startAtScore) {
             this.state.score = equippedAbility.startAtScore;
         }
+        this.state.bonusScore = 0;
+        this.state.pulseTimer = 0;
         this.state.maxScore = Math.floor(this.state.score / 10);
         this.state.bossActive = false;
         this.state.usedExtraRevive = false;
@@ -911,7 +991,7 @@ class Game {
 
         this.player = new Player(CONFIG.WIDTH / 2, CONFIG.HEIGHT - 150, this.viewParams.skinIndex);
 
-        localStorage.setItem('lp_skin', this.viewParams.skinIndex);
+        localStorage.setItem('lp_skin', SKINS[this.viewParams.skinIndex].id);
 
         this.platforms = [{ x: 0, y: CONFIG.HEIGHT - 40, w: CONFIG.WIDTH, h: 40 }];
         let y = CONFIG.HEIGHT - 140;
@@ -1017,7 +1097,8 @@ class Game {
             this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
             sounds.play('powerup');
             this.particles.spawn(this.player.x + 13, this.player.y + 13, "#00ffaa", 30, "blast");
-            this.showAlert("BACKUP LIFE ENGAGED", 'success');
+            const boost = this.phoenixBoost();
+            this.showAlert("BACKUP LIFE ENGAGED" + (boost ? " + " + boost : ""), 'success');
             return;
         }
 
@@ -1031,7 +1112,8 @@ class Game {
             this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
             sounds.play('powerup');
             this.particles.spawn(this.player.x + 13, this.player.y + 13, "#ff3366", 30, "blast");
-            this.showAlert("EXTRA LIFE SPENT — " + this.state.extraLives + " LEFT", 'success');
+            const boost = this.phoenixBoost();
+            this.showAlert("EXTRA LIFE SPENT — " + this.state.extraLives + " LEFT" + (boost ? " + " + boost : ""), 'success');
             return;
         }
 
@@ -1167,7 +1249,8 @@ class Game {
 
         this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
 
-        this.showAlert("Life Systems Restored.", 'success');
+        const boost = this.phoenixBoost();
+        this.showAlert("Life Systems Restored." + (boost ? " + " + boost : ""), 'success');
     }
 
     gameOver() {
@@ -1178,7 +1261,7 @@ class Game {
         if (!isFirstGame && !isQuickDeath) {
             this.ads.showInterstitialAd();
         }
-        let finalScore = Math.floor(this.state.score / 10);
+        let finalScore = this.runScore();
 
         // Don't leave a half-retracted net hanging over the menu.
         this.safetyNet = this.makeSafetyNetState();
@@ -1318,6 +1401,11 @@ class Game {
         const scoreMeters = Math.floor(this.state.score / 10);
         const droneSpawnRate = CONFIG.DRONE_SPAWN_RATE;
         const hazards = this.renderer.currentBiome.hazards;
+        const perks = this.player.skin.ability || {};
+        // SHIELDED perk: the biome's environmental forces (wind, gravity
+        // pulses, control glitches) pass the player by. Physical obstacles —
+        // meteors, lasers, moving platforms — still count.
+        const envImmune = !!perks.biomeImmune;
 
         if (this.renderer.currentBiome.name !== this.lastBiomeName) {
             if (this.lastBiomeName) { // skip the callout on the very first frame of a run
@@ -1362,7 +1450,7 @@ class Game {
 
         // Glitch hazard: briefly invert left/right for this frame's input read only
         // (swap-and-restore around the call, no permanent state mutation).
-        const glitching = hazards.includes('glitch') && (this.state.time % 480) < 24;
+        const glitching = !envImmune && hazards.includes('glitch') && (this.state.time % 480) < 24;
         if (glitching) {
             const tmp = this.input.keys.left;
             this.input.keys.left = this.input.keys.right;
@@ -1388,10 +1476,10 @@ class Game {
         // Environmental Hazards (cumulative per-biome, see BIOMES[].hazards)
         if (hazards.includes('wind')) {
             let wind = Math.sin(this.state.time * 0.05) * 0.3;
-            this.player.vx += wind * dt;
+            if (!envImmune) this.player.vx += wind * dt;
             this.particles.particles.forEach(p => p.vx += wind * dt * 0.1);
         }
-        if (hazards.includes('gravityPulse')) {
+        if (hazards.includes('gravityPulse') && !envImmune) {
             let pulse = Math.sin(this.state.time * 0.05) * 0.3;
             this.player.vy += pulse * dt;
         }
@@ -1423,7 +1511,7 @@ class Game {
         } else if (event === "thrust") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#ff3300", 2, "blast");
         } else if (event && event.event === "shard") {
-            this.state.shards += event.value || 1;
+            this.state.shards += (event.value || 1) * (perks.shardMult || 1);
             localStorage.setItem('lp_shards', this.state.shards);
             if (this.ui.shardDisplay) {
                 this.ui.shardDisplay.innerText = this.state.shards + " 💎";
@@ -1438,6 +1526,8 @@ class Game {
             this.particles.spawn(event.x + 12, event.y + 12, this.player.activePower.color, 20);
             sounds.play('powerup');
         }
+
+        this.updateDronePulse(dt, perks);
 
         let enemyDt = dt;
         if (this.player.activePower && this.player.activePower.name === "TIME WARP") enemyDt *= 0.3;
@@ -1559,6 +1649,10 @@ class Game {
             this.remotePlayers.forEach(rp => { rp.y += diff; });
 
             this.state.score += diff;
+            // SCORE x2 perk: state.score is the camera's real height (it drives
+            // biomes, spawns and boss loops), so the extra distance is banked
+            // separately and only added to the score the player sees.
+            this.state.bonusScore += diff * ((perks.scoreMult || 1) - 1);
             this.state.bgOffset += diff * 0.5;
 
             this.platforms.forEach(p => p.y += diff);
@@ -1581,7 +1675,7 @@ class Game {
             this.die();
         }
 
-        let displayScore = Math.floor(this.state.score / 10);
+        let displayScore = this.runScore();
         if (displayScore > this.state.maxScore) this.state.maxScore = displayScore;
         if (displayScore > this.state.highScore) {
             this.state.highScore = displayScore;
@@ -1597,7 +1691,10 @@ class Game {
             this.ui.powerText.innerText = this.player.activePower.name;
             this.ui.powerText.style.color = this.player.activePower.color;
             this.ui.powerFill.style.backgroundColor = this.player.activePower.color;
-            let pct = (this.player.powerTimer / this.player.activePower.time) * 100;
+            // Measured against the stretched duration, or long-lasting power
+            // Pixels would start with an overflowing bar.
+            const fullTime = this.player.activePower.time * (perks.powerDurationMult || 1);
+            let pct = (this.player.powerTimer / fullTime) * 100;
             this.ui.powerFill.style.width = pct + "%";
         } else {
             this.ui.power.style.opacity = 0;
