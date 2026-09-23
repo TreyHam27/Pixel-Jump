@@ -721,7 +721,7 @@ class Game {
         this.remotePlayer = null;
 
         this.ui.power.style.opacity = 0;
-        this.showAlert("Initializing...", 'info');
+        this.hideAlert();
     }
 
     spawnPlatform(y) {
@@ -754,13 +754,16 @@ class Game {
                 markedForDeletion: false
             });
         } else if (this.seededRandom() < 0.4) { // gems are common — 40% chance of a Shard
+            // Shards used to roll a 1-3 value; keep consuming that draw so
+            // seeded (daily / co-op) layouts stay identical.
+            this.seededRandom();
             this.powerups.push({
                 x: x + w / 2 - 8,
                 y: y - 30,
                 startY: y - 30,
                 w: 16, h: 16,
                 isShard: true,
-                shardValue: 1 + Math.floor(this.seededRandom() * 3), // 1-3
+                shardValue: 5,
                 markedForDeletion: false
             });
         }
@@ -1223,11 +1226,23 @@ class Game {
                 this.enemies.splice(i, 1);
                 continue;
             }
+            if (e.hidden || this.player.invuln > 0) continue;
             if (rectsIntersect(this.player, e)) {
                 if (e.constructor.name === "BossDrone" && this.player.vy > 0 && this.player.y + this.player.h < e.y + 40) {
                     e.takeDamage(this.particles);
                     this.player.vy = CONFIG.BOUNCE_FORCE;
                     sounds.play('jump');
+                    continue;
+                }
+                // Crashing with the jetpack just burns it out; the boss can't be
+                // rammed to death, so it grants a moment of immunity instead.
+                if (this.player.activePower === POWERS.ROCKET) {
+                    this.player.activePower = null;
+                    this.player.powerTimer = 0;
+                    if (e.constructor.name === "BossDrone") this.player.invuln = 45;
+                    else e.markedForDeletion = true;
+                    this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
+                    sounds.play('powerup');
                     continue;
                 }
                 if (this.player.activePower && this.player.activePower.name === "HARD SHIELD") {
@@ -1249,7 +1264,16 @@ class Game {
                 this.projectiles.splice(i, 1);
                 continue;
             }
+            if (this.player.invuln > 0) continue;
             if (rectsIntersect(this.player, p)) {
+                if (this.player.activePower === POWERS.ROCKET) {
+                    this.player.activePower = null;
+                    this.player.powerTimer = 0;
+                    p.markedForDeletion = true;
+                    this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
+                    sounds.play('powerup');
+                    continue;
+                }
                 if (this.player.activePower && this.player.activePower.name === "HARD SHIELD") {
                     this.player.activePower = null;
                     p.markedForDeletion = true;
@@ -1310,6 +1334,8 @@ class Game {
 
             this.platforms = this.platforms.filter(p => p.y < CONFIG.HEIGHT + 100);
             this.powerups = this.powerups.filter(p => p.y < CONFIG.HEIGHT + 100);
+            // Drones now circle back instead of leaving, so cull the ones left below.
+            this.enemies = this.enemies.filter(e => e.constructor.name === "BossDrone" || e.y < CONFIG.HEIGHT + 100);
 
             let highest = CONFIG.HEIGHT;
             this.platforms.forEach(p => { if (p.y < highest) highest = p.y; });

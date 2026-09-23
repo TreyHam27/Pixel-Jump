@@ -33,6 +33,7 @@ class Player extends Entity {
         this.doubleReady = false;
         this.activePower = null;
         this.powerTimer = 0;
+        this.invuln = 0; // frames of hit immunity (after a jetpack crash into the boss)
     }
 
     setSkin(index) {
@@ -41,6 +42,8 @@ class Player extends Entity {
     }
 
     update(dt, input, platforms, powerups) {
+        if (this.invuln > 0) this.invuln -= dt;
+
         // Powerup Timer
         if (this.activePower) {
             this.powerTimer -= dt;
@@ -112,6 +115,9 @@ class Player extends Entity {
         this.grounded = false;
         if (this.vy > 0) {
             for (let p of platforms) {
+                // Platforms scrolled below the screen are kept around briefly
+                // before being culled; don't let an invisible one catch a fall.
+                if (p.y >= CONFIG.HEIGHT - 3) continue;
                 if (this.x + this.w > p.x && this.x < p.x + p.w) {
                     let bottom = this.y + this.h;
                     let limit = p.y + p.h + (this.vy * dt) + 10;
@@ -171,9 +177,15 @@ class Player extends Entity {
     }
 
     activatePower() {
+        const ability = this.skin.ability || {};
+        // A pickup while a power is running refreshes it instead of swapping.
+        if (this.activePower) {
+            this.powerTimer = this.activePower.time * (ability.powerDurationMult || 1);
+            if (this.activePower === POWERS.DOUBLE) this.doubleReady = true;
+            return;
+        }
         const types = Object.values(POWERS);
         const p = types[Math.floor(Math.random() * types.length)];
-        const ability = this.skin.ability || {};
         this.activePower = p;
         this.powerTimer = p.time * (ability.powerDurationMult || 1);
         if (p === POWERS.DOUBLE) this.doubleReady = true;
@@ -258,14 +270,30 @@ class Drone extends Entity {
     }
 
     update(dt) {
+        // After leaving the screen a drone waits off-screen briefly, then
+        // comes back in from the same side, a little higher or lower.
+        if (this.hidden) {
+            this.respawnTimer -= dt;
+            if (this.respawnTimer > 0) return;
+            this.hidden = false;
+            this.x = this.exitSide < 0 ? -40 : CONFIG.WIDTH + 40;
+            this.v = -this.v;
+            this.y += (Math.random() < 0.5 ? -1 : 1) * (30 + Math.random() * 30);
+            this.sinOffset = Math.random() * Math.PI * 2;
+            return;
+        }
+
         this.x += this.v * dt;
         this.y += Math.sin(this.x * 0.05 + this.sinOffset) * 2;
         if ((this.v > 0 && this.x > CONFIG.WIDTH + 50) || (this.v < 0 && this.x < -100)) {
-            this.markedForDeletion = true;
+            this.hidden = true;
+            this.exitSide = this.v > 0 ? 1 : -1;
+            this.respawnTimer = 45 + Math.random() * 45;
         }
     }
 
     draw(ctx) {
+        if (this.hidden) return;
         // Drone body
         ctx.fillStyle = "#333";
         ctx.fillRect(this.x, this.y, this.w, this.h);
@@ -318,6 +346,7 @@ class ShooterDrone extends Drone {
 
     update(dt, player, projectiles) {
         super.update(dt);
+        if (this.hidden) return;
 
         this.shootTimer -= dt;
         if (this.shootTimer <= 0) {
@@ -342,6 +371,7 @@ class ShooterDrone extends Drone {
     }
 
     draw(ctx) {
+        if (this.hidden) return;
         // Different look for shooter drone
         ctx.fillStyle = "#444";
         ctx.fillRect(this.x, this.y, this.w, this.h);

@@ -79,12 +79,13 @@ canvas {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    max-width: 30%;
+    max-width: 36%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: clamp(12px, 3.4vw, 20px);
+    font-size: clamp(16px, 4.5vw, 28px);
     color: #ff3366;
+    text-shadow: 0 0 10px rgba(255, 51, 102, 0.6);
     font-weight: bold;
     text-align: center;
 }
