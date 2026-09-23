@@ -44,6 +44,31 @@ try {
         throw new Error("Fresh instance should also report the purchased skin as unlocked");
     }
     console.log("PERSISTENCE ACROSS RELOAD SUCCESS");
+
+    // The shop shows purchasable skins one at a time in a carousel: stepping
+    // must cover every one of them and wrap at both ends.
+    const shopSkins = game2.gemShopSkins();
+    if (!shopSkins.length) throw new Error("gemShopSkins() returned nothing");
+    if (shopSkins.some(({ s }) => s.cost === undefined)) {
+        throw new Error("gemShopSkins() included a skin that isn't shards-purchasable");
+    }
+
+    game2.gemShopIndex = 0;
+    const seen = [];
+    for (let n = 0; n < shopSkins.length; n++) {
+        seen.push(game2.gemShopIndex);
+        game2.changeGemShopSkin(1);
+    }
+    if (new Set(seen).size !== shopSkins.length) {
+        throw new Error("Stepping forward did not visit every purchasable skin exactly once");
+    }
+    if (game2.gemShopIndex !== 0) throw new Error("Forward stepping should wrap back to the first card");
+
+    game2.changeGemShopSkin(-1);
+    if (game2.gemShopIndex !== shopSkins.length - 1) {
+        throw new Error("Backward stepping from the first card should wrap to the last");
+    }
+    console.log("CAROUSEL WRAPS BOTH WAYS SUCCESS");
 } catch (e) {
     console.error("CRASH:", e.stack);
     process.exitCode = 1;

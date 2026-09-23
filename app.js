@@ -24,7 +24,7 @@ class Game {
             shards: parseInt(localStorage.getItem('lp_shards')) || 0,
             loops: parseInt(localStorage.getItem('lp_loops')) || 0,
             skinIndex: parseInt(localStorage.getItem('lp_skin')) || 0,
-            boughtBoost: localStorage.getItem('lp_boughtBoost') === '1',
+            extraLives: parseInt(localStorage.getItem('lp_extraLives')) || 0,
             frames: 0,
             bgOffset: 0,
             time: 0,
@@ -60,8 +60,12 @@ class Game {
             next: document.getElementById("next-btn"),
             fame: document.getElementById("fame-list"),
             shardDisplay: document.getElementById("shard-display"),
-            shopBoostBtn: document.getElementById("shop-boost-btn"),
+            shopLifeBtn: document.getElementById("shop-life-btn"),
+            shopLifeCount: document.getElementById("shop-life-count"),
             gemShop: document.getElementById("gem-skin-shop"),
+            gemPrev: document.getElementById("gem-prev-btn"),
+            gemNext: document.getElementById("gem-next-btn"),
+            gemDots: document.getElementById("gem-shop-dots"),
             skinAbility: document.getElementById("skin-ability"),
             shopOpenBtn: document.getElementById("shop-open-btn"),
             shopBackBtn: document.getElementById("shop-back-btn"),
@@ -89,12 +93,26 @@ class Game {
         // panel-switch handler below.
         this.activeMenuPanel = 'sp';
 
+        // Position within the shop's pixel carousel — an index into
+        // gemShopSkins(), not into SKINS.
+        this.gemShopIndex = 0;
+
+        // Migration: the shop used to sell a one-shot HARD SHIELD boost at the
+        // same price as an extra life. Anyone still holding an unspent boost
+        // gets it converted rather than silently losing what they paid for.
+        if (localStorage.getItem('lp_boughtBoost') === '1') {
+            localStorage.removeItem('lp_boughtBoost');
+            if (this.state.extraLives < MAX_EXTRA_LIVES) {
+                this.state.extraLives++;
+                localStorage.setItem('lp_extraLives', this.state.extraLives);
+            }
+        }
+
         this.bindEvents();
         this.updateSkinUI();
         this.updateFameUI();
         this.renderGemShop();
-
-        if (this.state.boughtBoost) this.setBoostButtonState(true);
+        this.updateExtraLifeUI();
 
         this.ui.menuScore.innerText = "HIGH SCORE: " + this.state.highScore + "m";
 
@@ -106,20 +124,20 @@ class Game {
         this.ui.prev.onclick = (e) => { e.stopPropagation(); this.changeSkin(-1); };
         this.ui.next.onclick = (e) => { e.stopPropagation(); this.changeSkin(1); };
 
-        if (this.ui.shopBoostBtn) {
-            this.ui.shopBoostBtn.onclick = (e) => {
+        if (this.ui.shopLifeBtn) {
+            this.ui.shopLifeBtn.onclick = (e) => {
                 e.stopPropagation();
-                if (this.state.shards >= 50 && !this.state.boughtBoost) {
-                    this.state.shards -= 50;
-                    this.state.boughtBoost = true;
-                    localStorage.setItem('lp_shards', this.state.shards);
-                    localStorage.setItem('lp_boughtBoost', '1');
-                    this.setBoostButtonState(true);
-                    this.updateSkinUI();
-                } else if (!this.state.boughtBoost) {
-                    this.shakeUI();
-                }
+                this.buyExtraLife();
             };
+        }
+
+        // Shop pixel carousel — same left/right stepping as the main-menu skin
+        // picker, over just the shards-purchasable skins.
+        if (this.ui.gemPrev) {
+            this.ui.gemPrev.onclick = (e) => { e.stopPropagation(); this.changeGemShopSkin(-1); };
+        }
+        if (this.ui.gemNext) {
+            this.ui.gemNext.onclick = (e) => { e.stopPropagation(); this.changeGemShopSkin(1); };
         }
 
         // Shop screen open/close (slides up on its own vertical axis, see CSS)
@@ -432,28 +450,69 @@ class Game {
         return parts.join(" + ");
     }
 
-    // Builds the gem-shop skin list straight from SKINS data (any skin with a
-    // `cost` field) rather than hand-duplicated HTML rows.
+    // Every shards-purchasable skin (anything in SKINS with a `cost`), paired
+    // with its SKINS index so the carousel can address it.
+    gemShopSkins() {
+        return SKINS.map((s, i) => ({ s, i })).filter(({ s }) => s.cost !== undefined);
+    }
+
+    // Steps the shop's pixel carousel, wrapping at both ends exactly like the
+    // main-menu skin picker.
+    changeGemShopSkin(dir) {
+        const total = this.gemShopSkins().length;
+        if (!total) return;
+        this.gemShopIndex = (this.gemShopIndex + dir + total) % total;
+        this.renderGemShop();
+    }
+
+    // Renders the one currently-framed card of the shop's pixel carousel (plus
+    // its position dots) straight from SKINS data. Only one card exists in the
+    // DOM at a time — the arrows/dots swap which skin it shows.
     renderGemShop() {
         if (!this.ui.gemShop) return;
 
-        const rows = SKINS
-            .map((s, i) => ({ s, i }))
-            .filter(({ s }) => s.cost !== undefined);
+        const rows = this.gemShopSkins();
+        if (!rows.length) {
+            this.ui.gemShop.innerHTML = '';
+            if (this.ui.gemDots) this.ui.gemDots.innerHTML = '';
+            return;
+        }
 
-        this.ui.gemShop.innerHTML = rows.map(({ s, i }) => {
-            const owned = this.ownedSkins.includes(i);
-            return `<div class="gem-skin-row">
-                <div class="gem-skin-preview" style="background-color:${s.color}; opacity:${owned ? 1 : 0.3};">
-                    <div class="gem-skin-eye gem-skin-eye-l" style="background-color:${s.eye};"></div>
-                    <div class="gem-skin-eye gem-skin-eye-r" style="background-color:${s.eye};"></div>
-                </div>
-                <span class="gem-skin-name" style="color:${s.color};">${s.name}</span>
-                <span class="gem-skin-status" style="color:${owned ? '#00ffcc' : '#888'};">${owned ? 'OWNED' : 'LOCKED'}</span>
-                <span class="gem-skin-buff">${this.describeAbility(s.ability)}</span>
-                <button class="gem-skin-buy-btn" data-index="${i}" ${owned ? 'disabled' : ''}>${owned ? 'OWNED' : s.cost + ' 💎'}</button>
-            </div>`;
-        }).join('');
+        if (!(this.gemShopIndex >= 0 && this.gemShopIndex < rows.length)) this.gemShopIndex = 0;
+        const { s, i } = rows[this.gemShopIndex];
+        const owned = this.ownedSkins.includes(i);
+        const affordable = this.state.shards >= s.cost;
+
+        this.ui.gemShop.innerHTML = `<div class="gem-skin-card">
+            <div class="gem-skin-preview" style="background-color:${s.color}; opacity:${owned ? 1 : 0.35};">
+                <div class="gem-skin-eye gem-skin-eye-l" style="background-color:${s.eye};"></div>
+                <div class="gem-skin-eye gem-skin-eye-r" style="background-color:${s.eye};"></div>
+            </div>
+            <div class="gem-skin-name" style="color:${s.color};">${s.name}</div>
+            <div class="gem-skin-status" style="color:${owned ? '#00ffcc' : '#888'};">${owned ? 'OWNED' : 'LOCKED'}</div>
+            <div class="gem-skin-buff">${this.describeAbility(s.ability)}</div>
+            <button class="gem-skin-buy-btn${owned || affordable ? '' : ' unaffordable'}" data-index="${i}" ${owned ? 'disabled' : ''}>
+                <span class="btn-label">${owned ? 'OWNED' : 'BUY PIXEL'}</span>
+                ${owned ? '' : `<span class="btn-cost">${s.cost} 💎</span>`}
+            </button>
+        </div>`;
+
+        if (this.ui.gemDots) {
+            this.ui.gemDots.innerHTML = rows.map(({ i: idx }, pos) => {
+                const cls = ['gem-dot'];
+                if (pos === this.gemShopIndex) cls.push('active');
+                if (this.ownedSkins.includes(idx)) cls.push('owned');
+                return `<span class="${cls.join(' ')}" data-pos="${pos}"></span>`;
+            }).join('');
+
+            this.ui.gemDots.querySelectorAll('.gem-dot').forEach(dot => {
+                dot.onclick = (e) => {
+                    e.stopPropagation();
+                    this.gemShopIndex = parseInt(dot.dataset.pos, 10);
+                    this.renderGemShop();
+                };
+            });
+        }
 
         this.ui.gemShop.querySelectorAll('.gem-skin-buy-btn').forEach(btn => {
             btn.onclick = (e) => {
@@ -463,11 +522,47 @@ class Game {
         });
     }
 
-    setBoostButtonState(active) {
-        if (!this.ui.shopBoostBtn) return;
-        const label = this.ui.shopBoostBtn.querySelector('.btn-label');
-        this.ui.shopBoostBtn.classList.toggle('owned', active);
-        if (label) label.innerText = active ? "BOOST ACTIVE!" : "PURCHASE POWER UP";
+    // Extra lives are stock rather than a one-shot toggle: the card shows how
+    // many are banked, and the button locks at MAX_EXTRA_LIVES.
+    updateExtraLifeUI() {
+        if (this.ui.shopLifeCount) this.ui.shopLifeCount.innerText = this.state.extraLives;
+        if (!this.ui.shopLifeBtn) return;
+
+        const full = this.state.extraLives >= MAX_EXTRA_LIVES;
+        const affordable = this.state.shards >= EXTRA_LIFE_COST;
+        const label = this.ui.shopLifeBtn.querySelector('.btn-label');
+        const cost = this.ui.shopLifeBtn.querySelector('.btn-cost');
+
+        if (label) label.innerText = full ? "STOCK FULL" : "BUY EXTRA LIFE";
+        if (cost) cost.innerText = EXTRA_LIFE_COST + " 💎";
+        this.ui.shopLifeBtn.classList.toggle('maxed', full);
+        this.ui.shopLifeBtn.classList.toggle('unaffordable', !full && !affordable);
+        this.ui.shopLifeBtn.disabled = full;
+    }
+
+    buyExtraLife() {
+        if (this.state.extraLives >= MAX_EXTRA_LIVES || this.state.shards < EXTRA_LIFE_COST) {
+            this.shakeUI();
+            return false;
+        }
+        this.state.shards -= EXTRA_LIFE_COST;
+        this.state.extraLives++;
+        localStorage.setItem('lp_shards', this.state.shards);
+        localStorage.setItem('lp_extraLives', this.state.extraLives);
+        this.updateExtraLifeUI();
+        this.renderGemShop();
+        this.updateSkinUI();
+        return true;
+    }
+
+    // Spends one banked extra life. Returns false when the bank is empty so
+    // die() falls through to the normal ad-revive flow.
+    consumeExtraLife() {
+        if (this.state.extraLives <= 0) return false;
+        this.state.extraLives--;
+        localStorage.setItem('lp_extraLives', this.state.extraLives);
+        this.updateExtraLifeUI();
+        return true;
     }
 
     buyGemSkin(index) {
@@ -482,6 +577,7 @@ class Game {
         localStorage.setItem('lp_shards', this.state.shards);
         localStorage.setItem('lp_owned_skins', JSON.stringify(this.ownedSkins));
         this.renderGemShop();
+        this.updateExtraLifeUI();
         this.updateSkinUI();
         return true;
     }
@@ -631,14 +727,6 @@ class Game {
         this.state.deathCount = 0;
         this.reset(isMp ? mpSeed : null);
 
-        if (this.state.boughtBoost) {
-            this.player.activePower = POWERS.SHIELD;
-            this.player.powerTimer = POWERS.SHIELD.time;
-            this.state.boughtBoost = false;
-            localStorage.removeItem('lp_boughtBoost');
-            this.setBoostButtonState(false);
-        }
-
         this.ui.menu.style.opacity = 0;
         if (this.ui.menusWrapper) this.ui.menusWrapper.style.opacity = 0;
 
@@ -677,6 +765,20 @@ class Game {
             sounds.play('powerup');
             this.particles.spawn(this.player.x + 13, this.player.y + 13, "#00ffaa", 30, "blast");
             this.showAlert("BACKUP LIFE ENGAGED", 'success');
+            return;
+        }
+
+        // Shop-bought extra lives: banked stock, spent one per fall, after the
+        // Pixel's own free revive (that one refreshes every run, so it's the
+        // cheaper thing to burn first).
+        if (this.consumeExtraLife()) {
+            this.player.y = CONFIG.HEIGHT - 200;
+            this.player.vy = CONFIG.BOUNCE_FORCE;
+            this.player.vx = 0;
+            this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+            sounds.play('powerup');
+            this.particles.spawn(this.player.x + 13, this.player.y + 13, "#ff3366", 30, "blast");
+            this.showAlert("EXTRA LIFE SPENT — " + this.state.extraLives + " LEFT", 'success');
             return;
         }
 
@@ -823,6 +925,7 @@ class Game {
         this.updateFameUI();
         this.updateSkinUI();
         this.renderGemShop();
+        this.updateExtraLifeUI();
     }
 
     updateFame(score) {
@@ -835,7 +938,25 @@ class Game {
 
     updateFameUI() {
         let fame = JSON.parse(localStorage.getItem('lp_fame')) || [];
-        this.ui.fame.innerHTML = fame.map((f, i) => `<div>${i + 1}. ${f.score}m - ${f.skin}</div>`).join('');
+
+        if (!fame.length) {
+            this.ui.fame.innerHTML = `<div class="fame-empty">NO RUNS YET — SET A RECORD</div>`;
+            return;
+        }
+
+        this.ui.fame.innerHTML = fame.map((f, i) => {
+            // Entries store the skin by name, so a renamed/removed skin just
+            // falls back to the neutral swatch colour from the stylesheet.
+            const skin = SKINS.find(s => s.name === f.skin);
+            const swatch = skin ? ` style="background:${skin.color}"` : '';
+            return `<div class="fame-row fame-row--${i + 1}">
+                <div class="fame-rank">${i + 1}</div>
+                <div class="fame-swatch"${swatch}></div>
+                <div class="fame-skin">${f.skin}</div>
+                <div class="fame-date">${f.date || ''}</div>
+                <div class="fame-score">${f.score}m</div>
+            </div>`;
+        }).join('');
     }
 
     checkAchievements() {
