@@ -979,7 +979,12 @@ class Game {
         } else if (event && event.event === "shard") {
             this.state.shards += event.value || 1;
             localStorage.setItem('lp_shards', this.state.shards);
-            if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = "💎 " + this.state.shards;
+            if (this.ui.shardDisplay) {
+                this.ui.shardDisplay.innerText = "💎 " + this.state.shards;
+                this.ui.shardDisplay.classList.remove('gem-pop');
+                void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
+                this.ui.shardDisplay.classList.add('gem-pop');
+            }
             this.particles.spawn(event.x + 8, event.y + 8, "#00ffff", 10);
             sounds.play('powerup');
         } else if (event && event.event === "powerup") {
