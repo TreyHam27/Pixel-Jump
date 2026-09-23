@@ -103,6 +103,10 @@ canvas {
     font-weight: bold;
     text-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
     transform-origin: center;
+    /* Persistent across every screen (menu/shop/gameplay), so it must sit
+       above #menus-wrapper (20), #shop-menu-layer (25) and .nav-btn /
+       .mode-switch-arrow (30). */
+    z-index: 40;
 }
 
 @keyframes gem-collect-pop {
@@ -300,6 +304,11 @@ canvas {
     overflow-y: auto;
     padding: 30px 20px;
     box-sizing: border-box;
+    /* Override .menu-page's centered content: with the full skin-card list
+       this panel routinely overflows the viewport, and centered content
+       that overflows a scroll container clips its start with no way to
+       scroll back up to it. Top-aligning keeps the whole list reachable. */
+    justify-content: flex-start;
 }
 
 .mode-switch-arrow {
@@ -449,6 +458,11 @@ canvas {
 .page-title--shop {
     text-shadow: 0 0 14px #00ffaa, 0 0 28px #00ffaa;
     margin-bottom: 4px;
+    /* Paired with the auto margin on #gem-shop-dots (the last child): the shop
+       contents sit centered when they fit and fall back to top-aligned when
+       they overflow, since auto margins resolve to 0 with no free space —
+       unlike `justify-content: center`, which would clip the top on overflow. */
+    margin-top: auto;
 }
 
 /* SKIN SELECTOR */
@@ -563,14 +577,6 @@ canvas {
     background: rgba(0, 255, 170, 0.08);
 }
 
-.shard-badge {
-    background: rgba(0, 255, 255, 0.1);
-    border-radius: var(--radius-pill);
-    padding: 3px 10px;
-    color: #00ffff;
-    font-size: 13px;
-}
-
 /* SHOP SCREEN */
 .shop-back-btn {
     position: absolute;
@@ -594,141 +600,292 @@ canvas {
     color: #00ffaa;
 }
 
-.shop-shard-total {
-    color: #00ffff;
-    font-size: 16px;
+/* Section headers inside the shop — quiet rules that separate the
+   consumables block from the pixel carousel without competing with either. */
+.shop-section-label {
+    width: min(320px, 85vw);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 18px 0 10px;
+    color: #666;
+    font-size: 11px;
     font-weight: bold;
-    margin-bottom: 20px;
+    letter-spacing: 3px;
 }
 
+.shop-section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, #333, transparent);
+}
+
+/* CONSUMABLES CARD (extra life) */
 .shop-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid #333;
+    position: relative;
+    background: linear-gradient(160deg, rgba(255, 51, 102, 0.12), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 51, 102, 0.45);
     border-radius: var(--radius);
+    box-shadow: 0 0 22px rgba(255, 51, 102, 0.12);
     padding: 18px;
     width: min(320px, 85vw);
+    box-sizing: border-box;
     text-align: center;
-    margin-bottom: 20px;
+}
+
+.shop-card-icon {
+    font-size: 26px;
+    line-height: 1;
+    color: #ff3366;
+    text-shadow: 0 0 14px rgba(255, 51, 102, 0.8);
+    margin-bottom: 8px;
 }
 
 .shop-card-title {
     color: #fff;
-    font-weight: bold;
-    font-size: 15px;
-    letter-spacing: 0.5px;
+    font-weight: 900;
+    font-size: 17px;
+    letter-spacing: 2px;
     margin-bottom: 6px;
 }
 
 .shop-card-desc {
-    color: #888;
+    color: #999;
     font-size: 12px;
-    line-height: 1.4;
-    margin-bottom: 14px;
+    line-height: 1.5;
+    margin-bottom: 12px;
 }
 
+.shop-card-stock {
+    color: #ff7799;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+}
+
+.shop-card-stock span {
+    color: #fff;
+    font-size: 14px;
+}
+
+/* Solid fill rather than a thin outline: this is the screen's primary action
+   and the old ghost button read as decoration against the dark panel. */
 .shop-card-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
     width: 100%;
-    background: #222;
-    border: 1px solid #00ffff;
+    background: #ff3366;
+    border: 1px solid #ff3366;
     border-radius: var(--radius);
-    color: #00ffff;
-    padding: 10px 15px;
+    color: #12000a;
+    padding: 12px 15px;
     font-family: 'Orbitron', 'Courier New', Courier, monospace;
-    font-weight: bold;
+    font-weight: 900;
     font-size: 13px;
+    letter-spacing: 1px;
     cursor: pointer;
     pointer-events: auto;
     transition: 0.2s;
 }
 
-.shop-card-btn:hover {
-    background: #00ffff;
-    color: #000;
+.shop-card-btn:hover:not(:disabled) {
+    background: #ff5c85;
+    border-color: #ff5c85;
+    box-shadow: 0 0 18px rgba(255, 51, 102, 0.55);
 }
 
 .shop-card-btn .btn-cost {
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.28);
     border-radius: var(--radius-pill);
     padding: 2px 10px;
+    color: #fff;
 }
 
-.shop-card-btn.owned {
+/* Can't afford it yet: stays legible, but clearly not ready to press. */
+.shop-card-btn.unaffordable {
+    background: transparent;
+    color: #ff6688;
+    border-color: rgba(255, 51, 102, 0.4);
+    opacity: 0.75;
+}
+
+.shop-card-btn.unaffordable .btn-cost {
+    background: rgba(255, 51, 102, 0.15);
+    color: #ff6688;
+}
+
+.shop-card-btn.maxed {
+    background: transparent;
     border-color: #00ffaa;
     color: #00ffaa;
     cursor: default;
 }
 
-.shop-card-btn.owned:hover {
-    background: #222;
-    color: #00ffaa;
-}
-
-.shop-card-btn.owned .btn-cost {
+.shop-card-btn.maxed .btn-cost {
     display: none;
 }
 
-/* GEM SHOP */
-#gem-skin-shop {
-    width: min(320px, 85vw);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding-bottom: 20px;
-}
-
-.gem-skin-row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid #333;
-    border-radius: var(--radius);
-    padding: 10px 12px;
-}
-
-.gem-skin-row-top {
+/* PIXEL CAROUSEL (shop) — same shape as the main-menu skin picker so the two
+   pickers read as one component in two places. */
+#gem-shop-carousel {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 20px;
+    border-radius: var(--radius);
+    border: 1px solid #333;
+    cursor: default;
+}
+
+#gem-skin-shop {
+    width: 200px;
+}
+
+.gem-skin-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+}
+
+.gem-skin-preview {
+    width: 50px;
+    height: 50px;
+    position: relative;
+    margin-bottom: 4px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.gem-skin-eye {
+    position: absolute;
+    top: 30%;
+    width: 20%;
+    height: 20%;
+    background: white;
+}
+
+.gem-skin-eye-l {
+    left: 20%;
+}
+
+.gem-skin-eye-r {
+    right: 20%;
 }
 
 .gem-skin-name {
-    font-size: 13px;
+    font-size: 18px;
     font-weight: bold;
+}
+
+.gem-skin-status {
+    font-size: 12px;
+    letter-spacing: 1px;
 }
 
 .gem-skin-buff {
     font-size: 11px;
-    color: #888;
+    color: #00ffaa;
+    letter-spacing: 0.5px;
+    min-height: 28px;
+    line-height: 1.3;
 }
 
 .gem-skin-buy-btn {
-    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+    background: #00ffff;
     border: 1px solid #00ffff;
     border-radius: var(--radius);
-    color: #00ffff;
-    padding: 4px 10px;
+    color: #001416;
+    padding: 9px 10px;
     font-family: 'Orbitron', 'Courier New', Courier, monospace;
     font-size: 12px;
-    font-weight: bold;
+    font-weight: 900;
+    letter-spacing: 1px;
     cursor: pointer;
     pointer-events: auto;
+    transition: 0.2s;
 }
 
-.gem-skin-buy-btn:hover {
-    background: #00ffff;
-    color: #000;
+.gem-skin-buy-btn .btn-cost {
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: var(--radius-pill);
+    padding: 2px 8px;
+    color: #003b3d;
+}
+
+.gem-skin-buy-btn:hover:not(:disabled) {
+    background: #66ffff;
+    border-color: #66ffff;
+    box-shadow: 0 0 18px rgba(0, 255, 255, 0.45);
+}
+
+.gem-skin-buy-btn.unaffordable {
+    background: transparent;
+    color: #00cccc;
+    border-color: rgba(0, 255, 255, 0.35);
+    opacity: 0.75;
+}
+
+.gem-skin-buy-btn.unaffordable .btn-cost {
+    background: rgba(0, 255, 255, 0.12);
+    color: #00cccc;
 }
 
 .gem-skin-buy-btn:disabled {
-    background: #111;
-    border-color: #555;
-    color: #555;
+    background: transparent;
+    border-color: #00ffaa;
+    color: #00ffaa;
     cursor: default;
+}
+
+/* Carousel position markers — squares, not circles, to stay on-theme. */
+#gem-shop-dots {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    /* See .page-title--shop: this auto margin is the other half of the
+       "center when it fits, top-align when it overflows" pair. */
+    margin-bottom: auto;
+    padding-bottom: 20px;
+}
+
+.gem-dot {
+    width: 8px;
+    height: 8px;
+    background: #333;
+    border: 1px solid #444;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: 0.2s;
+}
+
+.gem-dot.owned {
+    background: #00ffaa;
+    border-color: #00ffaa;
+}
+
+.gem-dot.active {
+    background: #fff;
+    border-color: #fff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+}
+
+/* The framed card may also be one you already own — keep the owned tint and
+   mark "current" with the ring instead, so the two states stay distinct. */
+.gem-dot.owned.active {
+    background: #00ffaa;
+    border-color: #fff;
+    box-shadow: 0 0 10px rgba(0, 255, 170, 0.8);
 }
 
 #menu-lastscore {
@@ -1003,23 +1160,194 @@ canvas {
     }
 }
 
+/* HALL OF FAME — same card shell as .shop-card / .gem-skin-row so the menu
+   reads as one family, and sized to match their min(340px, 85vw). */
 #fame-container {
     background: rgba(255, 255, 255, 0.05);
-    padding: 10px;
+    padding: 16px 14px;
     border: 1px solid #333;
     border-radius: var(--radius);
-    margin-bottom: 20px;
-    width: 250px;
+    margin-bottom: 18px;
+    width: min(340px, 85vw);
+    box-sizing: border-box;
     text-align: center;
 }
 
 .fame-heading {
-    color: #ff3366;
-    font-size: 14px;
-    margin-bottom: 5px;
+    color: #ffd700;
+    font-size: 17px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.55);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #333;
 }
 
 #fame-list {
-    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fame-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 7px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    text-align: left;
+}
+
+/* Rank chip — gold/silver/bronze on the podium, neutral below it. */
+.fame-rank {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    border-radius: var(--radius-pill);
+    background: #222;
     color: #888;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.fame-swatch {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    background: #555;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+
+/* The skin name takes the slack, so the score stays hard right and the digits
+   line up down the column. */
+.fame-skin {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    color: #bbb;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fame-date {
+    flex: none;
+    font-size: 10px;
+    color: #666;
+}
+
+.fame-score {
+    flex: none;
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.fame-row--1 {
+    background: rgba(255, 215, 0, 0.08);
+    border-color: rgba(255, 215, 0, 0.45);
+}
+
+.fame-row--1 .fame-rank {
+    background: #ffd700;
+    color: #000;
+}
+
+.fame-row--1 .fame-score {
+    color: #ffd700;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.fame-row--2 .fame-rank {
+    background: #c0c0c0;
+    color: #000;
+}
+
+.fame-row--3 .fame-rank {
+    background: #cd7f32;
+    color: #000;
+}
+
+.fame-empty {
+    font-size: 12px;
+    color: #666;
+    letter-spacing: 1px;
+    padding: 6px 0;
+}
+
+/* The main menu is one non-scrolling flex column, so the roomy card above only
+   fits on tall viewports. Below that, tighten the card (never the legibility of
+   the score itself) so it can't push the start button off screen. */
+@media (max-height: 820px) {
+    #fame-container {
+        padding: 10px 12px;
+        margin-bottom: 10px;
+    }
+
+    .fame-heading {
+        font-size: 15px;
+        padding-bottom: 5px;
+        margin-bottom: 5px;
+    }
+
+    #fame-list {
+        gap: 3px;
+    }
+
+    .fame-row {
+        padding: 3px 6px;
+    }
+
+    .fame-rank {
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        font-size: 10px;
+    }
+
+    .fame-score {
+        font-size: 14px;
+    }
+}
+
+/* Very short viewports: the date is the first thing worth losing, then all the
+   remaining chrome, so the card costs about what the old one did. */
+@media (max-height: 680px) {
+    #fame-container {
+        padding: 6px 10px;
+        margin-bottom: 6px;
+    }
+
+    .fame-heading {
+        font-size: 13px;
+        padding-bottom: 3px;
+        margin-bottom: 3px;
+    }
+
+    #fame-list {
+        gap: 2px;
+    }
+
+    .fame-date {
+        display: none;
+    }
+
+    .fame-row {
+        padding: 1px 6px;
+    }
+
+    .fame-rank {
+        width: 14px;
+        height: 14px;
+        line-height: 14px;
+        font-size: 9px;
+    }
+
+    .fame-score {
+        font-size: 13px;
+    }
 }

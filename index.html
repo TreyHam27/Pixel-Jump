@@ -25,8 +25,9 @@
             <div id="hud">
                 <div id="score-display">0m</div>
                 <div id="best-display-hud">BEST: 0m</div>
-                <div id="shard-display">💎 0</div>
             </div>
+
+            <div id="shard-display">0 💎</div>
 
             <div id="power-hud">
                 <div id="power-text">DOUBLE JUMP</div>
@@ -70,7 +71,7 @@
                 <div class="page-title">PIXEL JUMP</div>
 
                 <div id="fame-container">
-                    <div class="fame-heading">HALL OF FAME</div>
+                    <div class="fame-heading">🏆 HALL OF FAME</div>
                     <div id="fame-list"></div>
                 </div>
 
@@ -90,7 +91,6 @@
 
                 <button id="shop-open-btn" class="shop-trigger-btn">
                     <span class="shop-trigger-label">🛒 SHOP</span>
-                    <span class="shard-badge">💎 <span id="menu-shards">0</span></span>
                 </button>
 
                 <div id="menu-lastscore">LAST RUN: 0m</div>
@@ -104,18 +104,29 @@
 
                 <div class="page-title page-title--shop">SHOP</div>
 
-                <div class="shop-shard-total">💎 <span id="shop-shards">0</span> SHARDS</div>
+                <div class="shop-section-label">CONSUMABLES</div>
 
                 <div class="shop-card">
-                    <div class="shop-card-title">HARD SHIELD BOOST</div>
-                    <div class="shop-card-desc">Start your next run already shielded — one free hit absorbed.</div>
-                    <button id="shop-boost-btn" class="shop-card-btn">
-                        <span class="btn-label">PURCHASE POWER UP</span>
+                    <div class="shop-card-icon">❤</div>
+                    <div class="shop-card-title">EXTRA LIFE</div>
+                    <div class="shop-card-desc">Carry a spare life into your runs. One is spent automatically on a fall
+                        that would otherwise end the run.</div>
+                    <div class="shop-card-stock">IN STOCK <span id="shop-life-count">0</span> / 3</div>
+                    <button id="shop-life-btn" class="shop-card-btn">
+                        <span class="btn-label">BUY EXTRA LIFE</span>
                         <span class="btn-cost">50 💎</span>
                     </button>
                 </div>
 
-                <div id="gem-skin-shop"></div>
+                <div class="shop-section-label">PIXELS</div>
+
+                <div id="gem-shop-carousel">
+                    <button class="nav-btn" id="gem-prev-btn">&lt;</button>
+                    <div id="gem-skin-shop"></div>
+                    <button class="nav-btn" id="gem-next-btn">&gt;</button>
+                </div>
+
+                <div id="gem-shop-dots"></div>
             </div>
 
             <!-- MULTIPLAYER MENU -->
