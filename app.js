@@ -90,11 +90,19 @@ class Game {
             mpJoinInput: document.getElementById("mp-join-input"),
             mpJoinBtn: document.getElementById("mp-join-btn"),
             mpHostBtn: document.getElementById("mp-host-btn"),
-            mpHostCode: document.getElementById("mp-host-code"),
             mpStatus: document.getElementById("mp-status"),
-            mpStartBtn: document.getElementById("mp-start-prompt")
+            mpStartBtn: document.getElementById("mp-start-prompt"),
+            mpPartyList: document.getElementById("mp-party-list"),
+            mpPartyCount: document.getElementById("mp-party-count"),
+            mpPartyCode: document.getElementById("mp-party-code"),
+            mpLeaveBtn: document.getElementById("mp-leave-btn")
         };
-        this.remotePlayer = null;
+        // Everyone else in the run, keyed by peer ID (pid).
+        this.remotePlayers = new Map();
+        // Current party: [{ pid, name, slot, isHost }]. The host owns the
+        // authoritative copy and broadcasts it; guests mirror it. Empty when
+        // not in a party.
+        this.party = [];
         this.viewParams = { skinIndex: this.state.skinIndex };
         this.lastTime = 0;
         // Which top-level menu panel is showing: 'sp' | 'mp' | 'shop'.
@@ -205,30 +213,32 @@ class Game {
             });
 
             this.ui.mpHostBtn.onclick = async () => {
-                this.ui.mpHostBtn.disabled = true;
+                this.setMpSetupBusy(true);
                 this.setMpStatus("GENERATING CODE...", 'pending');
 
                 try {
                     let code = await window.network.host();
-                    this.ui.mpHostCode.innerText = code;
-                    this.ui.mpHostCode.classList.add('has-code');
-                    this.setMpStatus("WAITING FOR GUEST...", 'success');
+                    this.state.isHost = true;
+                    this.party = [{ pid: window.network.myId, name: this.getMpName(), slot: 0, isHost: true }];
+                    this.ui.mpStartBtn.innerText = "START RUN";
+                    this.enterPartyView(code);
+                    this.setMpStatus("WAITING FOR PLAYERS...", 'success');
                 } catch (err) {
                     this.setMpStatus("HOST FAILED — TRY AGAIN", 'danger');
-                    this.ui.mpHostBtn.disabled = false;
+                    this.setMpSetupBusy(false);
                 }
             };
 
             this.ui.mpJoinBtn.onclick = async () => {
                 const code = this.ui.mpJoinInput.value.trim();
                 if (code.length === 6) {
-                    this.ui.mpJoinBtn.disabled = true;
+                    this.setMpSetupBusy(true);
                     this.setMpStatus("CONNECTING...", 'pending');
                     try {
                         await window.network.join(code);
                     } catch (err) {
                         this.setMpStatus("CONNECTION FAILED — TRY AGAIN", 'danger');
-                        this.ui.mpJoinBtn.disabled = false;
+                        this.setMpSetupBusy(false);
                     }
                 } else {
                     this.setMpStatus("INVALID CODE", 'danger');
@@ -236,50 +246,47 @@ class Game {
             };
 
             this.ui.mpStartBtn.onclick = () => {
-                if (this.state.isHost) {
+                if (this.state.isHost && this.party.length >= 2 && !this.state.running) {
                     let mpSeed = this.getDailySeed() + Math.floor(Math.random() * 10000);
-                    window.network.send({ type: 'start', seed: mpSeed });
+                    window.network.send({ type: 'start', seed: mpSeed, party: this.party });
                     this.startMultiplayerGame(mpSeed);
                 }
             };
 
+            this.ui.mpLeaveBtn.onclick = () => {
+                this.leaveParty("LEFT THE PARTY");
+            };
+
+            // Guest: data channel to the host is open — introduce ourselves.
             window.network.onConnected = () => {
-                this.setMpStatus("CONNECTED!", 'success');
+                this.state.isHost = false;
+                this.setMpStatus("SYNCHRONIZING...", 'pending');
 
-                let name = this.ui.mpNameInput.value.trim() || 'Player';
-
-                if (window.network.isHost) {
-                    this.state.isHost = true;
-                    this.ui.mpStartBtn.style.display = 'block';
-                } else {
-                    this.state.isHost = false;
-                    this.setMpStatus("SYNCHRONIZING...", 'pending');
-
-                    // Handshake Retry Loop for Guest
-                    // Ensures the host DEFINITELY gets the name even if the first packet is lost
-                    if (this.handshakeInterval) clearInterval(this.handshakeInterval);
-                    this.handshakeInterval = setInterval(() => {
-                        console.log("MP: Sending Handshake...");
-                        window.network.send({ type: 'handshake', name: name });
-                    }, 1000);
-                    window.network.send({ type: 'handshake', name: name });
-                }
-            };
-
-            window.network.onData = (data) => {
-                if (data.type === 'ping') return; // Silence internal heartbeats
-                this.handleNetworkData(data);
-            };
-
-            window.network.onDisconnected = () => {
+                // Handshake Retry Loop for Guest
+                // Ensures the host DEFINITELY gets the name even if the first packet is lost
+                const sendHandshake = () => {
+                    console.log("MP: Sending Handshake...");
+                    window.network.send({ type: 'handshake', name: this.getMpName() });
+                };
                 if (this.handshakeInterval) clearInterval(this.handshakeInterval);
-                if (this.state.running && this.state.multiplayer) {
-                    this.die(true); // Disconnect kills
-                }
-                this.setMpStatus("DISCONNECTED", 'danger');
-                this.ui.mpStartBtn.style.display = 'none';
-                this.ui.mpHostBtn.disabled = false;
-                this.ui.mpJoinBtn.disabled = false;
+                this.handshakeInterval = setInterval(sendHandshake, 1000);
+                sendHandshake();
+            };
+
+            window.network.onData = (data, fromId) => {
+                if (!data || data.type === 'ping') return; // Silence internal heartbeats
+                this.handleNetworkData(data, fromId);
+            };
+
+            // Host: a guest dropped or left.
+            window.network.onPeerLeft = (pid) => {
+                this.removePartyMember(pid);
+            };
+
+            // Guest: lost the host — the party (and any run) is over.
+            window.network.onDisconnected = () => {
+                this.endPartyRun();
+                this.leaveParty("LOST CONNECTION TO HOST", 'danger');
             };
 
             window.network.onError = (err) => {
@@ -294,8 +301,9 @@ class Game {
                     msg = "NETWORK ERROR — CHECK CONNECTION";
                 }
                 this.setMpStatus(msg, 'danger');
-                this.ui.mpHostBtn.disabled = false;
-                this.ui.mpJoinBtn.disabled = false;
+                // Only a failed host/join attempt should unlock the setup
+                // cards; errors inside a live party just update the status.
+                if (!this.inParty()) this.setMpSetupBusy(false);
             };
 
             window.network.onStatus = (msg) => {
@@ -336,42 +344,233 @@ class Game {
         else delete this.ui.mpStatus.dataset.state;
     }
 
-    handleNetworkData(data) {
-        if (data.type === 'handshake') {
-            console.log("MP: Received Handshake from", data.name);
-            this.remoteName = data.name;
-            if (this.state.isHost) {
-                window.network.send({ type: 'handshake_ack' });
+    // Disables both setup actions while a host/join attempt is in flight.
+    setMpSetupBusy(busy) {
+        this.ui.mpHostBtn.disabled = busy;
+        this.ui.mpJoinBtn.disabled = busy;
+    }
+
+    getMpName() {
+        return (this.ui.mpNameInput.value.trim() || 'Player').slice(0, 10);
+    }
+
+    inParty() {
+        return this.party.length > 0;
+    }
+
+    escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    // Evaporates the name/join/host cards and reveals the party panel
+    // (the animation itself lives in style.css under .in-party).
+    enterPartyView(code) {
+        this.ui.mpPartyCode.innerText = code || '------';
+        this.ui.menuLayer2.classList.add('in-party');
+        this.renderParty();
+    }
+
+    // Leaves (or, for the host, closes) the party and brings the setup
+    // cards back. Safe to call when not in a party.
+    leaveParty(message, state) {
+        if (this.handshakeInterval) clearInterval(this.handshakeInterval);
+        this.handshakeInterval = null;
+        window.network.leave();
+        this.party = [];
+        this.state.isHost = false;
+        this.ui.menuLayer2.classList.remove('in-party');
+        this.setMpSetupBusy(false);
+        this.updateMpStartBtn();
+        this.setMpStatus(message || "READY", state);
+    }
+
+    renderParty() {
+        const myId = window.network.myId;
+        // Leader on top, everyone else under them in join order.
+        const members = [...this.party].sort((a, b) => (b.isHost - a.isHost) || (a.slot - b.slot));
+
+        const rows = members.map(m => {
+            const tags = [];
+            if (m.isHost) tags.push('★ LEADER');
+            if (m.pid === myId) tags.push('YOU');
+            return `<li class="mp-party-row${m.isHost ? ' is-leader' : ''}" style="--slot:${PARTY_COLORS[m.slot] || '#555'}">
+                <span class="mp-party-chip"></span>
+                <span class="mp-party-name">${this.escapeHtml(m.name)}</span>
+                <span class="mp-party-tag">${tags.join(' · ')}</span>
+            </li>`;
+        });
+        for (let i = members.length; i < MAX_PARTY_SIZE; i++) {
+            rows.push(`<li class="mp-party-row is-empty">
+                <span class="mp-party-chip"></span>
+                <span class="mp-party-name">WAITING FOR PLAYER…</span>
+            </li>`);
+        }
+
+        this.ui.mpPartyList.innerHTML = rows.join('');
+        this.ui.mpPartyCount.innerText = `${members.length}/${MAX_PARTY_SIZE}`;
+        this.updateMpStartBtn();
+    }
+
+    // Only the leader can start, and only with at least one other player.
+    updateMpStartBtn() {
+        const canStart = this.state.isHost && this.party.length >= 2 && !this.state.running;
+        this.ui.mpStartBtn.style.display = canStart ? 'block' : 'none';
+    }
+
+    // Host: push the authoritative party list to every guest.
+    broadcastParty() {
+        window.network.send({ type: 'party', party: this.party });
+        this.renderParty();
+        if (!this.state.running) {
+            if (this.party.length >= 2) this.setMpStatus("READY TO START", 'success');
+            else this.setMpStatus("WAITING FOR PLAYERS...", 'success');
+        }
+    }
+
+    // Guest: adopt the host's party list (sanitised — it's remote input).
+    applyParty(list) {
+        if (!Array.isArray(list)) return;
+        this.party = list.slice(0, MAX_PARTY_SIZE).map(m => ({
+            pid: String(m.pid),
+            name: String(m.name || 'Player').slice(0, 10),
+            slot: Math.max(0, Math.min(MAX_PARTY_SIZE - 1, parseInt(m.slot) || 0)),
+            isHost: !!m.isHost
+        }));
+        for (const pid of [...this.remotePlayers.keys()]) {
+            const member = this.party.find(m => m.pid === pid);
+            if (!member) this.dropRemotePlayer(pid);
+        }
+        this.renderParty();
+    }
+
+    // Host: someone left the party (or their connection died).
+    removePartyMember(pid) {
+        this.party = this.party.filter(m => m.pid !== pid);
+        this.dropRemotePlayer(pid);
+        if (this.inParty()) this.broadcastParty();
+    }
+
+    dropRemotePlayer(pid) {
+        const rp = this.remotePlayers.get(pid);
+        if (!rp) return;
+        this.remotePlayers.delete(pid);
+        if (this.state.running && this.state.multiplayer) {
+            this.showAlert(`${rp.name || 'A PLAYER'} LEFT`, 'warning');
+            // They may have been the last one standing.
+            this.checkAllDead();
+        }
+    }
+
+    addRemotePlayer(member, skinIndex = 0) {
+        const rp = new Player(CONFIG.WIDTH / 2, CONFIG.HEIGHT - 150, skinIndex);
+        rp.name = member.name;
+        rp.slot = member.slot;
+        rp.skinIndex = skinIndex;
+        this.remotePlayers.set(member.pid, rp);
+        return rp;
+    }
+
+    // Host: a guest introduced themselves — seat them in the lowest free slot.
+    handleHandshake(data, fromId) {
+        if (!this.state.isHost) return;
+        const net = window.network;
+        console.log("MP: Received Handshake from", data.name);
+
+        if (this.state.running) {
+            net.sendTo(fromId, { type: 'party_busy' });
+            setTimeout(() => net.closePeer(fromId), 300);
+            return;
+        }
+
+        const name = String(data.name || 'Player').slice(0, 10);
+        let member = this.party.find(m => m.pid === fromId);
+        if (!member) {
+            if (this.party.length >= MAX_PARTY_SIZE) {
+                net.sendTo(fromId, { type: 'party_full' });
+                setTimeout(() => net.closePeer(fromId), 300);
+                return;
             }
+            const used = new Set(this.party.map(m => m.slot));
+            let slot = 1;
+            while (used.has(slot)) slot++;
+            member = { pid: fromId, name, slot, isHost: false };
+            this.party.push(member);
+        } else {
+            // Handshake retry — just refresh the name and re-ack.
+            member.name = name;
+        }
+
+        net.sendTo(fromId, { type: 'handshake_ack', party: this.party });
+        this.broadcastParty();
+    }
+
+    handleNetworkData(data, fromId) {
+        const net = window.network;
+
+        // The host is the hub: relay every guest's gameplay traffic to the
+        // rest of the party, stamped with the sender's ID so it can't be spoofed.
+        if (this.state.isHost && (data.type === 'sync' || data.type === 'die' || data.type === 'revive')) {
+            data.pid = fromId;
+            net.broadcastExcept(fromId, data);
+        }
+
+        if (data.type === 'handshake') {
+            this.handleHandshake(data, fromId);
         } else if (data.type === 'handshake_ack') {
+            if (this.state.isHost) return;
             console.log("MP: Received Handshake ACK");
             if (this.handshakeInterval) clearInterval(this.handshakeInterval);
             this.handshakeInterval = null;
-            this.setMpStatus("READY TO START", 'success');
+            this.applyParty(data.party);
+            this.enterPartyView(net.friendId);
+            this.setMpStatus("WAITING FOR LEADER TO START...", 'success');
+        } else if (data.type === 'party') {
+            if (!this.state.isHost) this.applyParty(data.party);
+        } else if (data.type === 'party_full') {
+            this.leaveParty(`PARTY IS FULL (${MAX_PARTY_SIZE}/${MAX_PARTY_SIZE})`, 'danger');
+        } else if (data.type === 'party_busy') {
+            this.leaveParty("RUN IN PROGRESS — TRY AGAIN SOON", 'danger');
+        } else if (data.type === 'party_closed') {
+            this.endPartyRun();
+            this.leaveParty("LEADER CLOSED THE PARTY", 'danger');
         } else if (data.type === 'start') {
+            if (this.state.isHost || !this.inParty()) return;
+            this.applyParty(data.party);
             this.startMultiplayerGame(data.seed);
         } else if (data.type === 'sync') {
-            if (!this.remotePlayer) {
-                this.remotePlayer = new Player(data.x, data.y + this.state.score, data.skinIndex);
-                this.remotePlayer.name = this.remoteName || "GUEST";
+            // Ignore stragglers from a previous run or before 'start' lands.
+            if (!this.state.running || !this.state.multiplayer) return;
+            let rp = this.remotePlayers.get(data.pid);
+            if (!rp) {
+                const member = this.party.find(m => m.pid === data.pid);
+                if (!member) return;
+                rp = this.addRemotePlayer(member, data.skinIndex);
             }
-            this.remotePlayer.x = data.x;
-            this.remotePlayer.y = data.y + this.state.score;
-            this.remotePlayer.vx = data.vx;
-            this.remotePlayer.vy = data.vy;
+            if (SKINS[data.skinIndex] && rp.skinIndex !== data.skinIndex) {
+                rp.setSkin(data.skinIndex);
+                rp.skinIndex = data.skinIndex;
+            }
+            rp.x = data.x;
+            rp.y = data.y + this.state.score;
+            rp.vx = data.vx;
+            rp.vy = data.vy;
             if (data.activePowerId) {
-                this.remotePlayer.activePower = Object.values(POWERS).find(p => p.id === data.activePowerId);
+                rp.activePower = Object.values(POWERS).find(p => p.id === data.activePowerId);
             } else {
-                this.remotePlayer.activePower = null;
+                rp.activePower = null;
             }
         } else if (data.type === 'die') {
-            if (this.remotePlayer) this.remotePlayer.isDead = true;
-            this.checkDoubleDeath();
+            const rp = this.remotePlayers.get(data.pid);
+            if (rp) rp.isDead = true;
+            this.checkAllDead();
         } else if (data.type === 'revive') {
-            if (this.remotePlayer) {
-                this.remotePlayer.isDead = false;
-                this.remotePlayer.y = this.player.y - 100; // spawn above
-                this.particles.spawn(this.remotePlayer.x, this.remotePlayer.y, "#00ffcc", 40, "blast");
+            const rp = this.remotePlayers.get(data.pid);
+            if (rp) {
+                rp.isDead = false;
+                rp.y = this.player.y - 100; // spawn above
+                this.particles.spawn(rp.x, rp.y, PARTY_COLORS[rp.slot] || "#00ffcc", 40, "blast");
             }
         }
     }
@@ -379,6 +578,12 @@ class Game {
     startMultiplayerGame(seed) {
         this.ui.mpStartBtn.style.display = 'none';
         this.startGame(true, seed);
+        // Every other party member starts at the spawn point; their first
+        // sync packet moves them to wherever they really are.
+        const myId = window.network.myId;
+        this.party.forEach(m => {
+            if (m.pid !== myId) this.addRemotePlayer(m);
+        });
     }
 
     changeSkin(dir) {
@@ -717,7 +922,7 @@ class Game {
         this.projectiles = [];
         this.particles = new ParticleSystem();
         this.safetyNet = this.makeSafetyNetState();
-        this.remotePlayer = null;
+        this.remotePlayers = new Map();
 
         this.ui.power.style.opacity = 0;
         this.hideAlert();
@@ -860,11 +1065,11 @@ class Game {
         this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 40, "blast");
         this.player.isDead = true;
 
-        if (window.network && window.network.conn) {
-            window.network.send({ type: 'die' });
+        if (window.network) {
+            window.network.send({ type: 'die', pid: window.network.myId });
         }
 
-        this.checkDoubleDeath();
+        this.checkAllDead();
 
         if (this.state.running) {
             this.state.deathCount = (this.state.deathCount || 0) + 1;
@@ -872,29 +1077,54 @@ class Game {
         }
     }
 
-    checkDoubleDeath() {
-        if (this.player.isDead && this.remotePlayer && this.remotePlayer.isDead) {
-            this.state.running = false;
-            this.gameOver();
+    anyRemoteAlive() {
+        for (const rp of this.remotePlayers.values()) {
+            if (!rp.isDead) return true;
         }
+        return false;
     }
 
+    // The run keeps going while anyone in the party is alive; it ends for
+    // everybody the moment the last player falls (or leaves).
+    checkAllDead() {
+        if (!this.state.running || !this.state.multiplayer) return;
+        if (!this.player.isDead || this.anyRemoteAlive()) return;
+        this.state.running = false;
+        this.stopRespawnTimer();
+        // A revive prompt still open from a countdown is moot now.
+        if (this.ads.reviveOverlay) this.ads.reviveOverlay.style.display = 'none';
+        this.gameOver();
+    }
+
+    // Ends an in-progress multiplayer run immediately (host gone / party
+    // closed), going through the normal everyone-is-dead path.
+    endPartyRun() {
+        if (!this.state.running || !this.state.multiplayer) return;
+        this.player.isDead = true;
+        this.remotePlayers.forEach(rp => { rp.isDead = true; });
+        this.checkAllDead();
+    }
+
+    // Each player's respawn countdown runs on their own client, independent of
+    // everyone else's, and lengthens with their own death count. It keeps
+    // ticking only while the run is alive (i.e. someone is still standing).
     startRespawnTimer() {
         let baseTime = 15;
         let time = baseTime + ((this.state.deathCount - 1) * 10);
 
         this.showAlert(`RESPAWN IN ${time}s`, 'pulse');
 
-        let interval = setInterval(() => {
+        this.stopRespawnTimer();
+        this.respawnInterval = setInterval(() => {
             if (!this.state.running || !this.player.isDead) {
-                clearInterval(interval);
+                this.stopRespawnTimer();
                 return;
             }
             time--;
             this.showAlert(`RESPAWN IN ${time}s`, 'pulse');
 
             if (time <= 0) {
-                clearInterval(interval);
+                this.stopRespawnTimer();
                 this.showAlert("WATCH AD TO REVIVE", 'pulse');
                 this.ads.showRevivePrompt(
                     () => { this.mpRevive(); },
@@ -904,17 +1134,25 @@ class Game {
         }, 1000);
     }
 
+    stopRespawnTimer() {
+        if (this.respawnInterval) clearInterval(this.respawnInterval);
+        this.respawnInterval = null;
+    }
+
     mpRevive() {
+        // The run may have ended while the revive ad was playing.
+        if (!this.state.running) return;
         this.player.isDead = false;
-        if (this.remotePlayer && !this.remotePlayer.isDead) {
-            this.player.y = this.remotePlayer.y - 100;
-            this.player.x = this.remotePlayer.x;
+        const anchor = [...this.remotePlayers.values()].find(rp => !rp.isDead);
+        if (anchor) {
+            this.player.y = anchor.y - 100;
+            this.player.x = anchor.x;
         } else {
             this.player.y = CONFIG.HEIGHT - 200;
         }
         this.player.vy = 0;
 
-        if (window.network) window.network.send({ type: 'revive' });
+        if (window.network) window.network.send({ type: 'revive', pid: window.network.myId });
         this.showAlert("LIFE RESTORED", 'success');
     }
 
@@ -961,10 +1199,12 @@ class Game {
 
         if (this.state.multiplayer) {
             if (this.state.isHost) {
-                this.ui.mpStartBtn.style.display = 'block';
                 this.ui.mpStartBtn.innerText = "PLAY AGAIN";
-            } else {
-                this.setMpStatus("WAITING FOR HOST TO RESTART...", 'pending');
+                this.updateMpStartBtn();
+                if (this.party.length >= 2) this.setMpStatus("READY TO START", 'success');
+                else this.setMpStatus("WAITING FOR PLAYERS...", 'success');
+            } else if (this.inParty()) {
+                this.setMpStatus("WAITING FOR LEADER TO RESTART...", 'pending');
             }
         }
 
@@ -1138,7 +1378,7 @@ class Game {
         }
 
         // Invisible ceiling in multiplayer so the fast player doesn't go off screen
-        if (this.state.multiplayer && this.remotePlayer && !this.player.isDead && !this.remotePlayer.isDead) {
+        if (this.state.multiplayer && !this.player.isDead && this.anyRemoteAlive()) {
             if (this.player.y < 0) {
                 this.player.y = 0;
                 if (this.player.vy < 0) this.player.vy = 0; // head bump
@@ -1290,6 +1530,7 @@ class Game {
         if (this.state.multiplayer && this.state.frames % 2 === 0 && !this.player.isDead) {
             window.network.send({
                 type: 'sync',
+                pid: window.network.myId,
                 x: this.player.x,
                 y: this.player.y - this.state.score,
                 vx: this.player.vx,
@@ -1299,28 +1540,23 @@ class Game {
             });
         }
 
-        // Camera follows dead player's partner if needed, or lowest player in co-op
+        // Camera follows the lowest living player in multiplayer (so nobody is
+        // scrolled off the bottom); a dead player's view rides along with them.
         let threshold = CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD;
         let targetY = this.player.isDead ? threshold + 1 : this.player.y;
 
-        if (this.state.multiplayer && this.remotePlayer) {
-            if (this.player.isDead && !this.remotePlayer.isDead) {
-                targetY = this.remotePlayer.y;
-            } else if (!this.player.isDead && !this.remotePlayer.isDead) {
-                // Both alive: camera follows the lowest player (highest Y coordinate)
-                targetY = Math.max(this.player.y, this.remotePlayer.y);
-            } else if (!this.player.isDead && this.remotePlayer.isDead) {
-                targetY = this.player.y;
-            } else {
-                targetY = threshold + 1; // Both dead, no scroll
-            }
+        if (this.state.multiplayer) {
+            const aliveYs = [];
+            if (!this.player.isDead) aliveYs.push(this.player.y);
+            this.remotePlayers.forEach(rp => { if (!rp.isDead) aliveYs.push(rp.y); });
+            targetY = aliveYs.length ? Math.max(...aliveYs) : threshold + 1; // everyone dead: no scroll
         }
 
         if (targetY < threshold) {
             let diff = threshold - targetY;
 
             this.player.y += diff;
-            if (this.remotePlayer) this.remotePlayer.y += diff;
+            this.remotePlayers.forEach(rp => { rp.y += diff; });
 
             this.state.score += diff;
             this.state.bgOffset += diff * 0.5;
@@ -1418,11 +1654,17 @@ class Game {
 
         if (!this.player.isDead) this.player.draw(this.renderer.ctx);
 
-        if (this.state.multiplayer && this.remotePlayer && !this.remotePlayer.isDead) {
-            this.remotePlayer.draw(this.renderer.ctx);
-            // Draw Names
-            this.renderer.drawText(this.ui.mpNameInput.value.trim() || 'P1', this.player.x + 13, this.player.y - 10, "10px Courier New", "#fff");
-            this.renderer.drawText(this.remotePlayer.name || 'P2', this.remotePlayer.x + 13, this.remotePlayer.y - 10, "10px Courier New", "#00ffcc");
+        if (this.state.multiplayer && this.remotePlayers.size > 0) {
+            // Name tags in each player's party-slot colour.
+            this.remotePlayers.forEach(rp => {
+                if (rp.isDead) return;
+                rp.draw(this.renderer.ctx);
+                this.renderer.drawText(rp.name || 'PLAYER', rp.x + 13, rp.y - 10, "10px Courier New", PARTY_COLORS[rp.slot] || "#00ffcc");
+            });
+            if (!this.player.isDead) {
+                const me = this.party.find(m => m.pid === window.network.myId);
+                this.renderer.drawText(this.getMpName(), this.player.x + 13, this.player.y - 10, "10px Courier New", me ? PARTY_COLORS[me.slot] : "#fff");
+            }
         }
 
         this.particles.draw(this.renderer.ctx);

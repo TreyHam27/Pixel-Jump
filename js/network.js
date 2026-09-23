@@ -1,20 +1,26 @@
 class NetworkManager {
     constructor() {
         this.peer = null;
-        this.conn = null;
+        // Hub-and-spoke: the host holds one connection per guest, a guest
+        // holds exactly one (to the host). Keyed by remote peer ID.
+        this.conns = new Map();
         this.isHost = false;
         this.myId = null;
         this.friendId = null;
-        this.connectionTimeout = null;
 
-        // Heartbeat state
+        // Host + up to 3 guests = 4 players.
+        this.maxGuests = 3;
+
+        // Heartbeat state: one shared ping loop, one watchdog per connection
+        // so a single silent guest can't take the whole party down.
         this.heartbeatInterval = null;
-        this.watchdogTimeout = null;
-        this.lastHeartbeat = 0;
+        this.watchdogs = new Map();
 
-        this.onConnected = null;
-        this.onData = null;
-        this.onDisconnected = null;
+        this.onConnected = null;     // guest: data channel to the host is open
+        this.onPeerJoined = null;    // host: a guest's data channel opened (id)
+        this.onPeerLeft = null;      // host: a guest's connection closed (id)
+        this.onData = null;          // (data, fromId)
+        this.onDisconnected = null;  // guest: lost the host
         this.onError = null;
         this.onStatus = null;
     }
@@ -83,24 +89,37 @@ class NetworkManager {
 
             this.peer.on('connection', (connection) => {
                 console.log("PeerJS: Incoming connection from", connection.peer);
-                if (this.isHost) {
-                    // Clean up stale connections if they dropped before completing
-                    if (this.conn && !this.conn.open) {
-                        console.log("PeerJS: Clearing stale connection before accepting new one.");
-                        this.conn = null;
-                    }
-
-                    if (!this.conn) {
-                        this.conn = connection;
-                        this.setupConnection();
-                    } else {
-                        console.log("PeerJS: Rejecting connection (already actively connected)");
-                        connection.on('open', () => connection.close());
-                    }
-                } else {
+                if (!this.isHost) {
                     console.log("PeerJS: Rejecting connection (not host)");
                     connection.on('open', () => connection.close());
+                    return;
                 }
+
+                // Drop stale entries that never finished opening.
+                for (const [id, c] of [...this.conns]) {
+                    if (!c.open) this.dropConn(id);
+                }
+                // A reconnect from the same peer replaces its old connection.
+                if (this.conns.has(connection.peer)) this.dropConn(connection.peer);
+
+                if (this.conns.size >= this.maxGuests) {
+                    console.log("PeerJS: Rejecting connection (party full)");
+                    connection.on('open', () => {
+                        try { connection.send({ type: 'party_full' }); } catch (e) { }
+                        // Give the message a moment to flush before closing.
+                        setTimeout(() => { try { connection.close(); } catch (e) { } }, 500);
+                    });
+                    return;
+                }
+
+                this.addConn(connection);
+                connection.on('open', () => {
+                    if (this.conns.get(connection.peer) !== connection) return;
+                    console.log("PeerJS: Connection accepted and open:", connection.peer);
+                    this.startHeartbeat();
+                    this.resetWatchdog(connection.peer);
+                    if (this.onPeerJoined) this.onPeerJoined(connection.peer);
+                });
             });
 
             this.peer.on('error', (err) => {
@@ -121,6 +140,67 @@ class NetworkManager {
                 }
             });
         });
+    }
+
+    // Registers a connection and wires its data/close/error handlers. Every
+    // handler first checks the connection is still the registered one, so a
+    // connection we deliberately dropped (leave, retry, replacement) closes
+    // silently instead of firing onPeerLeft/onDisconnected.
+    addConn(connection) {
+        const id = connection.peer;
+        this.conns.set(id, connection);
+        const isCurrent = () => this.conns.get(id) === connection;
+        // A connection that dies mid-handshake is a failed attempt (join()
+        // retries it), not a departure — only opened ones report leaving.
+        let wasOpen = false;
+        connection.on('open', () => { wasOpen = true; });
+
+        connection.on('data', (data) => {
+            if (!isCurrent()) return;
+            this.resetWatchdog(id);
+            if (data && data.type === 'ping') return;
+            if (this.onData) this.onData(data, id);
+        });
+
+        connection.on('error', (err) => {
+            if (!isCurrent()) return;
+            console.error("PeerJS: Connection Error:", id, err);
+            if (this.onError) this.onError(err);
+        });
+
+        connection.on('close', () => {
+            if (!isCurrent()) return;
+            console.log("PeerJS: Connection closed:", id);
+            this.forgetConn(id);
+            if (!wasOpen) return;
+            if (this.isHost) {
+                if (this.onPeerLeft) this.onPeerLeft(id);
+            } else if (this.onDisconnected) {
+                this.onDisconnected();
+            }
+        });
+    }
+
+    // Removes a connection from the registry (without closing it).
+    forgetConn(id) {
+        this.conns.delete(id);
+        this.clearWatchdog(id);
+        if (this.conns.size === 0) this.stopHeartbeat();
+    }
+
+    // Deliberately closes one connection without firing leave callbacks.
+    dropConn(id) {
+        const c = this.conns.get(id);
+        this.forgetConn(id);
+        if (c) { try { c.close(); } catch (e) { } }
+    }
+
+    // Host: remove a single guest (went silent, or joined mid-run). Fires
+    // onPeerLeft so the app's party bookkeeping stays in one place.
+    closePeer(id) {
+        if (!this.conns.has(id)) return;
+        this.dropConn(id);
+        if (this.isHost && this.onPeerLeft) this.onPeerLeft(id);
     }
 
     async host() {
@@ -168,11 +248,9 @@ class NetworkManager {
                 return;
             } catch (err) {
                 console.warn(`PeerJS: Attempt ${attempt} failed:`, err);
+                this.dropConn(this.friendId);
+                if (!this.peer) return; // left while connecting
                 if (attempt < maxAttempts) {
-                    if (this.conn) {
-                        try { this.conn.close(); } catch (e) { }
-                        this.conn = null;
-                    }
                     if (this.onStatus) this.onStatus(`RETRYING... (${attempt + 1}/${maxAttempts})`);
                     // Small delay before retry to let sockets settle
                     await new Promise(r => setTimeout(r, 1000));
@@ -188,144 +266,148 @@ class NetworkManager {
 
     attemptConnect(attempt, timeout) {
         return new Promise((resolve, reject) => {
-            this.conn = this.peer.connect(this.friendId, {
+            const conn = this.peer.connect(this.friendId, {
                 reliable: true,
                 serialization: 'json',
                 metadata: { attempt: attempt }
             });
+            let opened = false;
 
             const timer = setTimeout(() => {
                 reject(new Error(`Attempt ${attempt} timed out`));
             }, timeout);
 
             // Register handlers IMMEDIATELY, don't wait for 'open'
-            this.conn.on('data', (data) => {
-                this.resetWatchdog();
-                if (data.type === 'ping') {
-                    // Internal heartbeat, don't pass to app
-                    return;
-                }
-                if (this.onData) this.onData(data);
-            });
+            this.addConn(conn);
 
-            this.conn.on('open', () => {
+            conn.on('open', () => {
                 clearTimeout(timer);
-                console.log("PeerJS: Data channel open with", this.conn.peer);
+                if (this.conns.get(this.friendId) !== conn) return;
+                opened = true;
+                console.log("PeerJS: Data channel open with", conn.peer);
 
                 this.startHeartbeat();
-                this.setupConnectionHandlers();
+                this.resetWatchdog(conn.peer);
 
                 if (this.onConnected) this.onConnected();
                 resolve();
             });
 
-            this.conn.on('error', (err) => {
+            conn.on('error', (err) => {
                 clearTimeout(timer);
-                reject(err);
+                if (!opened) reject(err);
             });
 
-            this.conn.on('close', () => {
-                console.log("PeerJS: Connection closed during handshake");
-                reject(new Error("Connection closed during handshake"));
+            conn.on('close', () => {
+                clearTimeout(timer);
+                if (!opened) reject(new Error("Connection closed during handshake"));
             });
-        });
-    }
-
-    setupConnection() {
-        // Immediate data handling for host side too
-        this.conn.on('data', (data) => {
-            this.resetWatchdog();
-            if (data.type === 'ping') return;
-            if (this.onData) this.onData(data);
-        });
-
-        this.conn.on('open', () => {
-            console.log("PeerJS: Connection accepted and open");
-            this.startHeartbeat();
-            this.setupConnectionHandlers();
-            if (this.onConnected) this.onConnected();
-        });
-
-        this.conn.on('error', (err) => {
-            console.error("PeerJS: Connection Error:", err);
-            if (this.onError) this.onError(err);
-        });
-
-        this.conn.on('close', () => {
-            console.log("PeerJS: Connection closed");
-            this.stopHeartbeat();
-            this.conn = null;
-            if (this.onDisconnected) this.onDisconnected();
-        });
-    }
-
-    setupConnectionHandlers() {
-        // Additional listeners for a fully established connection
-        this.conn.on('error', (err) => {
-            console.error("PeerJS: Live Connection Error:", err);
-            if (this.onError) this.onError(err);
-        });
-
-        this.conn.on('close', () => {
-            this.stopHeartbeat();
-            this.conn = null;
-            if (this.onDisconnected) this.onDisconnected();
         });
     }
 
     startHeartbeat() {
-        this.stopHeartbeat();
-        this.lastHeartbeat = Date.now();
-
+        if (this.heartbeatInterval) return;
         // PING every 2 seconds
         this.heartbeatInterval = setInterval(() => {
             this.send({ type: 'ping' });
         }, 2000);
-
-        // WATCHDOG: If no packet (ping or data) for 7 seconds, assume dead
-        this.resetWatchdog();
     }
 
-    resetWatchdog() {
-        if (this.watchdogTimeout) clearTimeout(this.watchdogTimeout);
-        this.watchdogTimeout = setTimeout(() => {
-            console.warn("PeerJS: Connection timed out (Watchdog)");
-            this.disconnect();
-            if (this.onError) {
-                const err = new Error("Connection lost (Timeout)");
-                err.type = "connection-timeout";
-                this.onError(err);
+    // WATCHDOG: If no packet (ping or data) from a peer for 15 seconds,
+    // assume that connection is dead.
+    resetWatchdog(id) {
+        this.clearWatchdog(id);
+        this.watchdogs.set(id, setTimeout(() => {
+            console.warn("PeerJS: Connection timed out (Watchdog):", id);
+            if (this.isHost) {
+                // One guest went silent — drop just them.
+                this.closePeer(id);
+            } else {
+                // Lost the host — the party is over for us.
+                this.disconnect();
+                if (this.onError) {
+                    const err = new Error("Connection lost (Timeout)");
+                    err.type = "connection-timeout";
+                    this.onError(err);
+                }
+                if (this.onDisconnected) this.onDisconnected();
             }
-        }, 15000);
+        }, 15000));
+    }
+
+    clearWatchdog(id) {
+        const t = this.watchdogs.get(id);
+        if (t) clearTimeout(t);
+        this.watchdogs.delete(id);
     }
 
     stopHeartbeat() {
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-        if (this.watchdogTimeout) clearTimeout(this.watchdogTimeout);
         this.heartbeatInterval = null;
-        this.watchdogTimeout = null;
+        for (const t of this.watchdogs.values()) clearTimeout(t);
+        this.watchdogs.clear();
     }
 
-    send(data) {
-        if (this.conn && this.conn.open) {
+    isConnected() {
+        for (const c of this.conns.values()) if (c.open) return true;
+        return false;
+    }
+
+    sendTo(id, data) {
+        const c = this.conns.get(id);
+        if (c && c.open) {
             try {
-                this.conn.send(data);
+                c.send(data);
             } catch (e) {
                 console.error("PeerJS: Send failed", e);
             }
         }
     }
 
+    // Everyone we're directly connected to (all guests for the host; just the
+    // host for a guest).
+    send(data) {
+        for (const id of [...this.conns.keys()]) this.sendTo(id, data);
+    }
+
+    // Host relay: forward a guest's message to every other guest.
+    broadcastExcept(exceptId, data) {
+        for (const id of [...this.conns.keys()]) {
+            if (id !== exceptId) this.sendTo(id, data);
+        }
+    }
+
+    // Voluntarily leave the party. A host closing down tells every guest
+    // first, then gives the message a beat to flush before tearing down.
+    leave() {
+        if (this.isHost && this.conns.size > 0) {
+            this.send({ type: 'party_closed' });
+            const peer = this.peer;
+            const conns = [...this.conns.values()];
+            this.stopHeartbeat();
+            this.conns = new Map();
+            this.peer = null;
+            setTimeout(() => {
+                conns.forEach(c => { try { c.close(); } catch (e) { } });
+                if (peer) { try { peer.destroy(); } catch (e) { } }
+            }, 300);
+        } else {
+            this.disconnect();
+        }
+        this.isHost = false;
+    }
+
     disconnect() {
         console.log("PeerJS: Performing full cleanup...");
         this.stopHeartbeat();
-        if (this.conn) {
-            try { this.conn.close(); } catch (e) { }
-        }
+        // Swap the registry out first so the close events these trigger are
+        // recognised as deliberate and don't fire leave callbacks.
+        const conns = [...this.conns.values()];
+        this.conns = new Map();
+        conns.forEach(c => { try { c.close(); } catch (e) { } });
         if (this.peer) {
             try { this.peer.destroy(); } catch (e) { }
         }
-        this.conn = null;
         this.peer = null;
     }
 }
