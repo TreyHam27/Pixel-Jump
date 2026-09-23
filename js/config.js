@@ -84,7 +84,22 @@ const ACHIEVEMENTS = [
     { id: 'magnet', name: 'Attractive', condition: (state, player) => player.activePower && player.activePower.name === "MAGNET" },
     { id: 'pacifist', name: 'Pacifist Pilot', condition: (state, player) => state.score >= 50000 && state.powersCollected === 0 },
     { id: 'boss', name: 'Titan Slayer', condition: (state, player) => state.loops >= 1 },
-    { id: 'rich', name: 'Data Hoarder', condition: (state, player) => state.shards >= 100 }
+    { id: 'rich', name: 'Data Hoarder', condition: (state, player) => state.shards >= 100 },
+
+    // Every distance-gated skin doubles as an achievement. Crossing its high
+    // score is exactly what unlocks it (see Game.isSkinLocked()), so that same
+    // moment pops a badge instead of the unlock sitting silently in the
+    // carousel until the player happens to scroll past it. Gem-shop skins are
+    // bought rather than earned, so they stay out of this, as does the starter
+    // skin (unlock: 0), which nobody earns.
+    ...SKINS
+        .filter(s => s.unlock > 0)
+        .map(s => ({
+            id: 'skin:' + s.name,
+            name: s.name,
+            skin: true,
+            condition: (state) => state.highScore >= s.unlock
+        }))
 ];
 
 const STORY = [
