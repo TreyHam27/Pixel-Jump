@@ -1623,9 +1623,14 @@ class Game {
         this.powerups.forEach(p => {
             p.y = p.startY + Math.sin(this.state.time * 0.1) * 5;
             if (p.isShard) {
-                let hue = 180 + Math.sin(this.state.time * 5) * 20; // cyan-ish pulsing
-                this.renderer.drawRect(p.x, p.y, p.w, p.h, `hsl(${hue}, 100%, 60%)`, { blur: 10, color: `hsl(${hue}, 100%, 60%)` });
-                this.renderer.drawText("💎", p.x + p.w / 2, p.y + p.h - 2, "12px Courier New", "#fff");
+                // Same 💎 as the shard counter, with a pulsing cyan glow.
+                const ctx = this.renderer.ctx;
+                ctx.save();
+                ctx.shadowBlur = 10 + Math.sin(this.state.time * 5) * 4;
+                ctx.shadowColor = "#00ffff";
+                ctx.textBaseline = "middle";
+                this.renderer.drawText("💎", p.x + p.w / 2, p.y + p.h / 2, "18px sans-serif", "#fff");
+                ctx.restore();
             } else {
                 let hue = (this.state.time * 5) % 360;
                 this.renderer.drawRect(p.x, p.y, p.w, p.h, `hsl(${hue}, 100%, 50%)`, { blur: 15, color: `hsl(${hue}, 100%, 50%)` });
