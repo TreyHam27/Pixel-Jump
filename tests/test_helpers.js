@@ -69,7 +69,7 @@ function loadGameSource() {
         'app.js'
     ];
     return files
-        .map(f => fs.readFileSync(path.join(__dirname, f), 'utf8'))
+        .map(f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8'))
         .join('\n')
         .replace(/window\.onload[\s\S]*$/, '');
 }
