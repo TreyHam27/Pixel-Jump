@@ -422,44 +422,66 @@ canvas {
     }
 }
 
-/* ADS */
-.ad-banner {
+/* ADS
+   Game canvas is a fixed 600px-logical column, centered in a 100vw container
+   (see Renderer / #game-container). Each rail fills the real gutter between
+   the viewport edge and the canvas edge, instead of a small fixed box, so a
+   full skin/wallpaper network tag has actual room to render. Visibility is
+   controlled entirely by the media query below - no JS breakpoint to keep in
+   sync with it.
+*/
+.ad-rail {
     position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 20%;
-    max-width: 200px;
-    height: 600px;
-    background: #222;
-    border: 2px solid #333;
+    top: 0;
+    bottom: 0;
+    width: calc(50vw - 320px);
+    min-width: 140px;
+    max-width: 520px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #555;
-    font-size: 24px;
-    font-weight: bold;
-    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+    overflow: hidden;
     z-index: 5;
-    transition: opacity 0.5s;
-    pointer-events: none;
 }
 
-/* Dynamic Positioning: 
-   Game is centered. Game width is dynamic (Renderer logic), but conceptually 600px logical. 
-   We want ads to float to the left/right of the center column.
-*/
-#ad-left {
-    left: 5%;
+#ad-rail-left {
+    left: 0;
 }
 
-#ad-right {
-    right: 5%;
+#ad-rail-right {
+    right: 0;
 }
 
-/* Mobile / Narrow hide */
+.ad-rail-house {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 28px 18px;
+    border: 1px dashed #2a2a2a;
+    border-radius: 6px;
+    text-align: center;
+}
+
+.ad-rail-house-logo {
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #00ffcc;
+    text-shadow: 0 0 10px rgba(0, 255, 204, 0.4);
+}
+
+.ad-rail-house-text {
+    font-size: 13px;
+    color: #666;
+}
+
+/* Below this width there's no meaningful room left beside the 600px canvas */
 @media (max-width: 1000px) {
-    .ad-banner {
-        opacity: 0 !important;
+    .ad-rail {
         display: none !important;
     }
 }
