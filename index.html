@@ -66,7 +66,7 @@
         <div id="menus-wrapper">
             <!-- SINGLE PLAYER MENU (Main) -->
             <div id="menu-layer" class="menu-page">
-                <div class="mode-switch-arrow right" id="to-mp-btn">▶<br><span>CO-OP</span></div>
+                <div class="mode-switch-arrow right" id="to-mp-btn">▶<br><span>MULTI<br>PLAYER</span></div>
 
                 <div class="page-title">PIXEL JUMP</div>
 
@@ -133,29 +133,43 @@
             <div id="mp-menu-layer" class="menu-page">
                 <div class="mode-switch-arrow left" id="to-sp-btn">◀<br><span>SOLO</span></div>
 
-                <div class="page-title page-title--mp">PIXEL JUMP CO-OP</div>
+                <div class="page-title page-title--mp">MULTIPLAYER</div>
 
-                <div class="mp-box">
-                    <label>DISPLAY NAME</label>
-                    <input type="text" id="mp-name-input" maxlength="10" placeholder="P1">
+                <!-- Lobby setup: evaporates once you host or join a party -->
+                <div id="mp-setup" class="mp-setup">
+                    <div class="mp-box">
+                        <label>DISPLAY NAME</label>
+                        <input type="text" id="mp-name-input" maxlength="10" placeholder="P1">
+                    </div>
+
+                    <div class="mp-box mp-box--join">
+                        <label>JOIN A FRIEND</label>
+                        <input type="text" id="mp-join-input" maxlength="6" placeholder="6-CHAR CODE">
+                        <button id="mp-join-btn">CONNECT</button>
+                    </div>
+
+                    <div class="mp-box mp-box--host">
+                        <label>HOST A GAME</label>
+                        <button id="mp-host-btn">GENERATE CODE</button>
+                    </div>
                 </div>
 
-                <div class="mp-box mp-box--join">
-                    <label>JOIN A FRIEND</label>
-                    <input type="text" id="mp-join-input" maxlength="6" placeholder="6-CHAR CODE">
-                    <button id="mp-join-btn">CONNECT</button>
-                </div>
+                <!-- Current party: leader on top, members underneath. Rows are
+                     rendered by Game.renderParty(). -->
+                <div id="mp-party-view" class="mp-party-view">
+                    <div class="mp-box mp-box--party">
+                        <label>PARTY <span id="mp-party-count">1/4</span></label>
+                        <div id="mp-party-code" class="mp-party-code">------</div>
+                        <ul id="mp-party-list" class="mp-party-list"></ul>
+                    </div>
 
-                <div class="mp-section-divider">OR</div>
-
-                <div class="mp-box mp-box--host">
-                    <label>HOST A GAME</label>
-                    <button id="mp-host-btn">GENERATE CODE</button>
-                    <div id="mp-host-code">---</div>
+                    <div class="mp-box mp-box--leave">
+                        <button id="mp-leave-btn">LEAVE GAME</button>
+                    </div>
                 </div>
 
                 <div id="mp-status">READY</div>
-                <button id="mp-start-prompt">START CO-OP RUN</button>
+                <button id="mp-start-prompt">START RUN</button>
             </div>
         </div>
     </div>

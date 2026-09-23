@@ -42,6 +42,12 @@ const BIOMES = [
 const EXTRA_LIFE_COST = 50;
 const MAX_EXTRA_LIVES = 3;
 
+// Multiplayer: host + up to 3 guests (NetworkManager.maxGuests must match).
+// Slot 0 is always the party leader; each slot's colour is used for that
+// player's in-game name tag and their row in the party panel.
+const MAX_PARTY_SIZE = 4;
+const PARTY_COLORS = ['#00ffff', '#ff3cf0', '#ffe600', '#ff8a00'];
+
 const SKINS = [
     { name: "Unit 734", color: "#ff3366", eye: "white", unlock: 0, ability: { jumpMult: 1, speedMult: 1 } },
     { name: "The Ghost", color: "#ffffff", eye: "black", unlock: 150, ability: { gravityMult: 0.85 } },
