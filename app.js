@@ -10,6 +10,7 @@ class Game {
         this.powerups = [];
         this.enemies = [];
         this.projectiles = [];
+        this.safetyNet = this.makeSafetyNetState();
         this.achievements = JSON.parse(localStorage.getItem('lp_achievements')) || [];
         this.ownedSkins = JSON.parse(localStorage.getItem('lp_owned_skins')) || [];
 
@@ -623,6 +624,41 @@ class Game {
         return this.state.seed / 233280;
     }
 
+    // Visual state for the SAFETY NET trampoline drawn across the bottom of the
+    // screen. `deploy` eases the net in and out with the power-up; `impact`,
+    // `impactX` and `phase` drive the decaying wobble after each bounce.
+    makeSafetyNetState() {
+        return { deploy: 0, impact: 0, impactX: CONFIG.WIDTH / 2, phase: 0, expiring: false };
+    }
+
+    updateSafetyNet(dt) {
+        const net = this.safetyNet;
+        const active = this.player.activePower === POWERS.SAFETY;
+
+        net.deploy = active
+            ? Math.min(1, net.deploy + 0.08 * dt)
+            : Math.max(0, net.deploy - 0.06 * dt);
+        // Warn over the last ~2.5 seconds. A fixed window rather than a fraction
+        // of the timer, since skin abilities can stretch the power's duration.
+        net.expiring = active && this.player.powerTimer < 150;
+
+        if (net.impact > 0) {
+            net.phase += 0.5 * dt;
+            net.impact *= Math.pow(0.94, dt);
+            if (net.impact < 0.01) { net.impact = 0; net.phase = 0; }
+        }
+    }
+
+    // Kick the trampoline into its bounce wobble, centred on where the player
+    // hit it.
+    bounceSafetyNet() {
+        this.safetyNet.deploy = 1;
+        this.safetyNet.impactX = this.player.x + 13;
+        this.safetyNet.impact = 1;
+        this.safetyNet.phase = 0;
+        sounds.play('jump');
+    }
+
     reset(seed = null) {
         this.state.score = 0;
         // The Void's exclusive ability lets equipped runs start already at The
@@ -673,6 +709,7 @@ class Game {
         this.enemies = [];
         this.projectiles = [];
         this.particles = new ParticleSystem();
+        this.safetyNet = this.makeSafetyNetState();
         this.remotePlayer = null;
 
         this.ui.power.style.opacity = 0;
@@ -749,6 +786,7 @@ class Game {
         if (!forceDie && this.player.activePower === POWERS.SAFETY) {
             this.player.y = CONFIG.HEIGHT - 60;
             this.player.vy = CONFIG.BOUNCE_FORCE;
+            this.bounceSafetyNet();
             this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
             return;
         }
@@ -803,6 +841,7 @@ class Game {
         if (!forceDie && this.player.activePower === POWERS.SAFETY) {
             this.player.y = CONFIG.HEIGHT - 60;
             this.player.vy = CONFIG.BOUNCE_FORCE;
+            this.bounceSafetyNet();
             this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
             return;
         }
@@ -892,6 +931,9 @@ class Game {
             this.ads.showInterstitialAd();
         }
         let finalScore = Math.floor(this.state.score / 10);
+
+        // Don't leave a half-retracted net hanging over the menu.
+        this.safetyNet = this.makeSafetyNetState();
 
         if (this.state.isNewBest && this.state.ghostRecord) {
             localStorage.setItem('lp_ghost', JSON.stringify(this.state.ghostRecord));
@@ -1178,6 +1220,7 @@ class Game {
         }
 
         this.particles.update(dt);
+        this.updateSafetyNet(dt);
 
         if (this.state.multiplayer && this.state.frames % 2 === 0 && !this.player.isDead) {
             window.network.send({
@@ -1303,6 +1346,8 @@ class Game {
                 }
             }
         }
+
+        this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
 
         if (!this.player.isDead) this.player.draw(this.renderer.ctx);
 
