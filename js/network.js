@@ -101,6 +101,7 @@ class NetworkManager {
 
             peer.on('open', (assignedId) => {
                 clearTimeout(openTimeout);
+                if (peer !== this.peer) return;
                 // Also fires after a signaling reconnect.
                 this.reconnectAttempts = 0;
                 if (settled) return;
@@ -286,7 +287,11 @@ class NetworkManager {
             try {
                 await this.init(PEER_ID_PREFIX + code);
             } catch (err) {
-                if (gen !== this.joinGen) throw err;
+                if (gen !== this.joinGen) {
+                    const cancelled = new Error("Hosting was cancelled.");
+                    cancelled.type = 'cancelled';
+                    throw cancelled;
+                }
                 if (attempt < maxRetries - 1 && (err.type === 'unavailable-id' || err.type === 'invalid-id')) continue;
                 this.isHost = false;
                 throw err;
