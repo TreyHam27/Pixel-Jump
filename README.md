@@ -19,7 +19,10 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 - **Boss fights:** every 4000m. The boss hovers and fires volleys, then telegraphs a dive to your level. Land on it while it's exposed. Each kill is worth +500m and 150 💎.
 - **Pixels (skins):** you unlock them by height, by buying them in the gem shop, or by finding the secret ones. Each has a perk, such as JUMP, EMP, GEMS x2 or SCORE x2.
 - **Daily layout:** solo runs use the day's seed, and your best run of the day replays as a ghost.
-- **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC). Levels are generated identically on every client. Only public STUN servers are configured, so players behind strict NATs (some mobile carriers and office networks) need a TURN relay: add one with your own credentials to `EXTRA_ICE_SERVERS` in `js/config.js`.
+- **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC; COPY CODE shares it).
+  - Levels are generated identically on every client.
+  - The host runs every drone, bullet, meteor and the boss. Everyone faces the same enemies, stomps count toward one shared boss health bar, and a boss kill pays everyone.
+  - Teammates move smoothly between updates, and a player who is down sees whom they're spectating. Only public STUN servers are configured, so players behind strict NATs (some mobile carriers and office networks) need a TURN relay: add one with your own credentials to `EXTRA_ICE_SERVERS` in `js/config.js`.
 - **Extra lives:** buy them in the shop; ads are off (`ADS_ENABLED` in `js/config.js`).
 - **Run summary and Records:** every run ends with a summary card. RECORDS shows lifetime stats and every achievement (secret Pixels stay hidden until earned).
 - **Settings:** volume, mute, the daily ghost, reduced motion, and on-screen touch buttons. Solo runs pause when you switch tabs.

@@ -510,6 +510,10 @@ class Meteor extends Entity {
     }
 }
 
+// Snapshot encodings for co-op (index = wire value).
+const BOSS_STATES = ['enter', 'hover', 'telegraph', 'dive', 'exposed', 'recover'];
+const LASER_PHASES = ['cooldown', 'telegraph', 'firing'];
+
 class BossDrone extends Entity {
     // A dt-driven state machine: enter -> hover -> telegraph -> dive ->
     // exposed -> recover -> hover ... (see BOSS in config.js). The boss lives

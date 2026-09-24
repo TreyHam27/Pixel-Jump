@@ -2293,3 +2293,29 @@ body.reduce-motion *::after {
     color: #00ffaa;
     word-break: break-all;
 }
+
+/* ---------- Co-op: spectating while dead, room code sharing ---------- */
+#spectate-hud {
+    position: absolute;
+    top: calc(116px + var(--safe-top));
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 12px;
+    border: 1px solid rgba(192, 77, 255, 0.5);
+    border-radius: var(--radius-pill);
+    background: rgba(0, 0, 0, 0.55);
+    color: #d896ff;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+.mp-box .mp-code-btn {
+    margin: 2px 0 8px;
+    padding: 6px 10px;
+    background: transparent;
+    color: var(--accent);
+    border-color: rgba(var(--accent-rgb), 0.45);
+    font-size: 11px;
+}
