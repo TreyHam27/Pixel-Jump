@@ -82,7 +82,7 @@ python3 -m http.server 8765   # then open http://localhost:8765/
 
 Game-logic tests run under a mocked DOM (`tests/test_helpers.js`) with no
 browser. Each file is standalone; `npm test` runs them all in parallel child
-processes and reports each file's real exit code (CI runs the same command):
+processes and reports each file's real exit code:
 
 ```bash
 npm test                        # every tests/test_*.js
