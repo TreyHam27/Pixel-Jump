@@ -19,14 +19,21 @@ try {
     assert(layout(0) === layout(2), "extra lives don't change the generated level");
     console.log("HEART DETERMINISM SUCCESS");
 
-    // ---- Rarer than power-ups, but they do show up.
+    // ---- Findable but rarer than power-ups, never two within a screen of
+    // each other, and thinning out with height.
     let g = new Game();
     g.startGame();
     g.powerups = [];
-    for (let i = 0; i < 2000; i++) g.spawnPlatform(-1000 - i * 95);
-    const hearts = g.powerups.filter(p => p.isHeart).length;
+    for (let i = 0; i < 4000; i++) g.spawnPlatform(-1000 - i * 95);
+    const heartWYs = g.powerups.filter(p => p.isHeart).map(p => p.startY - g.state.score);
     const powers = g.powerups.filter(p => !p.isHeart && !p.isShard).length;
-    assert(hearts > 20 && hearts < powers, "hearts are findable but rarer than power-ups (" + hearts + " vs " + powers + ")");
+    assert(heartWYs.length > 20 && heartWYs.length < powers, "hearts are findable but rarer than power-ups (" + heartWYs.length + " vs " + powers + ")");
+    for (let i = 1; i < heartWYs.length; i++) {
+        assert(heartWYs[i - 1] - heartWYs[i] >= HEART_MIN_GAP, "hearts are at least HEART_MIN_GAP apart");
+    }
+    assert(HEART_MIN_GAP > CONFIG.HEIGHT, "so two can never be on screen together");
+    const inBand = (lo, hi) => heartWYs.filter(wy => -wy / 10 >= lo && -wy / 10 < hi).length;
+    assert(inBand(0, 4000) > inBand(8000, 12000), "fewer hearts high up (" + inBand(0, 4000) + " vs " + inBand(8000, 12000) + ")");
     console.log("HEART RARITY SUCCESS");
 
     // ---- Only visible and collectible at 0 lives.

@@ -195,7 +195,10 @@ class Player extends Entity {
             if (this.activePower === POWERS.DOUBLE) this.doubleReady = true;
             return;
         }
-        const types = Object.values(POWERS);
+        // A power the Pixel already has for good (AIR JUMP, MAGNET) would be
+        // a dud, so it's left out of the draw.
+        const covered = skinPerks(ability).map(({ perk }) => POWERS[perk.covers]).filter(Boolean);
+        const types = Object.values(POWERS).filter(p => !covered.includes(p));
         this.grantPower(types[Math.floor(Math.random() * types.length)]);
     }
 
