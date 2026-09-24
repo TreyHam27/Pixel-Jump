@@ -139,27 +139,11 @@ class Player extends Entity {
             let p = powerups[i];
 
             // Magnet Logic (temporary MAGNET power-up pulls any pickup)
-            if (this.activePower === POWERS.MAGNET) {
-                let dx = this.x - p.x;
-                let dy = this.y - p.y;
-                let dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < 200) {
-                    p.x += dx * 0.1;
-                    p.y += dy * 0.1;
-                }
-            }
+            if (this.activePower === POWERS.MAGNET) this.pullPickup(p, 200, dt);
 
             // Always-on shard pull from an equipped Pixel's permanent ability
             // (separate from, and stacks with, the temporary MAGNET power-up)
-            if (p.isShard && ability.shardMagnetRadius) {
-                let dx = this.x - p.x;
-                let dy = this.y - p.y;
-                let dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < ability.shardMagnetRadius) {
-                    p.x += dx * 0.1;
-                    p.y += dy * 0.1;
-                }
-            }
+            if (p.isShard && ability.shardMagnetRadius) this.pullPickup(p, ability.shardMagnetRadius, dt);
 
             if (rectsIntersect(this, p)) {
                 if (p.isShard) {
@@ -174,6 +158,19 @@ class Player extends Entity {
         }
 
         return event;
+    }
+
+    // Drags a pickup 10% of the way toward the player per 60fps frame. The
+    // pickup bobs around startY (Game.draw() rewrites y from it every frame),
+    // so the pull has to move startY too or it only ever works sideways.
+    pullPickup(p, radius, dt) {
+        const dx = this.x - p.x;
+        const dy = this.y - p.y;
+        if (dx * dx + dy * dy >= radius * radius) return;
+        const k = 1 - Math.pow(0.9, dt);
+        p.x += dx * k;
+        p.y += dy * k;
+        if (p.startY !== undefined) p.startY += dy * k;
     }
 
     activatePower() {
@@ -284,7 +281,7 @@ class Drone extends Entity {
         }
 
         this.x += this.v * dt;
-        this.y += Math.sin(this.x * 0.05 + this.sinOffset) * 2;
+        this.y += Math.sin(this.x * 0.05 + this.sinOffset) * 2 * dt;
         if ((this.v > 0 && this.x > CONFIG.WIDTH + 50) || (this.v < 0 && this.x < -100)) {
             this.hidden = true;
             this.exitSide = this.v > 0 ? 1 : -1;

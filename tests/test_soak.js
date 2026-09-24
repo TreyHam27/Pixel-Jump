@@ -29,7 +29,7 @@ try {
 
     mockGame.startGame();
     mockGame.state.score = 10; // much worse run
-    mockGame.state.ghostRecord = [{ x: 999, y: 999 }];
+    mockGame.ghostRec.pts = [999, 999, 999, 999];
     mockGame.gameOver();
     const ghostAfterWorseRun = localStorage.getItem('lp_ghost');
 

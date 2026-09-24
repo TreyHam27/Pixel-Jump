@@ -4,6 +4,13 @@
 // restart interstitial never fires. Flip to true once ready to run ads.
 const ADS_ENABLED = false;
 
+// Build identity. GAME_VERSION tags asset URLs (index.html ?v=...) so a
+// deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
+// match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
+// co-op messages, level generation, or the SKINS/POWERS order change.
+const GAME_VERSION = '1.5.0';
+const NET_PROTOCOL = 2;
+
 const CONFIG = {
     WIDTH: 600,
     HEIGHT: 800,
@@ -22,6 +29,16 @@ const CONFIG = {
     BOSS_LOOP_DISTANCE: 4000
 };
 
+// Level generation version: bump when spawnPlatform() would build a different
+// layout from the same seed (saved ghosts from other versions are dropped).
+const PLATFORM_GEN_VERSION = 2;
+// How far above the top of the screen platforms are generated in advance.
+const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
+// Ghost recording: one sample every GHOST_STEP frames of game time, capped
+// at GHOST_MAX_POINTS samples (about half an hour of climbing).
+const GHOST_STEP = 6;
+const GHOST_MAX_POINTS = 20000;
+
 // Each biome's `hazards` list is cumulative: once a hazard is introduced by a
 // biome, it stays active in every later biome too (by The Void, everything is
 // stacked at once — that's the intended "hardest tier" feel).
@@ -35,6 +52,15 @@ const BIOMES = [
     { threshold: 12000, name: "Static Field", bg: "#0a0a0a", grid: "#555555", platform: "#ffffff", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"] },
     { threshold: 17000, name: "The Void", bg: "#000000", grid: "#220022", platform: "#ff0055", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"] }
 ];
+
+// The biome at a given height in meters (the single source of truth for both
+// the renderer and level generation).
+function biomeAt(meters) {
+    for (let i = BIOMES.length - 1; i >= 0; i--) {
+        if (meters >= BIOMES[i].threshold) return BIOMES[i];
+    }
+    return BIOMES[0];
+}
 
 // Shop consumables. Extra lives are bought with shards and carried between
 // runs as stock — each one is spent automatically on a death that would

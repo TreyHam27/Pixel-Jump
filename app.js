@@ -288,7 +288,7 @@ class Game {
                 // Ensures the host DEFINITELY gets the name even if the first packet is lost
                 const sendHandshake = () => {
                     console.log("MP: Sending Handshake...");
-                    window.network.send({ type: 'handshake', name: this.getMpName() });
+                    window.network.send({ type: 'handshake', name: this.getMpName(), v: NET_PROTOCOL, build: GAME_VERSION });
                 };
                 if (this.handshakeInterval) clearInterval(this.handshakeInterval);
                 this.handshakeInterval = setInterval(sendHandshake, 1000);
@@ -524,6 +524,14 @@ class Game {
         const net = window.network;
         console.log("MP: Received Handshake from", data.name);
 
+        // Different builds generate different levels (and may disagree on
+        // the Pixel list), so they can't share a run.
+        if (data.v !== NET_PROTOCOL) {
+            net.sendTo(fromId, { type: 'version_mismatch', v: NET_PROTOCOL, build: GAME_VERSION });
+            setTimeout(() => net.closePeer(fromId), 300);
+            return;
+        }
+
         if (this.state.running) {
             net.sendTo(fromId, { type: 'party_busy' });
             setTimeout(() => net.closePeer(fromId), 300);
@@ -548,7 +556,7 @@ class Game {
             member.name = name;
         }
 
-        net.sendTo(fromId, { type: 'handshake_ack', party: this.party });
+        net.sendTo(fromId, { type: 'handshake_ack', party: this.party, v: NET_PROTOCOL, build: GAME_VERSION });
         this.broadcastParty();
     }
 
@@ -569,6 +577,10 @@ class Game {
             console.log("MP: Received Handshake ACK");
             if (this.handshakeInterval) clearInterval(this.handshakeInterval);
             this.handshakeInterval = null;
+            if (data.v !== NET_PROTOCOL) {
+                this.leaveParty("HOST IS ON AN OLDER VERSION — BOTH REFRESH", 'danger');
+                return;
+            }
             this.applyParty(data.party);
             this.enterPartyView(net.friendId);
             this.setMpStatus("WAITING FOR LEADER TO START...", 'success');
@@ -576,6 +588,8 @@ class Game {
             if (!this.state.isHost) this.applyParty(data.party);
         } else if (data.type === 'party_full') {
             this.leaveParty(`PARTY IS FULL (${MAX_PARTY_SIZE}/${MAX_PARTY_SIZE})`, 'danger');
+        } else if (data.type === 'version_mismatch') {
+            if (!this.state.isHost) this.leaveParty("VERSION MISMATCH — REFRESH THE PAGE", 'danger');
         } else if (data.type === 'party_busy') {
             this.leaveParty("RUN IN PROGRESS — TRY AGAIN SOON", 'danger');
         } else if (data.type === 'party_closed') {
@@ -997,19 +1011,23 @@ class Game {
         this.state.usedExtraRevive = false;
         this.state.frames = 0;
         this.state.time = 0;
+        // Spawn/animation clocks in 60fps-frame units of game time (see
+        // tick()), so pacing is the same at 60, 120 or 144Hz.
+        this.state.timers = { drone: 0, laser: 0, meteor: 0, trail: 0, sync: 0 };
         this.state.revived = false;
         // Multiplayer passes an explicit shared seed so host/guest generate
         // identical platform layouts; single-player falls back to the daily seed.
         this.state.seed = seed !== null ? seed : this.getDailySeed();
+        // state.seed is the running RNG state from here on; these two are
+        // what identify the layout (for the ghost).
+        this.state.runSeed = this.state.seed;
+        this.state.startMeters = Math.floor(this.state.score / 10);
         this.state.powersCollected = 0;
         this.state.isNewBest = false;
-        this.state.ghostRecord = [];
-        let savedGhost = localStorage.getItem('lp_ghost');
-        if (savedGhost) {
-            try { this.ghostPlayback = JSON.parse(savedGhost); } catch (e) { this.ghostPlayback = []; }
-        } else {
-            this.ghostPlayback = [];
-        }
+        // Solo runs race (and record) a ghost of the day's best run on this
+        // exact layout; co-op has none.
+        this.ghostRec = this.state.multiplayer ? null : { nextT: 0, pts: [] };
+        this.ghostPlayback = this.state.multiplayer ? null : this.loadGhost();
 
         // Skip past any story beats already covered by a checkpoint start
         // (normal 0m starts just find index 0, since STORY[0].h > 0).
@@ -1026,13 +1044,17 @@ class Game {
 
         localStorage.setItem('lp_skin', SKINS[this.viewParams.skinIndex].id);
 
-        this.platforms = [{ x: 0, y: CONFIG.HEIGHT - 40, w: CONFIG.WIDTH, h: 40 }];
-        let y = CONFIG.HEIGHT - 140;
-        while (y > -CONFIG.HEIGHT) { this.spawnPlatform(y); y -= CONFIG.PLATFORM_BASE_GAP; }
-
+        // Pickups are cleared *before* the first screen of platforms is built,
+        // or the shards and power-ups spawned on it would be thrown away.
         this.powerups = [];
         this.enemies = [];
         this.projectiles = [];
+
+        this.platforms = [{ x: 0, y: CONFIG.HEIGHT - 40, w: CONFIG.WIDTH, h: 40 }];
+        // World y of the next platform to generate (screen y = wy + score).
+        // An integer counter, so every co-op client derives identical heights.
+        this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
+        this.fillPlatforms();
         this.particles = new ParticleSystem();
         this.safetyNet = this.makeSafetyNetState();
         this.remotePlayers = new Map();
@@ -1041,12 +1063,18 @@ class Game {
         this.hideAlert();
     }
 
-    spawnPlatform(y) {
+    // Level generation. Everything a platform (and its pickup) gets is decided
+    // by its own world height `wy` (screen y minus score; more negative is
+    // higher) plus the seeded RNG, never by the camera. Co-op clients whose
+    // cameras lag each other therefore still build identical levels.
+    // seededRandom() is reserved for this: any other draw would desync them.
+    spawnPlatform(wy) {
+        const y = wy + this.state.score;
         let rand = this.seededRandom();
         let w = 100 + rand * 80;
         let x = this.seededRandom() * (CONFIG.WIDTH - w);
-        let scoreMeters = Math.floor(this.state.score / 10);
-        let hazards = this.renderer.currentBiome.hazards;
+        let scoreMeters = Math.max(0, Math.floor(-wy / 10));
+        let hazards = biomeAt(scoreMeters).hazards;
 
         let vx = 0;
         if (hazards.includes('moving')) {
@@ -1057,7 +1085,7 @@ class Game {
             }
         }
 
-        this.platforms.push({ x, y, w, h: 18, vx });
+        this.platforms.push({ x, y, w, h: 18, vx, wy });
 
         let chance = 0.08 * (1 - scoreMeters / 8000);
         chance = Math.max(0.015, chance);
@@ -1084,6 +1112,111 @@ class Game {
                 markedForDeletion: false
             });
         }
+    }
+
+    // Keeps platforms generated up to PLATFORM_LOOKAHEAD above the screen, so
+    // none ever pops into view, in strict height order.
+    fillPlatforms() {
+        while (this.state.nextPlatWY + this.state.score > -PLATFORM_LOOKAHEAD) {
+            this.spawnPlatform(this.state.nextPlatWY);
+            this.state.nextPlatWY -= CONFIG.PLATFORM_BASE_GAP;
+        }
+    }
+
+    // Game-time interval timer: true once per `every` frames' worth of dt
+    // (60fps units) regardless of refresh rate. A long frame fires it once,
+    // never as a burst of catch-up spawns.
+    tick(name, dt, every) {
+        const t = this.state.timers || (this.state.timers = {});
+        t[name] = (t[name] || 0) + dt;
+        if (t[name] < every) return false;
+        t[name] = Math.min(t[name] - every, every);
+        return true;
+    }
+
+    // Today's ghost for this exact layout, or null. A ghost recorded on
+    // another day, from another start height or by an older level generator
+    // would just wander through thin air.
+    loadGhost() {
+        let g = null;
+        try { g = JSON.parse(localStorage.getItem('lp_ghost')); } catch (e) { g = null; }
+        if (!g || g.v !== 2 || g.gen !== PLATFORM_GEN_VERSION) return null;
+        if (g.seed !== this.state.runSeed || g.start !== this.state.startMeters) return null;
+        if (!Array.isArray(g.pts) || !(g.step > 0)) return null;
+        return g;
+    }
+
+    // Samples the player on a fixed game-time cadence (every GHOST_STEP
+    // frames of dt), so playback speed doesn't depend on the refresh rate.
+    recordGhost() {
+        const rec = this.ghostRec;
+        if (!rec) return;
+        while (this.state.time >= rec.nextT && rec.pts.length < GHOST_MAX_POINTS * 2) {
+            rec.pts.push(Math.round(this.player.x), Math.round(this.player.y - this.state.score));
+            rec.nextT += GHOST_STEP;
+        }
+    }
+
+    // Keeps the best solo run of the day on this layout.
+    saveGhost(finalScore) {
+        const rec = this.ghostRec;
+        if (!rec || this.state.multiplayer || rec.pts.length < 4) return;
+        const stored = this.loadGhost();
+        if (stored && stored.score >= finalScore) return;
+        const ghost = {
+            v: 2, gen: PLATFORM_GEN_VERSION, seed: this.state.runSeed, start: this.state.startMeters,
+            score: finalScore, step: GHOST_STEP, pts: rec.pts
+        };
+        try { localStorage.setItem('lp_ghost', JSON.stringify(ghost)); } catch (e) { /* storage full: keep the old one */ }
+    }
+
+    drawGhost() {
+        const g = this.ghostPlayback;
+        if (!g) return;
+        const f = this.state.time / g.step;
+        const i = Math.floor(f);
+        if (i * 2 + 3 >= g.pts.length) return; // the recorded run is over
+        let x = g.pts[i * 2], y = g.pts[i * 2 + 1];
+        const nx = g.pts[i * 2 + 2], ny = g.pts[i * 2 + 3];
+        // Interpolate between samples, except across a screen wrap.
+        if (Math.abs(nx - x) < 300) {
+            x += (nx - x) * (f - i);
+            y += (ny - y) * (f - i);
+        }
+        const screenY = y + this.state.score;
+        if (screenY > -50 && screenY < CONFIG.HEIGHT + 50) {
+            this.renderer.ctx.globalAlpha = 0.3;
+            this.renderer.ctx.fillStyle = "#ffffff";
+            this.renderer.ctx.fillRect(x, screenY, 26, 26);
+            this.renderer.ctx.globalAlpha = 1;
+        }
+    }
+
+    // Moves the camera up by `diff` px: everything on screen shifts down,
+    // anything that fell far below is culled, and new platforms are generated.
+    scrollCamera(diff, perks = this.player.skin.ability || {}) {
+        this.player.y += diff;
+        this.remotePlayers.forEach(rp => { rp.y += diff; });
+
+        this.state.score += diff;
+        // SCORE x2 perk: state.score is the camera's real height (it drives
+        // biomes, spawns and boss loops), so the extra distance is banked
+        // separately and only added to the score the player sees.
+        this.state.bonusScore += diff * ((perks.scoreMult || 1) - 1);
+        this.state.bgOffset += diff * 0.5;
+
+        this.platforms.forEach(p => p.y += diff);
+        this.powerups.forEach(p => { p.y += diff; p.startY += diff; });
+        this.enemies.forEach(e => { if (e.shiftY) e.shiftY(diff); else e.y += diff; });
+        this.projectiles.forEach(p => p.y += diff);
+        this.particles.particles.forEach(p => p.y += diff);
+
+        this.platforms = this.platforms.filter(p => p.y < CONFIG.HEIGHT + 100);
+        this.powerups = this.powerups.filter(p => p.y < CONFIG.HEIGHT + 100);
+        // Drones circle back instead of leaving, so cull the ones left below.
+        this.enemies = this.enemies.filter(e => e instanceof BossDrone || e.y < CONFIG.HEIGHT + 100);
+
+        this.fillPlatforms();
     }
 
     startGame(isMp = false, mpSeed = null) {
@@ -1306,9 +1439,7 @@ class Game {
         // Don't leave a half-retracted net hanging over the menu.
         this.safetyNet = this.makeSafetyNetState();
 
-        if (this.state.isNewBest && this.state.ghostRecord) {
-            localStorage.setItem('lp_ghost', JSON.stringify(this.state.ghostRecord));
-        }
+        this.saveGhost(finalScore);
         if (!this.state.multiplayer) {
             this.updateFame(finalScore);
         }
@@ -1454,13 +1585,7 @@ class Game {
             this.lastBiomeName = this.renderer.currentBiome.name;
         }
 
-        if (this.state.frames % 5 === 0) {
-            if (!this.state.ghostRecord) this.state.ghostRecord = [];
-            this.state.ghostRecord.push({
-                x: Math.round(this.player.x),
-                y: Math.round(this.player.y - this.state.score)
-            });
-        }
+        this.recordGhost();
 
         // Boss Fights & Loop Management
         if (this.state.score > 0) {
@@ -1474,7 +1599,7 @@ class Game {
         }
 
         // Spawn Enemies (only if Boss isn't active)
-        if (!this.state.bossActive && scoreMeters > 60 && this.state.frames % Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))) === 0) {
+        if (!this.state.bossActive && scoreMeters > 60 && this.tick('drone', dt, Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))))) {
             const difficulty = 1 + (scoreMeters / 2000) + (this.state.loops || 0);
 
             if (scoreMeters > 300 && Math.random() < Math.min(0.5, (scoreMeters - 300) / 2400)) {
@@ -1484,7 +1609,7 @@ class Game {
             }
         }
 
-        if (hazards.includes('laser') && this.state.frames % 240 === 0) {
+        if (hazards.includes('laser') && this.tick('laser', dt, 240)) {
             this.enemies.push(new LaserDrone(this.player.y - 500));
         }
 
@@ -1497,7 +1622,9 @@ class Game {
             this.input.keys.right = tmp;
         }
 
-        let event = this.player.update(dt, this.input, this.platforms, this.powerups);
+        // A dead co-op player's body is gone until they respawn: no physics,
+        // no landing on platforms, no pickups.
+        let event = this.player.isDead ? null : this.player.update(dt, this.input, this.platforms, this.powerups);
 
         if (glitching) {
             const tmp = this.input.keys.left;
@@ -1523,7 +1650,7 @@ class Game {
             let pulse = Math.sin(this.state.time * 0.05) * 0.3;
             this.player.vy += pulse * dt;
         }
-        if (hazards.includes('meteor') && this.state.frames % 90 === 0) {
+        if (hazards.includes('meteor') && this.tick('meteor', dt, 90)) {
             let startX = Math.random() * CONFIG.WIDTH;
             let vx = (Math.random() - 0.5) * 4;
             let vy = 4 + Math.random() * 5;
@@ -1546,7 +1673,7 @@ class Game {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, POWERS.DOUBLE.color);
             sounds.play('jump');
         } else if (event === "trail") {
-            if (this.state.frames % 2 === 0)
+            if (this.tick('trail', dt, 2))
                 this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 1, "trail");
         } else if (event === "thrust") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#ff3300", 2, "blast");
@@ -1657,14 +1784,17 @@ class Game {
         this.particles.update(dt);
         this.updateSafetyNet(dt);
 
-        if (this.state.multiplayer && this.state.frames % 2 === 0 && !this.player.isDead) {
+        // Position sync at 30Hz of game time (not per rendered frame, which
+        // would be 2.4x the traffic on a 144Hz screen).
+        if (this.state.multiplayer && !this.player.isDead && this.tick('sync', dt, 2)) {
+            const r = v => Math.round(v * 10) / 10;
             window.network.send({
                 type: 'sync',
                 pid: window.network.myId,
-                x: this.player.x,
-                y: this.player.y - this.state.score,
-                vx: this.player.vx,
-                vy: this.player.vy,
+                x: r(this.player.x),
+                y: r(this.player.y - this.state.score),
+                vx: r(this.player.vx),
+                vy: r(this.player.vy),
                 skinIndex: this.viewParams.skinIndex,
                 activePowerId: this.player.activePower ? this.player.activePower.id : null
             });
@@ -1682,34 +1812,7 @@ class Game {
             targetY = aliveYs.length ? Math.max(...aliveYs) : threshold + 1; // everyone dead: no scroll
         }
 
-        if (targetY < threshold) {
-            let diff = threshold - targetY;
-
-            this.player.y += diff;
-            this.remotePlayers.forEach(rp => { rp.y += diff; });
-
-            this.state.score += diff;
-            // SCORE x2 perk: state.score is the camera's real height (it drives
-            // biomes, spawns and boss loops), so the extra distance is banked
-            // separately and only added to the score the player sees.
-            this.state.bonusScore += diff * ((perks.scoreMult || 1) - 1);
-            this.state.bgOffset += diff * 0.5;
-
-            this.platforms.forEach(p => p.y += diff);
-            this.powerups.forEach(p => { p.y += diff; p.startY += diff; });
-            this.enemies.forEach(p => p.y += diff);
-            this.projectiles.forEach(p => p.y += diff);
-            this.particles.particles.forEach(p => p.y += diff);
-
-            this.platforms = this.platforms.filter(p => p.y < CONFIG.HEIGHT + 100);
-            this.powerups = this.powerups.filter(p => p.y < CONFIG.HEIGHT + 100);
-            // Drones now circle back instead of leaving, so cull the ones left below.
-            this.enemies = this.enemies.filter(e => e.constructor.name === "BossDrone" || e.y < CONFIG.HEIGHT + 100);
-
-            let highest = CONFIG.HEIGHT;
-            this.platforms.forEach(p => { if (p.y < highest) highest = p.y; });
-            if (highest > 100) this.spawnPlatform(highest - CONFIG.PLATFORM_BASE_GAP);
-        }
+        if (targetY < threshold) this.scrollCamera(threshold - targetY, perks);
 
         if (!this.player.isDead && this.player.y > CONFIG.HEIGHT) {
             this.die();
@@ -1778,19 +1881,7 @@ class Game {
         this.enemies.forEach(e => e.draw(this.renderer.ctx));
         this.projectiles.forEach(p => p.draw(this.renderer.ctx));
 
-        if (this.ghostPlayback && this.ghostPlayback.length > 0) {
-            let idx = Math.floor(this.state.frames / 5);
-            if (idx < this.ghostPlayback.length) {
-                let pos = this.ghostPlayback[idx];
-                let screenY = pos.y + this.state.score;
-                if (screenY > -50 && screenY < CONFIG.HEIGHT + 50) {
-                    this.renderer.ctx.globalAlpha = 0.3;
-                    this.renderer.ctx.fillStyle = "#ffffff";
-                    this.renderer.ctx.fillRect(pos.x, screenY, 26, 26);
-                    this.renderer.ctx.globalAlpha = 1;
-                }
-            }
-        }
+        if (this.state.running) this.drawGhost();
 
         this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
 
@@ -1817,7 +1908,9 @@ class Game {
         const deltaTime = timestamp - this.lastTime;
         this.lastTime = timestamp;
 
-        let dt = deltaTime / (1000 / 60);
+        // performance.now() (reset on revive) and the rAF timestamp can
+        // disagree by a hair, so clamp at 0 as well as capping long frames.
+        let dt = Math.max(0, deltaTime) / (1000 / 60);
         if (dt > 4) dt = 4;
 
         this.update(dt);

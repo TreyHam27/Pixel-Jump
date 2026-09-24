@@ -30,13 +30,8 @@ class Renderer {
         this.canvas.height = CONFIG.HEIGHT;
     }
 
-    updateBiome(score) {
-        for (let i = BIOMES.length - 1; i >= 0; i--) {
-            if (score >= BIOMES[i].threshold) {
-                this.currentBiome = BIOMES[i];
-                break;
-            }
-        }
+    updateBiome(meters) {
+        this.currentBiome = biomeAt(meters);
     }
 
     clear(offsetY) {
