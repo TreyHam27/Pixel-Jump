@@ -10,6 +10,7 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 |---|---|---|
 | Move | ← → or A D | Hold the left quarter of the screen (move left) or the second quarter (move right) |
 | Jump | Space, ↑ or W | Tap the right half |
+| Pause | Esc or P | ❚❚ button (top right) |
 | Menu | ← → browse Pixels · Space / Enter start | Tap |
 
 ## Features
@@ -20,6 +21,8 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 - **Daily layout:** solo runs use the day's seed, and your best run of the day replays as a ghost.
 - **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC). Levels are generated identically on every client. Only public STUN servers are configured, so players behind strict NATs (some mobile carriers and office networks) need a TURN relay: add one with your own credentials to `EXTRA_ICE_SERVERS` in `js/config.js`.
 - **Extra lives:** buy them in the shop; ads are off (`ADS_ENABLED` in `js/config.js`).
+- **Run summary and Records:** every run ends with a summary card. RECORDS shows lifetime stats and every achievement (secret Pixels stay hidden until earned).
+- **Settings:** volume, mute, the daily ghost, and reduced motion. Solo runs pause when you switch tabs.
 
 ## Run locally
 

@@ -17,6 +17,18 @@ const isStringArray = v => Array.isArray(v) && v.every(x => typeof x === 'string
 // 12345 -> "12,345" for the HUD and menus.
 const fmtNum = n => Number(n).toLocaleString('en-US');
 
+// 3725 -> "1h 2m", 95 -> "1m 35s".
+function fmtDuration(totalSeconds) {
+    const t = Math.max(0, Math.floor(totalSeconds));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m ${s}s`;
+}
+
+const isPlainObject = v => !!v && typeof v === 'object' && !Array.isArray(v);
+
+// Lifetime totals shown on the Records screen (lp_stats).
+const STAT_DEFAULTS = { runs: 0, meters: 0, gems: 0, powerups: 0, livesLost: 0, seconds: 0 };
+
 class Game {
     constructor() {
         this.input = new InputHandler();
@@ -71,9 +83,17 @@ class Game {
 
         this.seedSkinAchievements();
 
+        this.settings = this.loadSettings();
+        this.stats = this.loadStats();
+        this.pauseMenuOpen = false;
+        this.settingsOpen = false;
+        this.runCardOpen = false;
+        this.hintShowing = false;
+
         // Gameplay keys/touches are only intercepted during a run (including
-        // while dead and spectating in co-op); the menus keep normal input.
-        this.input.isActive = () => this.state.running;
+        // while dead and spectating in co-op), and not while the pause menu
+        // is up; the menus keep normal input.
+        this.input.isActive = () => this.state.running && !this.pauseMenuOpen;
 
         this.ui = {
             menu: document.getElementById("menu-layer"),
@@ -124,7 +144,38 @@ class Game {
             mpPartyList: document.getElementById("mp-party-list"),
             mpPartyCount: document.getElementById("mp-party-count"),
             mpPartyCode: document.getElementById("mp-party-code"),
-            mpLeaveBtn: document.getElementById("mp-leave-btn")
+            mpLeaveBtn: document.getElementById("mp-leave-btn"),
+
+            // Pause, settings, run card, records, first-run hint
+            pauseBtn: document.getElementById("pause-btn"),
+            pauseOverlay: document.getElementById("pause-overlay"),
+            pauseNote: document.getElementById("pause-note"),
+            pauseResumeBtn: document.getElementById("pause-resume-btn"),
+            pauseSettingsBtn: document.getElementById("pause-settings-btn"),
+            pauseQuitBtn: document.getElementById("pause-quit-btn"),
+            settingsOpenBtn: document.getElementById("settings-open-btn"),
+            settingsOverlay: document.getElementById("settings-overlay"),
+            settingsCloseBtn: document.getElementById("settings-close-btn"),
+            setVolume: document.getElementById("set-volume"),
+            setMuted: document.getElementById("set-muted"),
+            setGhost: document.getElementById("set-ghost"),
+            setMotion: document.getElementById("set-motion"),
+            runCard: document.getElementById("run-card"),
+            runCardTitle: document.getElementById("run-card-title"),
+            runCardDistance: document.getElementById("run-card-distance"),
+            runCardBest: document.getElementById("run-card-best"),
+            runCardStats: document.getElementById("run-card-stats"),
+            runCardUnlocks: document.getElementById("run-card-unlocks"),
+            runCardWait: document.getElementById("run-card-wait"),
+            runAgainBtn: document.getElementById("run-again-btn"),
+            runMenuBtn: document.getElementById("run-menu-btn"),
+            recordsOpenBtn: document.getElementById("records-open-btn"),
+            recordsBackBtn: document.getElementById("records-back-btn"),
+            recordsLayer: document.getElementById("records-menu-layer"),
+            recordsStats: document.getElementById("records-stats"),
+            recordsList: document.getElementById("records-list"),
+            recordsCount: document.getElementById("records-count"),
+            controlsHint: document.getElementById("controls-hint")
         };
         // Everyone else in the run, keyed by peer ID (pid).
         this.remotePlayers = new Map();
@@ -165,12 +216,14 @@ class Game {
             this.ui.startBtn.innerText = "TAP TO START";
         }
         this.setMenuPanel('sp');
+        this.applySettings();
 
         this.loop = this.loop.bind(this);
         requestAnimationFrame(this.loop);
     }
 
     bindEvents() {
+        this.bindMetaEvents();
         this.ui.prev.onclick = (e) => { e.stopPropagation(); this.changeSkin(-1); };
         this.ui.next.onclick = (e) => { e.stopPropagation(); this.changeSkin(1); };
 
@@ -221,13 +274,23 @@ class Game {
         // The picker only ever holds unlocked Pixels, so a click anywhere else
         // on the menu always starts a run.
         this.ui.menu.onclick = (e) => {
-            if (e.target.closest('#skin-container') || e.target.closest('.mode-switch-arrow')) return;
+            if (e.target.closest('button, input, #skin-container, .mode-switch-arrow')) return;
             this.requestSoloStart();
         };
 
         // Keyboard on the solo menu: left/right browse the Pixel picker, and
         // Space / Enter / Up / W start a run (same as clicking the menu).
         window.addEventListener('keydown', (e) => {
+            // The end-of-run card takes Space/Enter as PLAY AGAIN (never a
+            // key still held from the run: that arrives as a repeat).
+            if (this.runCardOpen) {
+                const confirm = e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter';
+                if (confirm && !e.repeat && !this.settingsOpen && !this.ui.runAgainBtn.hidden) {
+                    e.preventDefault();
+                    this.runCardPlayAgain();
+                }
+                return;
+            }
             if (!this.canQuickStart(e)) return;
             const role = InputHandler.codeRole(e.code);
             if (role === 'left' || role === 'right') {
@@ -364,8 +427,8 @@ class Game {
                 }, { passive: true });
 
                 this.ui.menusWrapper.addEventListener('touchend', (e) => {
-                    // Not while the shop covers the menu, or mid-run.
-                    if (this.activeMenuPanel === 'shop' || this.state.running) { touchStartX = 0; return; }
+                    // Not while the shop/records cover the menu, or mid-run.
+                    if (this.activeMenuPanel === 'shop' || this.activeMenuPanel === 'records' || this.state.running) { touchStartX = 0; return; }
                     if (e.changedTouches.length > 0 && touchStartX !== 0) {
                         let touchEndX = e.changedTouches[0].clientX;
                         let diffX = touchEndX - touchStartX;
@@ -382,12 +445,261 @@ class Game {
         }
     }
 
+    // Pause, settings, records and the run card.
+    bindMetaEvents() {
+        const on = (el, fn) => { if (el) el.onclick = (e) => { if (e && e.stopPropagation) e.stopPropagation(); fn(); }; };
+        on(this.ui.pauseBtn, () => this.pauseGame());
+        on(this.ui.pauseResumeBtn, () => this.resumeGame());
+        on(this.ui.pauseSettingsBtn, () => this.openSettings());
+        on(this.ui.pauseQuitBtn, () => this.quitRun());
+        on(this.ui.settingsOpenBtn, () => this.openSettings());
+        on(this.ui.settingsCloseBtn, () => this.closeSettings());
+        on(this.ui.recordsOpenBtn, () => { this.renderRecords(); this.setMenuPanel('records'); });
+        on(this.ui.recordsBackBtn, () => this.setMenuPanel('sp'));
+        on(this.ui.runAgainBtn, () => this.runCardPlayAgain());
+        on(this.ui.runMenuBtn, () => this.closeRunCard());
+
+        const setting = (el, key, read) => {
+            if (!el || !el.addEventListener) return;
+            el.addEventListener('input', () => {
+                this.settings[key] = read(el);
+                this.saveSettings();
+                this.applySettings();
+            });
+        };
+        setting(this.ui.setVolume, 'volume', el => Number(el.value) / 100);
+        setting(this.ui.setMuted, 'muted', el => el.checked);
+        setting(this.ui.setGhost, 'showGhost', el => el.checked);
+        setting(this.ui.setMotion, 'reducedMotion', el => el.checked);
+
+        // Leaving the tab or window pauses a solo run.
+        document.addEventListener('visibilitychange', () => { if (document.hidden) this.autoPause(); });
+        window.addEventListener('blur', () => this.autoPause());
+
+        // Esc / P: close the topmost thing, or pause the run.
+        window.addEventListener('keydown', (e) => {
+            if (e.code !== 'Escape' && e.code !== 'KeyP') return;
+            if (e.target && e.target.closest && e.target.closest('input')) return;
+            const esc = e.code === 'Escape';
+            if (this.settingsOpen) { if (esc) this.closeSettings(); return; }
+            if (this.state.running) { e.preventDefault(); this.togglePause(); return; }
+            if (this.runCardOpen) { if (esc) this.closeRunCard(); return; }
+            if (esc && (this.activeMenuPanel === 'shop' || this.activeMenuPanel === 'records')) this.setMenuPanel('sp');
+        });
+    }
+
+    // ---------------------------------------------------------------- pause
+    // A solo run freezes under the pause screen. A co-op run can't stop for
+    // one player, so there it's just a menu over the live game.
+    pauseGame() {
+        if (!this.state.running || this.pauseMenuOpen) return;
+        this.pauseMenuOpen = true;
+        this.state.paused = !this.state.multiplayer;
+        this.input.resetInput();
+        this.ui.pauseNote.hidden = !this.state.multiplayer;
+        this.ui.pauseQuitBtn.innerText = this.state.multiplayer ? "LEAVE PARTY" : "QUIT RUN";
+        this.ui.pauseOverlay.hidden = false;
+    }
+
+    resumeGame() {
+        if (!this.pauseMenuOpen) return;
+        this.closePauseUI();
+        // Restart the frame clock so the paused time isn't one giant step.
+        this.lastTime = 0;
+    }
+
+    closePauseUI() {
+        this.pauseMenuOpen = false;
+        this.state.paused = false;
+        this.ui.pauseOverlay.hidden = true;
+        this.closeSettings();
+    }
+
+    togglePause() {
+        if (this.pauseMenuOpen) this.resumeGame();
+        else this.pauseGame();
+    }
+
+    autoPause() {
+        if (this.state.running && !this.state.multiplayer) this.pauseGame();
+    }
+
+    // Ends the run from the pause menu: straight to game over (no revive).
+    // In co-op that means leaving the party.
+    quitRun() {
+        if (!this.state.running) return;
+        this.closePauseUI();
+        if (this.state.multiplayer) {
+            this.endPartyRun();
+            this.leaveParty("LEFT THE PARTY");
+            return;
+        }
+        this.state.running = false;
+        this.gameOver();
+    }
+
+    // ------------------------------------------------------------- settings
+    loadSettings() {
+        const prefersReduced = typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const saved = loadJSON('lp_settings', {}, isPlainObject);
+        return {
+            volume: Number.isFinite(saved.volume) ? Math.max(0, Math.min(1, saved.volume)) : 0.8,
+            muted: saved.muted === true,
+            showGhost: saved.showGhost !== false,
+            reducedMotion: typeof saved.reducedMotion === 'boolean' ? saved.reducedMotion : prefersReduced
+        };
+    }
+
+    saveSettings() {
+        localStorage.setItem('lp_settings', JSON.stringify(this.settings));
+    }
+
+    applySettings() {
+        sounds.setVolume(this.settings.volume);
+        sounds.setMuted(this.settings.muted);
+        if (document.body && document.body.classList) document.body.classList.toggle('reduce-motion', this.settings.reducedMotion);
+        this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
+    }
+
+    openSettings() {
+        const s = this.settings;
+        this.ui.setVolume.value = Math.round(s.volume * 100);
+        this.ui.setMuted.checked = s.muted;
+        this.ui.setGhost.checked = s.showGhost;
+        this.ui.setMotion.checked = s.reducedMotion;
+        this.ui.settingsOverlay.hidden = false;
+        this.settingsOpen = true;
+    }
+
+    closeSettings() {
+        this.ui.settingsOverlay.hidden = true;
+        this.settingsOpen = false;
+    }
+
+    // ---------------------------------------------------------------- stats
+    loadStats() {
+        const saved = loadJSON('lp_stats', {}, isPlainObject);
+        const stats = { ...STAT_DEFAULTS };
+        for (const k of Object.keys(STAT_DEFAULTS)) {
+            if (Number.isFinite(saved[k]) && saved[k] >= 0) stats[k] = saved[k];
+        }
+        return stats;
+    }
+
+    recordRunStats(runMeters) {
+        const st = this.stats;
+        st.runs += 1;
+        st.meters += runMeters;
+        st.gems += this.state.runGems || 0;
+        st.powerups += this.state.powersCollected || 0;
+        st.livesLost += this.state.runDeaths || 0;
+        st.seconds += Math.max(0, (performance.now() - this.state.runStartTime) / 1000);
+        localStorage.setItem('lp_stats', JSON.stringify(st));
+    }
+
+    // -------------------------------------------------------------- run card
+    showRunCard(finalScore) {
+        const s = this.state;
+        const secs = Math.max(0, Math.round((performance.now() - s.runStartTime) / 1000));
+        const stats = [
+            [fmtNum(s.runGems || 0) + ' 💎', 'GEMS'],
+            [fmtNum(s.powersCollected || 0), 'POWER-UPS'],
+            [this.renderer.currentBiome.name.toUpperCase(), 'REACHED'],
+            [Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'), 'TIME']
+        ];
+        if (s.runLoops) stats.push([fmtNum(s.runLoops), s.runLoops === 1 ? 'BOSS BEATEN' : 'BOSSES BEATEN']);
+
+        this.ui.runCardTitle.innerText = s.multiplayer ? "PARTY DOWN" : "RUN OVER";
+        this.ui.runCardDistance.innerText = fmtNum(finalScore) + "m";
+        this.ui.runCardBest.hidden = !s.isNewBest;
+        this.ui.runCardStats.innerHTML = stats.map(([value, label]) =>
+            `<div class="run-stat"><span class="run-stat-value">${this.escapeHtml(value)}</span>` +
+            `<span class="run-stat-label">${label}</span></div>`).join('');
+        this.ui.runCardUnlocks.innerHTML = (s.runUnlocks || []).map(u => `<div>${this.escapeHtml(u)}</div>`).join('');
+        // In co-op only the leader restarts.
+        const guest = s.multiplayer && !s.isHost;
+        this.ui.runAgainBtn.hidden = guest;
+        this.ui.runCardWait.hidden = !guest;
+        this.ui.runCard.hidden = false;
+        this.runCardOpen = true;
+    }
+
+    closeRunCard() {
+        this.ui.runCard.hidden = true;
+        this.runCardOpen = false;
+    }
+
+    runCardPlayAgain() {
+        this.closeRunCard();
+        if (this.state.multiplayer) {
+            if (this.state.isHost) this.ui.mpStartBtn.onclick();
+        } else {
+            this.requestSoloStart();
+        }
+    }
+
+    // --------------------------------------------------------------- records
+    renderRecords() {
+        const st = this.stats;
+        const rows = [
+            [fmtNum(st.runs), 'RUNS'],
+            [fmtNum(this.state.bestHeight) + 'm', 'BEST HEIGHT'],
+            [fmtNum(Math.round(st.meters)) + 'm', 'TOTAL CLIMBED'],
+            [fmtNum(st.gems) + ' 💎', 'GEMS EARNED'],
+            [fmtNum(this.state.loops || 0), 'BOSSES BEATEN'],
+            [fmtNum(st.powerups), 'POWER-UPS'],
+            [fmtNum(st.livesLost), 'LIVES LOST'],
+            [fmtDuration(st.seconds), 'TIME PLAYED']
+        ];
+        this.ui.recordsStats.innerHTML = rows.map(([value, label]) =>
+            `<div class="run-stat"><span class="run-stat-value">${this.escapeHtml(value)}</span>` +
+            `<span class="run-stat-label">${label}</span></div>`).join('');
+
+        const earned = ACHIEVEMENTS.filter(a => this.achievements.includes(a.id)).length;
+        this.ui.recordsCount.innerText = `${earned} / ${ACHIEVEMENTS.length}`;
+        // Secret Pixels stay a surprise until earned.
+        this.ui.recordsList.innerHTML = ACHIEVEMENTS.map(a => {
+            const got = this.achievements.includes(a.id);
+            const masked = a.secret && !got;
+            const name = masked ? '???' : a.name;
+            const desc = masked ? 'A secret Pixel. Keep climbing.' : a.desc;
+            return `<div class="achievement-row${got ? ' earned' : ''}">
+                <span class="achievement-icon" aria-hidden="true">${a.skin ? '🎨' : '🏅'}</span>
+                <div><span class="achievement-name">${this.escapeHtml(name)}</span>
+                <span class="achievement-desc">${this.escapeHtml(desc || '')}</span></div>
+            </div>`;
+        }).join('');
+    }
+
+    // ------------------------------------------------------ first-run hint
+    // The very first run gets a short how-to-play, in keyboard or touch
+    // terms. It goes after a few seconds, or soon after the first jump.
+    showControlsHint() {
+        if (localStorage.getItem('lp_seen_hint')) return;
+        localStorage.setItem('lp_seen_hint', '1');
+        const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+        this.ui.controlsHint.innerHTML = touch
+            ? 'HOLD THE LEFT QUARTER TO GO ◀ · THE NEXT QUARTER TO GO ▶<br>TAP THE RIGHT HALF TO JUMP'
+            : '← → OR A D TO MOVE · SPACE, ↑ OR W TO JUMP<br>ESC TO PAUSE';
+        this.ui.controlsHint.hidden = false;
+        this.hintShowing = true;
+        clearTimeout(this.hintTimer);
+        this.hintTimer = setTimeout(() => this.hideControlsHint(), 7000);
+    }
+
+    hideControlsHint() {
+        clearTimeout(this.hintTimer);
+        this.hintShowing = false;
+        this.ui.controlsHint.hidden = true;
+    }
+
     // Keyboard shortcuts only apply on the solo menu itself: never mid-run,
     // never from a held (auto-repeating) key left over from the last run,
     // never while typing, and never under the revive prompt.
     canQuickStart(e) {
         if (e.repeat || this.state.running) return false;
-        if (this.activeMenuPanel !== 'sp') return false;
+        if (this.activeMenuPanel !== 'sp' || this.runCardOpen || this.settingsOpen) return false;
         const revive = this.ads && this.ads.reviveOverlay;
         if (revive && revive.style.display === 'flex') return false;
         const t = e.target;
@@ -411,13 +723,15 @@ class Game {
     // pages (focusing one also scrolled the clipped wrapper).
     setMenuPanel(panel) {
         this.activeMenuPanel = panel;
-        const sp = this.ui.menu, mp = this.ui.menuLayer2, shop = this.ui.shopLayer;
+        const sp = this.ui.menu, mp = this.ui.menuLayer2, shop = this.ui.shopLayer, records = this.ui.recordsLayer;
         if (sp) sp.style.transform = panel === 'mp' ? 'translateX(-100%)' : 'translateX(0)';
         if (mp) mp.style.transform = panel === 'mp' ? 'translateX(0)' : 'translateX(100%)';
         if (shop) shop.style.transform = panel === 'shop' ? 'translateY(0)' : 'translateY(100%)';
+        if (records) records.style.transform = panel === 'records' ? 'translateY(0)' : 'translateY(100%)';
         if (sp) sp.inert = panel !== 'sp';
         if (mp) mp.inert = panel !== 'mp';
         if (shop) shop.inert = panel !== 'shop';
+        if (records) records.inert = panel !== 'records';
     }
 
     // Co-op menu status pill. `state` is one of 'pending' | 'success' | 'danger'
@@ -1144,6 +1458,7 @@ class Game {
     // Banks gems and pops the counter.
     addShards(n) {
         this.state.shards += n;
+        if (this.state.running) this.state.runGems = (this.state.runGems || 0) + n;
         localStorage.setItem('lp_shards', this.state.shards);
         if (this.ui.shardDisplay) {
             this.ui.shardDisplay.innerText = fmtNum(this.state.shards) + " 💎";
@@ -1205,6 +1520,11 @@ class Game {
         this.state.nextBossAt = this.state.startMeters + CONFIG.BOSS_LOOP_DISTANCE;
         this.state.powersCollected = 0;
         this.state.isNewBest = false;
+        this.state.paused = false;
+        // Run summary counters (end-of-run card and lifetime stats).
+        this.state.runGems = 0;
+        this.state.runDeaths = 0;
+        this.state.runUnlocks = [];
         // Solo runs race (and record) a ghost of the day's best run on this
         // exact layout; co-op has none.
         this.ghostRec = this.state.multiplayer ? null : { nextT: 0, pts: [] };
@@ -1237,6 +1557,7 @@ class Game {
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
         this.fillPlatforms();
         this.particles = new ParticleSystem();
+        this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
         this.safetyNet = this.makeSafetyNetState();
         this.remotePlayers = new Map();
 
@@ -1407,6 +1728,8 @@ class Game {
             document.activeElement.blur();
         }
         this.input.resetInput();
+        this.closeRunCard();
+        this.closeSettings();
         this.state.running = true;
         this.state.multiplayer = isMp;
         this.state.deathCount = 0;
@@ -1423,6 +1746,7 @@ class Game {
 
         this.state.gamesPlayedThisSession++;
         this.state.runStartTime = performance.now();
+        this.showControlsHint();
     }
 
     die(forceDie = false) {
@@ -1441,6 +1765,8 @@ class Game {
             this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
             return;
         }
+
+        this.state.runDeaths = (this.state.runDeaths || 0) + 1;
 
         // Equipped Pixel's free revive: a bonus life on top of (not instead
         // of) the normal one-ad-revive-per-run flow below.
@@ -1500,6 +1826,7 @@ class Game {
         sounds.play('death');
         this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 40, "blast");
         this.player.isDead = true;
+        this.state.runDeaths = (this.state.runDeaths || 0) + 1;
 
         if (window.network) {
             window.network.send({ type: 'die', pid: window.network.myId });
@@ -1644,6 +1971,9 @@ class Game {
             this.ads.showInterstitialAd();
         }
         let finalScore = this.runScore();
+        this.closePauseUI();
+        this.hideControlsHint();
+        this.recordRunStats(Math.max(0, Math.floor(this.state.score / 10) - (this.state.startMeters || 0)));
 
         // Don't leave a half-retracted net hanging over the menu.
         this.safetyNet = this.makeSafetyNetState();
@@ -1682,6 +2012,7 @@ class Game {
         this.updateSkinUI();
         this.renderGemShop();
         this.updateExtraLifeUI();
+        this.showRunCard(finalScore);
     }
 
     loadFame() {
@@ -1727,7 +2058,9 @@ class Game {
             if (g.condition(this.state, this.player) && !this.achievements.includes(g.id)) {
                 this.achievements.push(g.id);
                 localStorage.setItem('lp_achievements', JSON.stringify(this.achievements));
-                this.showAchievement(g.skin ? "PIXEL UNLOCKED: " + g.name : g.name, g.skin ? "🎨" : "🏅");
+                const label = g.skin ? "PIXEL UNLOCKED: " + g.name : g.name;
+                if (this.state.running && this.state.runUnlocks) this.state.runUnlocks.push((g.skin ? "🎨 " : "🏅 ") + label);
+                this.showAchievement(label, g.skin ? "🎨" : "🏅");
             }
         });
     }
@@ -1774,7 +2107,7 @@ class Game {
     }
 
     update(dt) {
-        if (!this.state.running) return;
+        if (!this.state.running || this.state.paused) return;
 
         this.state.frames++;
         this.state.time += dt;
@@ -1883,6 +2216,11 @@ class Game {
         if (event === "jump") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#fff");
             sounds.play('jump');
+            // They've got the idea: let the first-run hint go shortly.
+            if (this.hintShowing) {
+                clearTimeout(this.hintTimer);
+                this.hintTimer = setTimeout(() => this.hideControlsHint(), 2000);
+            }
         } else if (event === "double_jump") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, POWERS.DOUBLE.color);
             sounds.play('jump');
@@ -2021,6 +2359,12 @@ class Game {
             localStorage.setItem('lp_best_height', heightMeters);
         }
 
+        // Story beats: a short SYSTEM line as each height is first passed.
+        if (this.storyIndex < STORY.length && heightMeters >= STORY[this.storyIndex].h) {
+            this.showAlert(STORY[this.storyIndex].t, 'info');
+            this.storyIndex++;
+        }
+
         // Dead and waiting to respawn while the rest of the party went quiet:
         // end the run rather than wait forever.
         if (this.state.multiplayer && this.player.isDead && !this.anyRemoteAlive()) {
@@ -2091,7 +2435,7 @@ class Game {
         this.enemies.forEach(e => e.draw(this.renderer.ctx));
         this.projectiles.forEach(p => p.draw(this.renderer.ctx));
 
-        if (this.state.running) this.drawGhost();
+        if (this.state.running && this.settings.showGhost) this.drawGhost();
 
         this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
 
@@ -2117,7 +2461,7 @@ class Game {
     }
 
     loop(timestamp) {
-        if (!this.lastTime) this.lastTime = timestamp;
+        if (!this.lastTime || this.state.paused) this.lastTime = timestamp;
         const deltaTime = timestamp - this.lastTime;
         this.lastTime = timestamp;
 
