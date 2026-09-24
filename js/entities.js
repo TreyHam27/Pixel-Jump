@@ -227,6 +227,8 @@ class ParticleSystem {
     }
 
     spawn(x, y, color, count = 5, type = "normal") {
+        // Reduced motion (Settings) thins every burst out.
+        if (this.scale !== undefined && this.scale !== 1) count = Math.max(1, Math.round(count * this.scale));
         for (let i = 0; i < count; i++) {
             this.particles.push({
                 x: x, y: y,

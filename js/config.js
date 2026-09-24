@@ -200,12 +200,12 @@ const POWERS = {
 };
 
 const ACHIEVEMENTS = [
-    { id: '1km', name: 'Kilometer Club', condition: (state, player) => state.score >= 10000 },
-    { id: '5km', name: 'Stratosphere', condition: (state, player) => state.score >= 50000 },
-    { id: 'magnet', name: 'Attractive', condition: (state, player) => player.activePower && player.activePower.name === "MAGNET" },
-    { id: 'pacifist', name: 'Pacifist Pilot', condition: (state, player) => state.score >= 50000 && state.powersCollected === 0 },
-    { id: 'boss', name: 'Titan Slayer', condition: (state, player) => state.loops >= 1 },
-    { id: 'rich', name: 'Data Hoarder', condition: (state, player) => state.shards >= 100 },
+    { id: '1km', name: 'Kilometer Club', desc: 'Climb to 1,000m', condition: (state, player) => state.score >= 10000 },
+    { id: '5km', name: 'Stratosphere', desc: 'Climb to 5,000m', condition: (state, player) => state.score >= 50000 },
+    { id: 'magnet', name: 'Attractive', desc: 'Pick up a MAGNET power-up', condition: (state, player) => player.activePower && player.activePower.name === "MAGNET" },
+    { id: 'pacifist', name: 'Pacifist Pilot', desc: 'Reach 5,000m without collecting a power-up', condition: (state, player) => state.score >= 50000 && state.powersCollected === 0 },
+    { id: 'boss', name: 'Titan Slayer', desc: 'Beat a boss', condition: (state, player) => state.loops >= 1 },
+    { id: 'rich', name: 'Data Hoarder', desc: 'Hold 100 gems', condition: (state, player) => state.shards >= 100 },
 
     // Every distance-gated skin doubles as an achievement. Crossing its high
     // score is exactly what unlocks it (see Game.isSkinLocked()), so that same
@@ -218,7 +218,9 @@ const ACHIEVEMENTS = [
         .map(s => ({
             id: 'skin:' + s.name,
             name: s.name,
+            desc: 'Reach ' + s.unlock.toLocaleString('en-US') + 'm to unlock this Pixel',
             skin: true,
+            secret: !!s.secret,
             condition: (state) => state.bestHeight >= s.unlock
         }))
 ];

@@ -1630,14 +1630,26 @@ canvas {
     }
 }
 
-#touch-hint {
+/* First-run controls hint, in the upper middle of the playfield: the player
+   starts at the bottom, so a hint down there would cover them. */
+#controls-hint {
     position: absolute;
-    bottom: calc(20px + var(--safe-bottom));
-    color: rgba(255, 255, 255, 0.55);
+    top: 34%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(90%, 460px);
+    padding: 10px 16px;
+    background: rgba(10, 10, 14, 0.85);
+    border: 1px solid rgba(0, 255, 255, 0.4);
+    border-radius: var(--radius);
+    color: #bff;
     font-size: 12px;
-    text-align: center;
-    width: 100%;
+    font-weight: bold;
+    line-height: 1.6;
     letter-spacing: 1px;
+    text-align: center;
+    z-index: 12;
 }
 
 /* Below the HUD rows (score, BEST, power-up bar) instead of on top of them. */
@@ -1865,4 +1877,332 @@ canvas {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
+}
+
+/* ---------- In-run HUD button (pause) ---------- */
+.hud-btn {
+    position: absolute;
+    top: calc(56px + var(--safe-top));
+    right: calc(10px + var(--safe-right));
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: rgba(10, 10, 14, 0.6);
+    border: 1px solid #444;
+    border-radius: var(--radius);
+    color: #ddd;
+    font-size: 14px;
+    letter-spacing: -2px;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+/* The pause icon's two bars, drawn rather than a glyph (Orbitron has none). */
+#pause-btn::before,
+#pause-btn::after {
+    content: "";
+    position: absolute;
+    top: 12px;
+    width: 5px;
+    height: 16px;
+    background: currentColor;
+}
+
+#pause-btn::before { left: 13px; }
+#pause-btn::after { right: 13px; }
+
+@media (hover: hover) {
+    .hud-btn:hover {
+        border-color: #00ffff;
+        color: #00ffff;
+    }
+}
+
+/* ---------- Shared modal overlays: pause, settings, run card ---------- */
+.overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.78);
+    pointer-events: auto;
+    z-index: 60;
+}
+
+#run-card {
+    /* Above the menus it opens over, below the persistent gem counter. */
+    z-index: 35;
+}
+
+.overlay-box {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: min(320px, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 22px 20px;
+    box-sizing: border-box;
+    background: #0d0b14;
+    border: 1px solid #3a2a55;
+    border-radius: var(--radius);
+    box-shadow: 0 0 30px rgba(160, 32, 240, 0.25);
+    text-align: center;
+}
+
+.overlay-title {
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #fff;
+    text-shadow: 0 0 12px #a020f0, 0 0 24px #c04dff;
+    margin-bottom: 6px;
+}
+
+.overlay-note {
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #ffaa00;
+}
+
+.overlay-btn {
+    padding: 12px 14px;
+    background: transparent;
+    border: 1px solid #555;
+    border-radius: var(--radius);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.overlay-btn.primary {
+    background: #00ffff;
+    border-color: #00ffff;
+    color: #001416;
+}
+
+.overlay-btn.danger {
+    border-color: rgba(255, 51, 102, 0.6);
+    color: #ff6688;
+}
+
+@media (hover: hover) {
+    .overlay-btn:hover {
+        border-color: #fff;
+    }
+
+    .overlay-btn.primary:hover {
+        background: #66ffff;
+        border-color: #66ffff;
+    }
+}
+
+/* Settings rows: label left, control right. */
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 4px;
+    border-bottom: 1px solid #222;
+    color: #ddd;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    cursor: pointer;
+}
+
+.setting-row input[type="range"] {
+    width: 55%;
+    accent-color: #00ffff;
+}
+
+.setting-row input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: #00ffff;
+}
+
+/* ---------- End-of-run card ---------- */
+.run-card-distance {
+    font-size: 44px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 16px rgba(255, 255, 255, 0.45);
+}
+
+.run-card-best {
+    color: #ffd700;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
+}
+
+.run-card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+.run-stat {
+    padding: 8px 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid #2a2a2a;
+    border-radius: var(--radius);
+}
+
+.run-stat-value {
+    display: block;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 900;
+}
+
+.run-stat-label {
+    display: block;
+    margin-top: 2px;
+    color: #8c8c8c;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.run-card-unlocks:empty {
+    display: none;
+}
+
+.run-card-unlocks {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #ffd700;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.run-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.run-card-actions .overlay-btn {
+    flex: 1;
+}
+
+/* ---------- Main menu action row ---------- */
+.menu-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.menu-actions .shop-trigger-btn {
+    margin-bottom: 0;
+}
+
+.icon-btn {
+    padding: 10px 14px;
+    font-size: 16px;
+}
+
+/* ---------- Records ---------- */
+#records-menu-layer {
+    transform: translateY(100%);
+    background: #0a0710;
+    z-index: 25;
+    padding-top: calc(30px + var(--safe-top));
+}
+
+.page-title--records {
+    text-shadow: 0 0 14px #ffd700, 0 0 28px #ffaa00;
+    margin-bottom: 4px;
+}
+
+.records-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: min(320px, 85vw);
+}
+
+.records-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: min(320px, 85vw);
+    padding-bottom: 20px;
+}
+
+.achievement-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid #2a2a2a;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.03);
+    text-align: left;
+}
+
+.achievement-row.earned {
+    border-color: rgba(255, 215, 0, 0.45);
+    background: rgba(255, 215, 0, 0.06);
+}
+
+.achievement-icon {
+    flex: none;
+    width: 22px;
+    text-align: center;
+    font-size: 16px;
+    filter: grayscale(1);
+    opacity: 0.5;
+}
+
+.achievement-row.earned .achievement-icon {
+    filter: none;
+    opacity: 1;
+}
+
+.achievement-name {
+    display: block;
+    color: #bbb;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.achievement-row.earned .achievement-name {
+    color: #ffd700;
+}
+
+.achievement-desc {
+    display: block;
+    color: #8c8c8c;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+}
+
+#records-count {
+    color: #ffd700;
+    letter-spacing: 1px;
+}
+
+/* Reduced motion chosen in Settings: same as the OS-level preference. */
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
 }

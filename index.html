@@ -25,6 +25,7 @@
             <div id="hud">
                 <div id="score-display">0m</div>
                 <div id="best-display-hud">BEST: 0m</div>
+                <button id="pause-btn" class="hud-btn" aria-label="Pause (Esc)"></button>
             </div>
 
             <div id="shard-display">0 💎</div>
@@ -41,7 +42,19 @@
                 <span id="system-alert-text"></span>
             </div>
 
-            <div id="touch-hint">LEFT SIDE: MOVE | RIGHT SIDE: JUMP</div>
+            <!-- First run only: how to play, keyboard or touch. -->
+            <div id="controls-hint" hidden></div>
+
+            <!-- PAUSE (solo pauses; co-op keeps running behind it) -->
+            <div id="pause-overlay" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="pause-title">
+                <div class="overlay-box">
+                    <div id="pause-title" class="overlay-title">PAUSED</div>
+                    <div id="pause-note" class="overlay-note" hidden>CO-OP: THE RUN KEEPS GOING</div>
+                    <button id="pause-resume-btn" class="overlay-btn primary">RESUME</button>
+                    <button id="pause-settings-btn" class="overlay-btn">SETTINGS</button>
+                    <button id="pause-quit-btn" class="overlay-btn danger">QUIT RUN</button>
+                </div>
+            </div>
 
             <!-- REVIVE UI -->
             <div id="revive-overlay">
@@ -89,9 +102,11 @@
                     <button class="nav-btn" id="next-btn" aria-label="Next Pixel">&gt;</button>
                 </div>
 
-                <button id="shop-open-btn" class="shop-trigger-btn">
-                    <span class="shop-trigger-label">🛒 SHOP</span>
-                </button>
+                <div class="menu-actions">
+                    <button id="shop-open-btn" class="shop-trigger-btn">🛒 SHOP</button>
+                    <button id="records-open-btn" class="shop-trigger-btn">🏅 RECORDS</button>
+                    <button id="settings-open-btn" class="shop-trigger-btn icon-btn" aria-label="Settings">⚙</button>
+                </div>
 
                 <div id="menu-lastscore" hidden>LAST RUN: 0m</div>
                 <div id="menu-highscore">HIGH SCORE: 0m</div>
@@ -127,6 +142,19 @@
                 </div>
 
                 <div id="gem-shop-dots"></div>
+            </div>
+
+            <!-- RECORDS: lifetime stats and every achievement -->
+            <div id="records-menu-layer" class="menu-page">
+                <button id="records-back-btn" class="shop-back-btn">◀ BACK</button>
+
+                <div class="page-title page-title--records">RECORDS</div>
+
+                <div class="shop-section-label">STATS</div>
+                <div id="records-stats" class="records-stats"></div>
+
+                <div class="shop-section-label">ACHIEVEMENTS <span id="records-count"></span></div>
+                <div id="records-list" class="records-list"></div>
             </div>
 
             <!-- MULTIPLAYER MENU -->
@@ -172,6 +200,38 @@
 
                 <div id="mp-status" role="status" aria-live="polite">READY</div>
                 <button id="mp-start-prompt">START RUN</button>
+            </div>
+        </div>
+
+        <!-- END OF RUN -->
+        <div id="run-card" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="run-card-title">
+            <div class="overlay-box run-card-box">
+                <div id="run-card-title" class="overlay-title">RUN OVER</div>
+                <div id="run-card-distance" class="run-card-distance">0m</div>
+                <div id="run-card-best" class="run-card-best" hidden>★ NEW BEST ★</div>
+                <div id="run-card-stats" class="run-card-stats"></div>
+                <div id="run-card-unlocks" class="run-card-unlocks"></div>
+                <div id="run-card-wait" class="overlay-note" hidden>WAITING FOR THE LEADER...</div>
+                <div class="run-card-actions">
+                    <button id="run-again-btn" class="overlay-btn primary">PLAY AGAIN</button>
+                    <button id="run-menu-btn" class="overlay-btn">MENU</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SETTINGS (from the menu or the pause screen) -->
+        <div id="settings-overlay" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="overlay-box">
+                <div id="settings-title" class="overlay-title">SETTINGS</div>
+                <label class="setting-row" for="set-volume"><span>SOUND</span>
+                    <input type="range" id="set-volume" min="0" max="100" step="5"></label>
+                <label class="setting-row" for="set-muted"><span>MUTE</span>
+                    <input type="checkbox" id="set-muted"></label>
+                <label class="setting-row" for="set-ghost"><span>SHOW GHOST</span>
+                    <input type="checkbox" id="set-ghost"></label>
+                <label class="setting-row" for="set-motion"><span>REDUCED MOTION</span>
+                    <input type="checkbox" id="set-motion"></label>
+                <button id="settings-close-btn" class="overlay-btn primary">DONE</button>
             </div>
         </div>
     </div>

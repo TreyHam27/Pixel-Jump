@@ -70,7 +70,11 @@ PJ_TOUCH=1 node .claude/skills/run-pixel-jump/driver.mjs tap '#shop-open-btn' wa
 ```
 
 Other useful selectors: `#prev-btn` / `#next-btn` (skin picker), `#to-sp-btn`,
-`#mp-host-btn`, `#mp-join-btn`, `#shop-life-btn`, `#gem-prev-btn` / `#gem-next-btn`.
+`#mp-host-btn`, `#mp-join-btn`, `#shop-life-btn`, `#gem-prev-btn` / `#gem-next-btn`,
+`#records-open-btn` / `#records-back-btn`, `#settings-open-btn` / `#settings-close-btn`,
+`#pause-btn` (or `key Escape`), `#pause-resume-btn`, `#pause-quit-btn`, and the
+end-of-run card's `#run-again-btn` / `#run-menu-btn`. A run's first start shows a
+one-time controls hint (`lp_seen_hint`).
 
 ## Run (human path)
 
