@@ -4,30 +4,46 @@ class Renderer {
         this.ctx = this.canvas.getContext('2d');
         this.background = new Background(CONFIG.WIDTH, CONFIG.HEIGHT);
         this.currentBiome = BIOMES[0];
+        this.dpr = 1;
+        this.onResize = null; // set by the Game (touch-control layout, sprites)
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        // Debounced: dragging a window edge fires dozens of these.
+        let pending = null;
+        const later = () => {
+            clearTimeout(pending);
+            pending = setTimeout(() => this.resize(), 100);
+        };
+        window.addEventListener('resize', later);
+        window.addEventListener('orientationchange', later);
+        if (window.visualViewport && window.visualViewport.addEventListener) {
+            window.visualViewport.addEventListener('resize', later);
+        }
     }
 
+    // Letterboxes the 600x800 playfield into its container (which is sized
+    // with dvh, so mobile browser toolbars don't cover the bottom), and sizes
+    // the backing store for the screen's pixel density so it stays sharp.
+    // All drawing stays in the logical 600x800 units.
     resize() {
-        // Letterbox scaling
+        const container = this.canvas.parentElement;
+        const availW = (container && container.clientWidth) || window.innerWidth;
+        const availH = (container && container.clientHeight) || window.innerHeight;
         const aspect = CONFIG.WIDTH / CONFIG.HEIGHT;
-        const winW = window.innerWidth;
-        const winH = window.innerHeight;
-        const winAspect = winW / winH;
+        let w = availW, h = availW / aspect;
+        if (h > availH) { h = availH; w = availH * aspect; }
+        this.canvas.style.width = Math.floor(w) + 'px';
+        this.canvas.style.height = Math.floor(h) + 'px';
 
-        if (winAspect < aspect) {
-            // Window is taller than game
-            this.canvas.style.width = '100vw';
-            this.canvas.style.height = `${100 / aspect}vw`;
-        } else {
-            // Window is wider than game
-            this.canvas.style.height = '100vh';
-            this.canvas.style.width = `${100 * aspect}vh`;
+        const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+        const bw = Math.round(CONFIG.WIDTH * dpr);
+        const bh = Math.round(CONFIG.HEIGHT * dpr);
+        if (this.canvas.width !== bw || this.canvas.height !== bh) {
+            this.canvas.width = bw;   // (resets the context state)
+            this.canvas.height = bh;
         }
-
-        // Internal Resolution matches Game Logical Size
-        this.canvas.width = CONFIG.WIDTH;
-        this.canvas.height = CONFIG.HEIGHT;
+        this.dpr = dpr;
+        if (this.ctx.setTransform) this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (this.onResize) this.onResize();
     }
 
     updateBiome(meters) {
@@ -36,7 +52,7 @@ class Renderer {
 
     clear(offsetY) {
         this.ctx.fillStyle = this.currentBiome.bg;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
         this.background.draw(this.ctx, offsetY);
     }
 
@@ -44,12 +60,12 @@ class Renderer {
         this.ctx.strokeStyle = this.currentBiome.grid;
         this.ctx.lineWidth = 1;
         this.ctx.beginPath();
-        for (let i = 0; i < this.canvas.width; i += 40) {
-            this.ctx.moveTo(i, 0); this.ctx.lineTo(i, this.canvas.height);
+        for (let i = 0; i < CONFIG.WIDTH; i += 40) {
+            this.ctx.moveTo(i, 0); this.ctx.lineTo(i, CONFIG.HEIGHT);
         }
         let gridY = offsetY % 40;
-        for (let i = gridY; i < this.canvas.height; i += 40) {
-            this.ctx.moveTo(0, i); this.ctx.lineTo(this.canvas.width, i);
+        for (let i = gridY; i < CONFIG.HEIGHT; i += 40) {
+            this.ctx.moveTo(0, i); this.ctx.lineTo(CONFIG.WIDTH, i);
         }
         this.ctx.stroke();
     }
@@ -72,8 +88,8 @@ class Renderer {
         if (net.deploy <= 0.01) return;
 
         const ctx = this.ctx;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        const w = CONFIG.WIDTH;
+        const h = CONFIG.HEIGHT;
         const SEGMENTS = 32;
         // Springs up into place on pickup, drops back out when the power expires.
         // Rests high enough that a full downward dip still reads on screen.

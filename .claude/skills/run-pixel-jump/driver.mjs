@@ -25,7 +25,8 @@
 // Env: PJ_OUT (screenshot dir, default ./pj-shots), PJ_PORT (default 8765),
 //      PJ_W / PJ_H (viewport, default 1200x800, or 390x844 with PJ_TOUCH=1),
 //      PJ_TOUCH=1 (emulate a phone: touch events, mobile viewport; `start`
-//      then taps instead of clicking).
+//      then taps instead of clicking), PJ_DPR (device pixel ratio, default 1),
+//      PJ_PATH (appended to the URL, e.g. '?beat=500&d=20260923' or '?sw').
 // Exits 1 if the page threw any error or logged console.error.
 import { createRequire } from 'module';
 import { spawn } from 'child_process';
@@ -70,11 +71,12 @@ try {
             width: Number(process.env.PJ_W || (touch ? 390 : 1200)),
             height: Number(process.env.PJ_H || (touch ? 844 : 800))
         },
-        ...(touch ? { hasTouch: true, isMobile: true } : {})
+        ...(touch ? { hasTouch: true, isMobile: true } : {}),
+        deviceScaleFactor: Number(process.env.PJ_DPR || 1)
     });
     page.on('pageerror', e => errs.push('pageerror: ' + e.message));
     page.on('console', m => { if (m.type() === 'error') errs.push('console.error: ' + m.text()); });
-    await page.goto(url);
+    await page.goto(url + (process.env.PJ_PATH || ''));
     await page.waitForTimeout(1000); // fonts + first menu frame
     // The Game instance is never stored globally (window.onload does a bare
     // `new Game()`), so capture it from the next update() tick as window.__game.

@@ -46,11 +46,19 @@ class Background {
             layer.elements.forEach(el => {
                 let drawY = (el.y + yOffset) % this.height;
                 if (el.size > 10) { // Nebula
-                    const grad = ctx.createRadialGradient(el.x, drawY, 0, el.x, drawY, el.size);
-                    grad.addColorStop(0, el.color);
-                    grad.addColorStop(1, "transparent");
-                    ctx.fillStyle = grad;
-                    ctx.fillRect(el.x - el.size, drawY - el.size, el.size * 2, el.size * 2);
+                    // The gradient is built once, around the origin, and
+                    // moved into place: no new gradient objects every frame.
+                    if (!el.grad || el.gradCtx !== ctx) {
+                        el.grad = ctx.createRadialGradient(0, 0, 0, 0, 0, el.size);
+                        el.grad.addColorStop(0, el.color);
+                        el.grad.addColorStop(1, "transparent");
+                        el.gradCtx = ctx;
+                    }
+                    ctx.save();
+                    ctx.translate(el.x, drawY);
+                    ctx.fillStyle = el.grad;
+                    ctx.fillRect(-el.size, -el.size, el.size * 2, el.size * 2);
+                    ctx.restore();
                 } else { // Star
                     ctx.fillRect(el.x, drawY, el.size, el.size);
                 }

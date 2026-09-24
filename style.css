@@ -2206,3 +2206,90 @@ body.reduce-motion *::after {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
 }
+
+/* ---------- On-screen touch pads (phones) ----------
+   #touch-controls is laid over the canvas by Game.layoutTouchControls();
+   each pad sits in the middle of its zone: left quarter, second quarter,
+   right half. */
+#touch-controls {
+    position: absolute;
+    pointer-events: none;
+    z-index: 11;
+}
+
+.touch-pad {
+    position: absolute;
+    bottom: 14px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    border: 2px solid rgba(255, 255, 255, 0.28);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 22px;
+    font-weight: 900;
+    transition: background 0.08s, border-color 0.08s;
+}
+
+.touch-pad--left { left: 12.5%; }
+.touch-pad--right { left: 37.5%; }
+
+.touch-pad--jump {
+    left: 75%;
+    width: 84px;
+    height: 84px;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.touch-pad.is-active {
+    background: rgba(0, 255, 255, 0.22);
+    border-color: #00ffff;
+    color: #fff;
+}
+
+/* ---------- Daily challenge target (from a shared link) ---------- */
+#challenge-hud {
+    position: absolute;
+    top: calc(116px + var(--safe-top));
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 3px 10px;
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: var(--radius-pill);
+    background: rgba(0, 0, 0, 0.5);
+    color: #ffd700;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+#challenge-hud.beaten {
+    border-color: #00ffaa;
+    color: #00ffaa;
+}
+
+/* Phones: BEST sits under the score, so the top centre is free (the old spot
+   is where alerts and achievement pops appear). */
+@media (max-width: 480px) {
+    #challenge-hud {
+        top: calc(26px + var(--safe-top));
+        font-size: 11px;
+    }
+}
+
+/* ---------- Share ---------- */
+.share-btn {
+    border-color: rgba(255, 215, 0, 0.6);
+    color: #ffd700;
+}
+
+#share-toast {
+    color: #00ffaa;
+    word-break: break-all;
+}
