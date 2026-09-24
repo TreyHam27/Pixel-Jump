@@ -2152,6 +2152,50 @@ canvas {
     margin-bottom: 0;
 }
 
+/* The shop is the main thing to do between runs: gem-cyan and glowing,
+   and it pulses with a BUY badge whenever something new is affordable. */
+#shop-open-btn {
+    position: relative;
+    color: #00ffff;
+    border-color: #00ffff;
+    background: rgba(0, 255, 255, 0.1);
+    box-shadow: 0 0 12px rgba(0, 255, 255, 0.35);
+    text-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+    font-size: 1.1em;
+    padding-left: 22px;
+    padding-right: 22px;
+}
+
+@media (hover: hover) {
+    #shop-open-btn:hover {
+        border-color: #00ffff;
+        background: rgba(0, 255, 255, 0.2);
+    }
+}
+
+@keyframes shop-pulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(0, 255, 255, 0.35); }
+    50% { box-shadow: 0 0 26px rgba(0, 255, 255, 0.9); }
+}
+
+#shop-open-btn.can-buy {
+    animation: shop-pulse 1.6s ease-in-out infinite;
+}
+
+.shop-badge {
+    position: absolute;
+    top: -9px;
+    right: -9px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    background: #ff3366;
+    color: #fff;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-shadow: none;
+    box-shadow: 0 0 8px rgba(255, 51, 102, 0.8);
+}
+
 .icon-btn {
     padding: 10px 14px;
     font-size: 16px;

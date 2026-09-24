@@ -333,7 +333,7 @@ class Game {
                 return;
             }
             if (!this.canQuickStart(e)) return;
-            const role = InputHandler.codeRole(e.code);
+            const role = InputHandler.eventRole(e);
             if (role === 'left' || role === 'right') {
                 e.preventDefault();
                 this.changeSkin(role === 'left' ? -1 : 1);
@@ -556,6 +556,7 @@ class Game {
     resumeGame() {
         if (!this.pauseMenuOpen) return;
         this.closePauseUI();
+        this.blurFocus();
         // Restart the frame clock so the paused time isn't one giant step.
         this.lastTime = 0;
     }
@@ -635,6 +636,8 @@ class Game {
     closeSettings() {
         this.ui.settingsOverlay.hidden = true;
         this.settingsOpen = false;
+        // A slider or checkbox left focused must not swallow the run's keys.
+        if (this.state.running) this.blurFocus();
     }
 
     // ---------------------------------------------------------------- stats
@@ -759,8 +762,8 @@ class Game {
         localStorage.setItem('lp_seen_hint', '1');
         const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
         this.ui.controlsHint.innerHTML = touch
-            ? 'HOLD THE LEFT QUARTER TO GO ◀ · THE NEXT QUARTER TO GO ▶<br>TAP THE RIGHT HALF TO JUMP'
-            : '← → OR A D TO MOVE · SPACE, ↑ OR W TO JUMP<br>ESC TO PAUSE';
+            ? 'HOLD THE LEFT QUARTER TO GO ◀ · THE NEXT QUARTER TO GO ▶<br>TAP THE RIGHT HALF TO JUMP<br>THE SIDES WRAP AROUND'
+            : '← → OR A D TO MOVE · SPACE, ↑ OR W TO JUMP<br>THE SIDES WRAP AROUND · ESC TO PAUSE';
         this.ui.controlsHint.hidden = false;
         this.hintShowing = true;
         clearTimeout(this.hintTimer);
@@ -1488,6 +1491,7 @@ class Game {
         this.ui.next.style.visibility = showArrows;
 
         if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = fmtNum(this.state.shards) + " 💎";
+        this.updateShopBadge();
         if (this.ui.skinAbility) this.ui.skinAbility.innerHTML = this.renderPerkTags(s.ability);
     }
 
@@ -1597,6 +1601,23 @@ class Game {
         });
     }
 
+    // Something in the shop you could buy right now: a Pixel you don't own
+    // yet, or an extra life with room in the stock.
+    shopHasAffordable() {
+        const shards = this.state.shards;
+        if (this.state.extraLives < MAX_EXTRA_LIVES && shards >= EXTRA_LIFE_COST) return true;
+        return this.gemShopSkins().some(({ s }) => !this.ownedSkins.includes(s.id) && shards >= s.cost);
+    }
+
+    updateShopBadge() {
+        const btn = this.ui.shopOpenBtn;
+        if (!btn || !btn.classList) return;
+        const can = this.shopHasAffordable();
+        btn.classList.toggle('can-buy', can);
+        const badge = btn.querySelector && btn.querySelector('.shop-badge');
+        if (badge) badge.hidden = !can;
+    }
+
     // Extra lives are stock rather than a one-shot toggle: the card shows how
     // many are banked, and the button locks at MAX_EXTRA_LIVES.
     updateExtraLifeUI() {
@@ -1624,6 +1645,7 @@ class Game {
         this.ui.shopLifeBtn.classList.toggle('maxed', full);
         this.ui.shopLifeBtn.classList.toggle('unaffordable', !full && !affordable);
         this.ui.shopLifeBtn.disabled = full;
+        this.updateShopBadge();
     }
 
     buyExtraLife() {
@@ -2082,30 +2104,47 @@ class Game {
         if (stored && stored.score >= finalScore) return;
         const ghost = {
             v: 2, gen: PLATFORM_GEN_VERSION, seed: this.state.runSeed, start: this.state.startMeters,
-            score: finalScore, step: GHOST_STEP, pts: rec.pts
+            score: finalScore, step: GHOST_STEP, pts: rec.pts,
+            skin: (SKINS[this.viewParams.skinIndex] || SKINS[0]).id
         };
         try { localStorage.setItem('lp_ghost', JSON.stringify(ghost)); } catch (e) { /* storage full: keep the old one */ }
     }
 
+    // The ghost is the recorded Pixel, dimmed, following a smooth curve
+    // (Catmull-Rom) through the samples rather than straight lines, so jump
+    // arcs stay round. It snaps across a screen wrap.
     drawGhost() {
         const g = this.ghostPlayback;
         if (!g) return;
         const f = this.state.time / g.step;
         const i = Math.floor(f);
         if (i * 2 + 3 >= g.pts.length) return; // the recorded run is over
-        let x = g.pts[i * 2], y = g.pts[i * 2 + 1];
-        const nx = g.pts[i * 2 + 2], ny = g.pts[i * 2 + 3];
-        // Interpolate between samples, except across a screen wrap.
-        if (Math.abs(nx - x) < 300) {
-            x += (nx - x) * (f - i);
-            y += (ny - y) * (f - i);
+        const pt = (k) => {
+            const j = Math.max(0, Math.min(k, g.pts.length / 2 - 1));
+            return [g.pts[j * 2], g.pts[j * 2 + 1]];
+        };
+        const p0 = pt(i - 1), p1 = pt(i), p2 = pt(i + 1), p3 = pt(i + 2);
+        const t = f - i;
+        let x = p1[0], y = p1[1];
+        const wraps = [p0, p1, p2, p3].some((p, k, a) => k > 0 && Math.abs(p[0] - a[k - 1][0]) >= 300);
+        if (!wraps) {
+            const cr = (a, b, c, d) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
+            x = cr(p0[0], p1[0], p2[0], p3[0]);
+            y = cr(p0[1], p1[1], p2[1], p3[1]);
+        } else if (Math.abs(p2[0] - p1[0]) < 300) {
+            x += (p2[0] - p1[0]) * t;
+            y += (p2[1] - p1[1]) * t;
         }
         const screenY = y + this.state.score;
         if (screenY > -50 && screenY < CONFIG.HEIGHT + 50) {
-            this.renderer.ctx.globalAlpha = 0.3;
-            this.renderer.ctx.fillStyle = "#ffffff";
-            this.renderer.ctx.fillRect(x, screenY, 26, 26);
-            this.renderer.ctx.globalAlpha = 1;
+            const skin = SKINS[skinIndexById(g.skin)] || SKINS[0];
+            const dx = p2[0] - p1[0];
+            const look = Math.abs(dx) >= 300 ? 0 : (dx > 3 ? 4 : (dx < -3 ? -4 : 0));
+            const ctx = this.renderer.ctx;
+            ctx.globalAlpha = 0.4;
+            drawPixel(ctx, x, screenY, skin, look);
+            if (x > CONFIG.WIDTH - 26) drawPixel(ctx, x - CONFIG.WIDTH, screenY, skin, look);
+            ctx.globalAlpha = 1;
         }
     }
 
@@ -2136,13 +2175,18 @@ class Game {
         this.fillPlatforms();
     }
 
-    startGame(isMp = false, mpSeed = null) {
-        // Whatever menu button had focus must not catch the Space/Enter that
-        // follows (buttons activate on keyup), and keys held in the menu
-        // shouldn't carry into the run.
+    // Drops focus from whatever menu control has it, so it can't catch the
+    // game's keys (buttons activate on Space/Enter keyup).
+    blurFocus() {
         if (typeof document !== 'undefined' && document.activeElement && document.activeElement.blur) {
             document.activeElement.blur();
         }
+    }
+
+    startGame(isMp = false, mpSeed = null) {
+        // Whatever menu button had focus must not catch the Space/Enter that
+        // follows, and keys held in the menu shouldn't carry into the run.
+        this.blurFocus();
         this.input.resetInput();
         this.closeRunCard();
         this.closeSettings();
@@ -3178,6 +3222,7 @@ class Game {
         if (this.state.running) this.drawChallengeLine();
 
         this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
+        if (this.state.running && !this.player.isDead) this.renderer.drawWrapEdges(this.player.x, this.player.w);
 
         if (!this.player.isDead) this.player.draw(this.renderer.ctx);
 

@@ -171,6 +171,29 @@ class Renderer {
         ctx.restore();
     }
 
+    // The side edges are one seam: both glow faintly in the biome's platform
+    // colour, and brighten together as the player nears either one, so it
+    // reads that walking off one side brings you in on the other.
+    drawWrapEdges(playerX, playerW) {
+        const ctx = this.ctx;
+        const nearest = Math.min(playerX, CONFIG.WIDTH - (playerX + playerW));
+        const near = Math.max(0, Math.min(1, 1 - nearest / 90));
+        const width = 10;
+        ctx.save();
+        ctx.fillStyle = this.currentBiome.platform;
+        for (const [x0, x1] of [[0, width], [CONFIG.WIDTH, CONFIG.WIDTH - width]]) {
+            const grad = ctx.createLinearGradient ? ctx.createLinearGradient(x0, 0, x1, 0) : null;
+            if (grad) {
+                grad.addColorStop(0, this.currentBiome.platform);
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = grad;
+            }
+            ctx.globalAlpha = 0.12 + 0.5 * near;
+            ctx.fillRect(Math.min(x0, x1), 0, width, CONFIG.HEIGHT);
+        }
+        ctx.restore();
+    }
+
     drawText(text, x, y, font, color, align = "center") {
         this.ctx.fillStyle = color;
         this.ctx.font = font;
