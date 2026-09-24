@@ -100,6 +100,14 @@ try {
     console.log("GUEST KILL SUCCESS");
 
     // ---- Projectiles: born on the host, flown by guests, removed with it.
+    // A bullet the host's own shield absorbs in its very first frame was
+    // still announced (guests just see it vanish on the next snapshot).
+    const blip = new Projectile(H.player.x, H.player.y, 0, 0);
+    H.projectiles.push(blip);
+    H.player.invuln = 0; H.player.activePower = POWERS.SHIELD; H.player.powerTimer = 999;
+    as(H, () => H.update(1));
+    assert(blip.nid !== undefined, "first-frame projectile still numbered and announced");
+    bus.pump();
     const shot = new Projectile(200, 100, 0, 1);
     H.projectiles.push(shot);
     step(1);
@@ -126,6 +134,9 @@ try {
     step(6);
     const gBoss = G.netEnemies.get(boss.nid);
     assert(gBoss instanceof BossDrone && gBoss.hp === 10, "guest mirrors the boss");
+    boss.shootTimer = 5; // about to fire
+    step(4);
+    assert(G.netEnemies.get(boss.nid).shootTimer < 20, "guests see the volley warning light");
     // G lands on its copy.
     G.player.invuln = 0; G.player.activePower = null;
     G.player.x = gBoss.x + 40; G.player.y = gBoss.y - G.player.h - 4; G.player.vy = 6;

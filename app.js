@@ -1216,20 +1216,27 @@ class Game {
     // on their own), and send an enemy snapshot 15 times a second.
     broadcastEnemies(dt) {
         const net = window.network;
-        const r1 = v => Math.round(v * 10) / 10;
         for (const e of this.enemies) if (e.nid === undefined) e.nid = ++this.nextNid;
+        this.announceProjectiles();
+        if (this.tick('snap', dt, NET_SNAPSHOT_FRAMES)) net.send(this.buildSnapshot());
+    }
+
+    // Host: number and announce every new bullet/meteor. Called before the
+    // projectile loop too, so one that's gone in its first frame (off screen,
+    // or absorbed by the host's shield) still reached the guests.
+    announceProjectiles() {
+        const r1 = v => Math.round(v * 10) / 10;
         for (const q of this.projectiles) {
             if (q.nid !== undefined) continue;
             q.nid = ++this.nextNid;
-            net.send({ type: 'ps', nid: q.nid, k: q instanceof Meteor ? 1 : 0, x: r1(q.x), wy: r1(q.y - this.state.score), vx: r1(q.vx), vy: r1(q.vy) });
+            window.network.send({ type: 'ps', nid: q.nid, k: q instanceof Meteor ? 1 : 0, x: r1(q.x), wy: r1(q.y - this.state.score), vx: r1(q.vx), vy: r1(q.vy) });
         }
-        if (this.tick('snap', dt, NET_SNAPSHOT_FRAMES)) net.send(this.buildSnapshot());
     }
 
     // Enemy rows are positional arrays to keep packets small:
     //   drone/shooter [nid, 0|1, x, wy, v, hidden, warning]
     //   laser         [nid, 2, x, wy, phase, w, h]
-    //   boss          [nid, 3, x, wy, state, hp, invuln, laneX, anchorWy]
+    //   boss          [nid, 3, x, wy, state, hp, invuln, laneX, anchorWy, warning]
     // plus the ids of every live projectile (anything missing is gone).
     buildSnapshot() {
         const score = this.state.score;
@@ -1239,7 +1246,8 @@ class Game {
             if (en.markedForDeletion || en.nid === undefined) continue;
             const wy = Math.round(en.y - score);
             if (en instanceof BossDrone) {
-                e.push([en.nid, 3, r1(en.x), wy, BOSS_STATES.indexOf(en.state), en.hp, en.invuln > 0 ? 1 : 0, r1(en.laneX), Math.round(en.anchorY - score)]);
+                e.push([en.nid, 3, r1(en.x), wy, BOSS_STATES.indexOf(en.state), en.hp, en.invuln > 0 ? 1 : 0, r1(en.laneX), Math.round(en.anchorY - score),
+                    en.shootTimer < 20 ? 1 : 0]);
             } else if (en instanceof LaserDrone) {
                 e.push([en.nid, 2, r1(en.x), wy, LASER_PHASES.indexOf(en.phase), en.w, en.h]);
             } else {
@@ -1282,6 +1290,7 @@ class Game {
                 en.invuln = row[6] ? Math.max(en.invuln, 1) : 0;
                 en.laneX = Number.isFinite(row[7]) ? row[7] : en.laneX;
                 en.anchorY = (Number.isFinite(row[8]) ? row[8] : row[3]) + this.state.score;
+                en.shootTimer = row[9] ? 10 : BOSS.VOLLEY; // the volley warning light
             } else if (en instanceof LaserDrone) {
                 en.phase = LASER_PHASES[row[4]] || 'cooldown';
                 en.w = Number.isFinite(row[5]) ? row[5] : en.bodyW;
@@ -1746,7 +1755,7 @@ class Game {
     bossFocus() {
         let focus = this.player.isDead ? null : this.player;
         this.remotePlayers.forEach(rp => {
-            if (!rp.isDead && (!focus || rp.y > focus.y)) focus = rp;
+            if (!rp.isDead && !this.remoteAway(rp) && (!focus || rp.y > focus.y)) focus = rp;
         });
         return focus || this.player;
     }
@@ -2923,6 +2932,7 @@ class Game {
         }
 
         // Projectile Update
+        if (authority && this.state.multiplayer) this.announceProjectiles();
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
             let p = this.projectiles[i];
             p.update(enemyDt);
