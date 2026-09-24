@@ -8,8 +8,8 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.6.0';
-const NET_PROTOCOL = 3;
+const GAME_VERSION = '1.7.0';
+const NET_PROTOCOL = 4;
 
 const CONFIG = {
     WIDTH: 600,
@@ -24,14 +24,34 @@ const CONFIG = {
     SCROLL_THRESHOLD: 0.5,
     DRONE_BASE_VELOCITY: 2,
     DRONE_MAX_VELOCITY: 8,
-    DRONE_SPAWN_RATE: 120,
+    // Drones: one every DRONE_SPAWN_RATE frames at 0m, speeding up by a
+    // frame per 50m down to DRONE_MIN_SPAWN_RATE. At most DRONE_CAP_BASE are
+    // out at once, plus one more every DRONE_CAP_STEP metres up to
+    // DRONE_CAP_MAX (drones circle back rather than leave, so without a cap
+    // a slow climb piles them up). Laser drones have their own cap.
+    DRONE_SPAWN_RATE: 180,
+    DRONE_MIN_SPAWN_RATE: 90,
+    DRONE_CAP_BASE: 2,
+    DRONE_CAP_MAX: 6,
+    DRONE_CAP_STEP: 1500,
+    LASER_CAP: 2,
     PROJECTILE_SPEED: 6,
     BOSS_LOOP_DISTANCE: 4000
 };
 
 // Level generation version: bump when spawnPlatform() would build a different
 // layout from the same seed (saved ghosts from other versions are dropped).
-const PLATFORM_GEN_VERSION = 2;
+const PLATFORM_GEN_VERSION = 3;
+// Pickups rolled per platform. The power-up chance climbs from MIN at 0m to
+// MAX at POWERUP_RAMP_METERS; hearts are rarer, and only exist for a player
+// with no extra lives left (see Game.visiblePickups()); otherwise 40% of
+// platforms carry a gem worth SHARD_VALUE.
+const POWERUP_CHANCE_MIN = 0.06;
+const POWERUP_CHANCE_MAX = 0.12;
+const POWERUP_RAMP_METERS = 8000;
+const HEART_CHANCE = 0.035;
+const SHARD_CHANCE = 0.4;
+const SHARD_VALUE = 10;
 // How far above the top of the screen platforms are generated in advance.
 const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
 // Ghost recording: one sample every GHOST_STEP frames of game time, capped
@@ -89,7 +109,7 @@ function biomeAt(meters) {
 // Shop consumables. Extra lives are bought with shards and carried between
 // runs as stock — each one is spent automatically on a death that would
 // otherwise end the run (see Game.die()).
-const EXTRA_LIFE_COST = 50;
+const EXTRA_LIFE_COST = 100;
 const MAX_EXTRA_LIVES = 3;
 
 // Multiplayer: host + up to 3 guests (NetworkManager.maxGuests must match).
@@ -128,20 +148,20 @@ const SKINS = [
     { id: 'glitch', name: "Glitch", color: "#00ffff", eye: "white", unlock: 2500, ability: { jumpMult: 1.1, speedMult: 1.1 } },
     { id: 'theend', name: "The End", color: "#111", eye: "red", unlock: 4000, ability: { gravityMult: 0.75 } },
 
-    // Gem-shop Pixels, cheapest first. The bottom tiers each carry one plain
-    // stat perk; every tier above buys a unique perk stronger than the last.
-    // At roughly 160-180 gems per 1000m climbed (plus 150 per boss) the top
-    // tier is a long grind, softened once GEMS x2 is owned. See
-    // Game.renderGemShop().
-    { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.15 } },
-    { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.15 } },
-    { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { gravityMult: 0.88 } },
-    { id: 'obsidian', name: "Obsidian", color: "#1a0033", eye: "#ff00ff", cost: 1200, ability: { powerDurationMult: 2 } },
-    { id: 'prism', name: "Prism", color: "#ff00ff", eye: "#ffffff", cost: 2500, ability: { lifePowerUp: true } },
-    { id: 'pulsewarden', name: "Pulse Warden", color: "#00ff99", eye: "#003322", cost: 5000, ability: { dronePulseSec: 7 } },
-    { id: 'hoarder', name: "Crystal Hoarder", color: "#33e0ff", eye: "#002233", cost: 9000, ability: { shardMult: 2 } },
-    { id: 'aegis', name: "Aegis", color: "#3366ff", eye: "#ffffff", cost: 15000, ability: { biomeImmune: true } },
-    { id: 'overclock', name: "Overclock", color: "#ff2222", eye: "#ffe600", cost: 25000, ability: { scoreMult: 2 } },
+    // Gem-shop Pixels, cheapest first. Each one beats every free Pixel: the
+    // bottom two carry one big stat, and every tier above adds a wildcard
+    // perk on top of a stat boost. At roughly 320-360 gems per 1000m climbed
+    // (plus 150 per boss) the top tier is a long grind, softened once GEMS x2
+    // is owned. See Game.renderGemShop().
+    { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.5 } },
+    { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.5 } },
+    { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { speedMult: 1.25, gravityMult: 0.7 } },
+    { id: 'obsidian', name: "Obsidian", color: "#1a0033", eye: "#ff00ff", cost: 1200, ability: { jumpMult: 1.25, powerDurationMult: 2 } },
+    { id: 'prism', name: "Prism", color: "#ff00ff", eye: "#ffffff", cost: 2500, ability: { speedMult: 1.25, airJump: true } },
+    { id: 'pulsewarden', name: "Pulse Warden", color: "#00ff99", eye: "#003322", cost: 5000, ability: { jumpMult: 1.25, dronePulseSec: 5 } },
+    { id: 'hoarder', name: "Crystal Hoarder", color: "#33e0ff", eye: "#002233", cost: 9000, ability: { speedMult: 1.25, shardMagnetRadius: 150, shardMult: 2 } },
+    { id: 'aegis', name: "Aegis", color: "#3366ff", eye: "#ffffff", cost: 15000, ability: { jumpMult: 1.25, extraRevive: 1, biomeImmune: true } },
+    { id: 'overclock', name: "Overclock", color: "#ff2222", eye: "#ffe600", cost: 25000, ability: { speedMult: 1.3, jumpMult: 1.3, powerDurationMult: 2, scoreMult: 2 } },
 
     // Secret skins: never shown in the menu picker until their distance is
     // reached (see Game.unlockedSkinIndexes()), one per new biome.
@@ -175,8 +195,8 @@ const PERKS = [
       describe: v => v + ' free revive every run' },
     { key: 'startAtScore', label: 'RIFT', color: '#9933ff', active: v => !!v,
       describe: v => 'Solo runs start at ' + Math.floor(v / 10) + 'm (The Rift)' },
-    { key: 'lifePowerUp', label: 'PHOENIX', color: '#ff5533', active: v => !!v,
-      describe: () => 'Using an extra life or revive grants a random power-up' },
+    { key: 'airJump', label: 'AIR JUMP', color: '#ff66ff', active: v => !!v,
+      describe: () => 'Always has a double jump' },
     { key: 'dronePulseSec', label: 'EMP', color: '#00ff99', active: v => !!v,
       describe: v => 'Every ' + v + 's, destroys all drones on screen (solo only)' },
     { key: 'shardMult', label: 'GEMS x2', color: '#33e0ff', active: v => !!v && v !== 1,

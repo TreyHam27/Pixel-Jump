@@ -138,6 +138,36 @@ canvas {
     animation: gem-collect-pop 0.35s ease-out;
 }
 
+/* Banked extra lives, right under the gem counter (and just as persistent).
+   Dimmed at zero: that's when heart pickups show up in the level. */
+#life-display {
+    position: absolute;
+    top: calc(8px + clamp(20px, 6.5vw, 40px) + 6px + var(--safe-top));
+    right: calc(8px + var(--safe-right));
+    white-space: nowrap;
+    font-size: clamp(16px, 4.5vw, 28px);
+    line-height: 1;
+    color: #ff3366;
+    font-weight: bold;
+    text-shadow: 0 0 12px rgba(255, 51, 102, 0.6);
+    z-index: 40;
+    transition: opacity 0.2s;
+}
+
+#life-display.empty {
+    opacity: 0.4;
+}
+
+@keyframes life-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.35); }
+    100% { transform: scale(1); }
+}
+
+#life-display.life-pop {
+    animation: life-pop 0.35s ease-out;
+}
+
 /* Narrow screens: three numbers don't fit on one row, so BEST tucks under
    the score. */
 @media (max-width: 480px) {
@@ -155,6 +185,15 @@ canvas {
 
     #shard-display {
         font-size: clamp(18px, 6vw, 28px);
+    }
+
+    #life-display {
+        top: calc(8px + clamp(18px, 6vw, 28px) + 6px + var(--safe-top));
+        font-size: clamp(14px, 4.5vw, 22px);
+    }
+
+    .hud-btn {
+        top: calc(72px + var(--safe-top));
     }
 }
 
@@ -1882,7 +1921,8 @@ canvas {
 /* ---------- In-run HUD button (pause) ---------- */
 .hud-btn {
     position: absolute;
-    top: calc(56px + var(--safe-top));
+    /* Below the gem and heart counters in the top-right corner. */
+    top: calc(90px + var(--safe-top));
     right: calc(10px + var(--safe-right));
     width: 40px;
     height: 40px;

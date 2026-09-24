@@ -1,0 +1,106 @@
+const { setupMocks, loadGameSource } = require('./test_helpers');
+
+setupMocks();
+
+// Heart pickups (only for a player with no extra lives), spare lives in
+// co-op, the drone cap and the power-up ramp.
+eval(loadGameSource() + `
+function assert(cond, msg) { if (!cond) throw new Error("ASSERT FAILED: " + msg); }
+try {
+    // ---- Hearts are part of the level whatever your lives: the layout
+    // (and every pickup) is identical at 0 and at 2 extra lives.
+    const layout = (lives) => {
+        const g = new Game();
+        g.state.extraLives = lives;
+        g.startGame();
+        for (let i = 0; i < 600; i++) g.spawnPlatform(-1000 - i * 95);
+        return JSON.stringify({ p: g.platforms.map(p => [p.x, p.y, p.w]), u: g.powerups.map(p => [p.x, p.y, !!p.isHeart, !!p.isShard]) });
+    };
+    assert(layout(0) === layout(2), "extra lives don't change the generated level");
+    console.log("HEART DETERMINISM SUCCESS");
+
+    // ---- Rarer than power-ups, but they do show up.
+    let g = new Game();
+    g.startGame();
+    g.powerups = [];
+    for (let i = 0; i < 2000; i++) g.spawnPlatform(-1000 - i * 95);
+    const hearts = g.powerups.filter(p => p.isHeart).length;
+    const powers = g.powerups.filter(p => !p.isHeart && !p.isShard).length;
+    assert(hearts > 20 && hearts < powers, "hearts are findable but rarer than power-ups (" + hearts + " vs " + powers + ")");
+    console.log("HEART RARITY SUCCESS");
+
+    // ---- Only visible and collectible at 0 lives.
+    g = new Game();
+    g.state.extraLives = 1;
+    g.startGame();
+    const heart = () => ({ x: g.player.x, y: g.player.y, startY: g.player.y, w: 20, h: 20, isHeart: true, isShard: false, markedForDeletion: false });
+    g.powerups = [heart()];
+    assert(g.visiblePickups().length === 0, "hearts are hidden while you have a life");
+    g.update(1);
+    assert(g.state.extraLives === 1 && g.powerups.length === 1, "a hidden heart can't be collected");
+    g.state.extraLives = 0;
+    g.powerups = [heart()];
+    g.update(1);
+    assert(g.state.extraLives === 1, "a heart at 0 lives gives a life");
+    assert(localStorage.getItem('lp_extraLives') === '1', "the new life is saved");
+    assert(g.ui.lifeDisplay.innerText === '❤ 1', "the hearts counter updates");
+    assert(g.powerups.length === 0, "the heart is used up");
+    console.log("HEART PICKUP SUCCESS");
+
+    // ---- Co-op: the Pixel's free revive, then banked lives, save you
+    // instantly, behind a HARD SHIELD, without ever telling the party you died.
+    const sent = [];
+    window.network = { myId: 'me', send(m) { sent.push(m); } };
+    localStorage.setItem('lp_extraLives', '1');
+    g = new Game();
+    g.viewParams.skinIndex = skinIndexById('staticking');
+    g.state.bestHeight = 99999;
+    g.startMultiplayerGame(77);
+    g.die(true);
+    assert(!g.player.isDead && g.state.usedExtraRevive, "the free revive is spent first");
+    assert(g.state.extraLives === 1, "...before any banked life");
+    assert(g.player.activePower === POWERS.SHIELD, "a co-op rescue grants HARD SHIELD");
+    g.player.activePower = null;
+    g.die(true);
+    assert(!g.player.isDead && g.state.extraLives === 0, "then a banked life saves you");
+    assert(g.player.activePower === POWERS.SHIELD, "with a HARD SHIELD again");
+    assert(!sent.some(m => m.type === 'die'), "a saved player never reports a death");
+    g.die(true);
+    assert(g.player.isDead && sent.some(m => m.type === 'die'), "out of lives: down as before");
+    g.stopRespawnTimer();
+    console.log("COOP SPARE LIVES SUCCESS");
+
+    // ---- Drones are capped by height, and the cap grows as you climb.
+    for (const meters of [500, 8000]) {
+        g = new Game();
+        g.startGame();
+        g.state.score = meters * 10;
+        g.state.nextBossAt = 1e9; // no boss (it pauses drone spawning)
+        let most = 0;
+        for (let i = 0; i < 6000; i++) {
+            g.player.y = 400; g.player.vy = 0; g.player.invuln = 1e9;
+            g.update(1);
+            most = Math.max(most, g.countEnemies(Drone));
+        }
+        assert(most <= g.droneCap(meters), meters + "m: at most " + g.droneCap(meters) + " drones, saw " + most);
+        assert(most === g.droneCap(meters), meters + "m: the cap is reached");
+    }
+    assert(new Game().droneCap(0) === 2 && new Game().droneCap(20000) === CONFIG.DRONE_CAP_MAX, "cap runs from 2 to the max");
+    console.log("DRONE CAP SUCCESS");
+
+    // ---- Power-ups get more common the higher you climb.
+    const powersAt = (meters) => {
+        const game = new Game();
+        game.startGame();
+        game.powerups = [];
+        for (let i = 0; i < 3000; i++) game.spawnPlatform(-meters * 10 - i * 95 / 10);
+        return game.powerups.filter(p => !p.isHeart && !p.isShard).length;
+    };
+    const low = powersAt(0), high = powersAt(9000);
+    assert(high > low * 1.5, "more power-ups high up (" + low + " at 0m, " + high + " at 9000m)");
+    console.log("POWER-UP RAMP SUCCESS");
+} catch (e) {
+    console.error("FAILED:", e.stack || e);
+    process.exitCode = 1;
+}
+`);

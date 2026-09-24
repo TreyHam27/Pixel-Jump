@@ -113,18 +113,18 @@ try {
         assert(p.powerTimer === first.time * ((p.skin.ability || {}).powerDurationMult || 1), "timer is refreshed");
     }
 
-    // 7. Shards are worth 5 gems.
+    // 7. Shards are worth SHARD_VALUE (10) gems.
     {
         let game = new Game();
         game.startGame();
         for (let i = 0; i < 200; i++) game.spawnPlatform(-100 - i * 10);
         let shards = game.powerups.filter(p => p.isShard);
         assert(shards.length > 0, "some shards spawned");
-        assert(shards.every(p => p.shardValue === 5), "every shard is worth 5");
+        assert(SHARD_VALUE === 10 && shards.every(p => p.shardValue === SHARD_VALUE), "every shard is worth 10");
         let before = game.state.shards;
-        game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isShard: true, shardValue: 5, markedForDeletion: false }];
+        game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isShard: true, shardValue: SHARD_VALUE, markedForDeletion: false }];
         game.update(1);
-        assert(game.state.shards === before + 5, "picking up a shard adds 5");
+        assert(game.state.shards === before + 10, "picking up a shard adds 10");
     }
 
     console.log("BUGFIX TESTS PASSED");

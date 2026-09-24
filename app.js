@@ -133,6 +133,7 @@ class Game {
             next: document.getElementById("next-btn"),
             fame: document.getElementById("fame-list"),
             shardDisplay: document.getElementById("shard-display"),
+            lifeDisplay: document.getElementById("life-display"),
             shopLifeBtn: document.getElementById("shop-life-btn"),
             shopLifeCount: document.getElementById("shop-life-count"),
             gemShop: document.getElementById("gem-skin-shop"),
@@ -257,10 +258,10 @@ class Game {
         }
         this.setMenuPanel('sp');
         this.applySettings();
-        this.gemSprite = this.makeGemSprite();
+        this.makePickupSprites();
         this.renderer.onResize = () => {
             this.layoutTouchControls();
-            this.gemSprite = this.makeGemSprite();
+            this.makePickupSprites();
         };
         this.layoutTouchControls();
 
@@ -823,9 +824,12 @@ class Game {
     netErrorMessage(err, fallback) {
         const type = err && err.type;
         if (type === 'invalid-code') return "INVALID CODE";
-        if (type === 'connection-timeout') return "TIMED OUT — CODE MAY BE INVALID";
+        // A wrong code comes back quickly as peer-unavailable, so a timeout
+        // means the host was found but no direct connection could be made:
+        // usually a school or office firewall.
+        if (type === 'connection-timeout') return "COULDN'T CONNECT — THIS NETWORK MAY BLOCK CO-OP";
         if (type === 'peer-unavailable') return "CODE NOT FOUND — CHECK & RETRY";
-        if (type === 'signaling-timeout') return "CAN'T REACH SERVER — CHECK CONNECTION";
+        if (type === 'signaling-timeout') return "CAN'T REACH CO-OP SERVER — NETWORK MAY BLOCK IT";
         if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(type)) return "NETWORK ERROR — CHECK CONNECTION";
         return fallback;
     }
@@ -1597,6 +1601,17 @@ class Game {
     // many are banked, and the button locks at MAX_EXTRA_LIVES.
     updateExtraLifeUI() {
         if (this.ui.shopLifeCount) this.ui.shopLifeCount.innerText = this.state.extraLives;
+        const hearts = this.ui.lifeDisplay;
+        if (hearts) {
+            const text = "❤ " + this.state.extraLives;
+            if (hearts.innerText !== text && hearts.classList) {
+                hearts.classList.remove('life-pop');
+                void hearts.offsetWidth; // restart the animation
+                hearts.classList.add('life-pop');
+            }
+            hearts.innerText = text;
+            if (hearts.classList) hearts.classList.toggle('empty', this.state.extraLives <= 0);
+        }
         if (!this.ui.shopLifeBtn) return;
 
         const full = this.state.extraLives >= MAX_EXTRA_LIVES;
@@ -1627,7 +1642,7 @@ class Game {
     }
 
     // Spends one banked extra life. Returns false when the bank is empty so
-    // die() falls through to the normal ad-revive flow.
+    // useSpareLife() falls through to the normal revive flow.
     consumeExtraLife() {
         if (this.state.extraLives <= 0) return false;
         this.state.extraLives--;
@@ -1848,15 +1863,6 @@ class Game {
         }
     }
 
-    // PHOENIX perk: coming back from a fall also hands out a random power-up.
-    // Returns the power's name for the revive alert, or '' without the perk.
-    phoenixBoost() {
-        if (!(this.player.skin.ability || {}).lifePowerUp) return '';
-        this.player.activePower = null;
-        this.player.activatePower();
-        return this.player.activePower.name;
-    }
-
     // Kick the trampoline into its bounce wobble, centred on where the player
     // hit it.
     bounceSafetyNet() {
@@ -1976,8 +1982,9 @@ class Game {
 
         this.platforms.push({ x, y, w, h: 18, vx, wy });
 
-        let chance = 0.08 * (1 - scoreMeters / 8000);
-        chance = Math.max(0.015, chance);
+        // Power-ups get more common the higher you climb.
+        const ramp = Math.min(1, scoreMeters / POWERUP_RAMP_METERS);
+        const chance = POWERUP_CHANCE_MIN + (POWERUP_CHANCE_MAX - POWERUP_CHANCE_MIN) * ramp;
         if (this.seededRandom() < chance) {
             this.powerups.push({
                 x: x + w / 2 - 12,
@@ -1987,17 +1994,26 @@ class Game {
                 isShard: false,
                 markedForDeletion: false
             });
-        } else if (this.seededRandom() < 0.4) { // gems are common — 40% chance of a Shard
-            // Shards used to roll a 1-3 value; keep consuming that draw so
-            // seeded (daily / co-op) layouts stay identical.
-            this.seededRandom();
+        } else if (this.seededRandom() < HEART_CHANCE) {
+            // Always generated (so every client builds the same level), but
+            // only shown to a player with no extra lives left.
+            this.powerups.push({
+                x: x + w / 2 - 10,
+                y: y - 34,
+                startY: y - 34,
+                w: 20, h: 20,
+                isShard: false,
+                isHeart: true,
+                markedForDeletion: false
+            });
+        } else if (this.seededRandom() < SHARD_CHANCE) {
             this.powerups.push({
                 x: x + w / 2 - 8,
                 y: y - 30,
                 startY: y - 30,
                 w: 16, h: 16,
                 isShard: true,
-                shardValue: 5,
+                shardValue: SHARD_VALUE,
                 markedForDeletion: false
             });
         }
@@ -2010,6 +2026,19 @@ class Game {
             this.spawnPlatform(this.state.nextPlatWY);
             this.state.nextPlatWY -= CONFIG.PLATFORM_BASE_GAP;
         }
+    }
+
+    // How many drones may be out at once at this height.
+    droneCap(meters) {
+        return Math.min(CONFIG.DRONE_CAP_MAX, CONFIG.DRONE_CAP_BASE + Math.floor(meters / CONFIG.DRONE_CAP_STEP));
+    }
+
+    // Live enemies of a class (subclasses count: a ShooterDrone is a Drone),
+    // including drones waiting off-screen to swing back in.
+    countEnemies(cls) {
+        let n = 0;
+        for (const e of this.enemies) if (e instanceof cls && !e.markedForDeletion) n++;
+        return n;
     }
 
     // Game-time interval timer: true once per `every` frames' worth of dt
@@ -2179,11 +2208,11 @@ class Game {
         }
     }
 
-    // --------------------------------------------------------- gem sprite
-    // The pickup gem, drawn once (with its glow) into an offscreen canvas at
+    // ------------------------------------------------------ pickup sprites
+    // A pickup emoji, drawn once (with its glow) into an offscreen canvas at
     // screen density. Drawing emoji text with shadowBlur every frame was the
     // most expensive thing on the screen for phones.
-    makeGemSprite() {
+    makePickupSprite(emoji, glow) {
         const size = 40;
         const dpr = this.renderer.dpr || 1;
         const c = document.createElement('canvas');
@@ -2193,12 +2222,45 @@ class Game {
         if (!ctx) return null;
         if (ctx.scale) ctx.scale(dpr, dpr);
         ctx.shadowBlur = 12;
-        ctx.shadowColor = '#00ffff';
+        ctx.shadowColor = glow;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.font = '18px sans-serif';
-        ctx.fillText('💎', size / 2, size / 2);
+        ctx.fillText(emoji, size / 2, size / 2);
         return { canvas: c, size };
+    }
+
+    makePickupSprites() {
+        this.gemSprite = this.makePickupSprite('💎', '#00ffff');
+        this.heartSprite = this.makePickupSprite('❤️', '#ff3366');
+    }
+
+    // Draws a pre-rendered pickup sprite centred on pickup `p`.
+    drawSprite(sprite, p, alpha) {
+        if (!sprite) return;
+        const ctx = this.renderer.ctx;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sprite.canvas, p.x + p.w / 2 - sprite.size / 2, p.y + p.h / 2 - sprite.size / 2, sprite.size, sprite.size);
+        ctx.globalAlpha = 1;
+    }
+
+    // The pickups this player can see and collect. Hearts are part of every
+    // client's level, but only exist for a player with no extra lives left:
+    // picking one up hides the rest, and spending that life brings them back.
+    visiblePickups() {
+        if (this.state.extraLives <= 0) return this.powerups;
+        return this.powerups.filter(p => !p.isHeart);
+    }
+
+    collectHeart(event) {
+        if (this.state.extraLives < MAX_EXTRA_LIVES) {
+            this.state.extraLives++;
+            localStorage.setItem('lp_extraLives', this.state.extraLives);
+            this.updateExtraLifeUI();
+        }
+        this.particles.spawn(event.x + 10, event.y + 10, "#ff3366", 20);
+        sounds.play('powerup');
+        this.showAlert("EXTRA LIFE +1 ❤", 'success');
     }
 
     // ---------------------------------------------------- challenge links
@@ -2379,35 +2441,7 @@ class Game {
         }
 
         this.state.runDeaths = (this.state.runDeaths || 0) + 1;
-
-        // Equipped Pixel's free revive: a bonus life on top of (not instead
-        // of) the normal one-ad-revive-per-run flow below.
-        const equippedAbility = this.player.skin.ability || {};
-        if (equippedAbility.extraRevive && !this.state.usedExtraRevive) {
-            this.state.usedExtraRevive = true;
-            this.player.y = CONFIG.HEIGHT - 200;
-            this.player.launch(CONFIG.BOUNCE_FORCE);
-            this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
-            sounds.play('powerup');
-            this.particles.spawn(this.player.x + 13, this.player.y + 13, "#00ffaa", 30, "blast");
-            const boost = this.phoenixBoost();
-            this.showAlert("BACKUP LIFE ENGAGED" + (boost ? " + " + boost : ""), 'success');
-            return;
-        }
-
-        // Shop-bought extra lives: banked stock, spent one per fall, after the
-        // Pixel's own free revive (that one refreshes every run, so it's the
-        // cheaper thing to burn first).
-        if (this.consumeExtraLife()) {
-            this.player.y = CONFIG.HEIGHT - 200;
-            this.player.launch(CONFIG.BOUNCE_FORCE);
-            this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
-            sounds.play('powerup');
-            this.particles.spawn(this.player.x + 13, this.player.y + 13, "#ff3366", 30, "blast");
-            const boost = this.phoenixBoost();
-            this.showAlert("EXTRA LIFE SPENT — " + this.state.extraLives + " LEFT" + (boost ? " + " + boost : ""), 'success');
-            return;
-        }
+        if (this.useSpareLife()) return;
 
         sounds.play('death');
         this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 40, "blast");
@@ -2425,6 +2459,37 @@ class Game {
         }
     }
 
+    // A fall or hit that would end the run (solo) or knock you out (co-op)
+    // spends a spare life instead, if there is one: the equipped Pixel's
+    // free revive first (it refreshes every run, so it's the cheaper thing
+    // to burn), then a banked extra life. Returns true if the player was
+    // saved.
+    useSpareLife() {
+        const ability = this.player.skin.ability || {};
+        if (ability.extraRevive && !this.state.usedExtraRevive) {
+            this.state.usedExtraRevive = true;
+            this.rescuePlayer("#00ffaa", "BACKUP LIFE ENGAGED");
+            return true;
+        }
+        if (this.consumeExtraLife()) {
+            this.rescuePlayer("#ff3366", "EXTRA LIFE SPENT — " + this.state.extraLives + " LEFT");
+            return true;
+        }
+        return false;
+    }
+
+    // Throws the player back up from the bottom of the screen onto a
+    // temporary floor, behind a fresh HARD SHIELD.
+    rescuePlayer(color, text) {
+        this.player.y = CONFIG.HEIGHT - 200;
+        this.player.launch(CONFIG.BOUNCE_FORCE);
+        this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+        this.player.grantPower(POWERS.SHIELD);
+        sounds.play('powerup');
+        this.particles.spawn(this.player.x + 13, this.player.y + 13, color, 30, "blast");
+        this.showAlert(text, 'success');
+    }
+
     handleMultiplayerDeath(forceDie) {
         if (this.player.isDead) return;
 
@@ -2436,10 +2501,12 @@ class Game {
             return;
         }
 
+        this.state.runDeaths = (this.state.runDeaths || 0) + 1;
+        if (this.useSpareLife()) return;
+
         sounds.play('death');
         this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 40, "blast");
         this.player.isDead = true;
-        this.state.runDeaths = (this.state.runDeaths || 0) + 1;
 
         if (window.network) {
             window.network.send({ type: 'die', pid: window.network.myId });
@@ -2552,10 +2619,10 @@ class Game {
             this.player.y = CONFIG.HEIGHT - 200;
         }
         this.player.launch(0);
+        this.player.grantPower(POWERS.SHIELD);
 
         if (window.network) window.network.send({ type: 'revive', pid: window.network.myId });
-        const boost = this.phoenixBoost();
-        this.showAlert("LIFE RESTORED" + (boost ? " + " + boost : ""), 'success');
+        this.showAlert("LIFE RESTORED", 'success');
     }
 
     revive() {
@@ -2570,9 +2637,9 @@ class Game {
         this.player.launch(CONFIG.BOUNCE_FORCE);
 
         this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+        this.player.grantPower(POWERS.SHIELD);
 
-        const boost = this.phoenixBoost();
-        this.showAlert("LIFE RESTORED" + (boost ? " + " + boost : ""), 'success');
+        this.showAlert("LIFE RESTORED", 'success');
     }
 
     gameOver() {
@@ -2750,7 +2817,6 @@ class Game {
         this.checkAchievements();
 
         const scoreMeters = Math.floor(this.state.score / 10);
-        const droneSpawnRate = CONFIG.DRONE_SPAWN_RATE;
         const hazards = this.renderer.currentBiome.hazards;
         const perks = this.player.skin.ability || {};
         // SHIELDED perk: the biome's environmental forces (wind, gravity
@@ -2775,8 +2841,11 @@ class Game {
             this.enemies.push(new BossDrone(-120));
         }
 
-        // Spawn Enemies (only if Boss isn't active)
-        if (authority && !this.state.bossActive && scoreMeters > 60 && this.tick('drone', dt, Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))))) {
+        // Spawn Enemies (only if Boss isn't active). The spawn clock keeps
+        // ticking at the cap; only the spawn itself is skipped.
+        const droneEvery = Math.max(CONFIG.DRONE_MIN_SPAWN_RATE, Math.floor(CONFIG.DRONE_SPAWN_RATE - scoreMeters / 50));
+        if (authority && !this.state.bossActive && scoreMeters > 60 && this.tick('drone', dt, droneEvery)
+            && this.countEnemies(Drone) < this.droneCap(scoreMeters)) {
             const difficulty = 1 + (scoreMeters / 2000) + (this.state.runLoops || 0);
 
             // Spawned relative to the camera's player (the lowest living one
@@ -2789,7 +2858,8 @@ class Game {
             }
         }
 
-        if (authority && !this.state.bossActive && hazards.includes('laser') && this.tick('laser', dt, 240)) {
+        if (authority && !this.state.bossActive && hazards.includes('laser') && this.tick('laser', dt, 240)
+            && this.countEnemies(LaserDrone) < CONFIG.LASER_CAP) {
             this.enemies.push(new LaserDrone(this.bossFocus().y - 500));
         }
 
@@ -2805,7 +2875,7 @@ class Game {
         this.player.prevBottom = this.player.y + this.player.h;
         // A dead co-op player's body is gone until they respawn: no physics,
         // no landing on platforms, no pickups.
-        let event = this.player.isDead ? null : this.player.update(dt, this.input, this.platforms, this.powerups);
+        let event = this.player.isDead ? null : this.player.update(dt, this.input, this.platforms, this.visiblePickups());
 
         if (glitching) {
             const tmp = this.input.keys.left;
@@ -2867,6 +2937,8 @@ class Game {
             this.addShards((event.value || 1) * (perks.shardMult || 1));
             this.particles.spawn(event.x + 8, event.y + 8, "#00ffff", 10);
             sounds.play('powerup');
+        } else if (event && event.event === "heart") {
+            this.collectHeart(event);
         } else if (event && event.event === "powerup") {
             this.state.powersCollected++;
             this.particles.spawn(event.x + 12, event.y + 12, this.player.activePower.color, 20);
@@ -3073,9 +3145,11 @@ class Game {
             this.renderer.ctx.fillRect(p.x + p.w - 3, p.y, 3, p.h);
         });
 
-        this.powerups.forEach(p => {
+        this.visiblePickups().forEach(p => {
             p.y = p.startY + Math.sin(this.state.time * 0.1) * 5;
-            if (p.isShard) {
+            if (p.isHeart) {
+                this.drawSprite(this.heartSprite, p, 0.85 + 0.15 * Math.sin(this.state.time * 0.15));
+            } else if (p.isShard) {
                 // Same 💎 as the gem counter, pre-rendered with its glow;
                 // the pulse is just the sprite's opacity.
                 const ctx = this.renderer.ctx;

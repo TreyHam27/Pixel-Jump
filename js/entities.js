@@ -114,7 +114,7 @@ class Player extends Entity {
                 this.grounded = false;
                 input.keys.buffer = 0;
                 return "jump";
-            } else if (this.activePower === POWERS.DOUBLE && this.doubleReady) {
+            } else if ((this.activePower === POWERS.DOUBLE || ability.airJump) && this.doubleReady) {
                 this.vy = CONFIG.JUMP_FORCE * (ability.jumpMult || 1);
                 this.doubleReady = false;
                 input.keys.buffer = 0;
@@ -160,6 +160,9 @@ class Player extends Entity {
                 if (p.isShard) {
                     p.markedForDeletion = true;
                     return { event: "shard", x: p.x, y: p.y, value: p.shardValue || 1 };
+                } else if (p.isHeart) {
+                    p.markedForDeletion = true;
+                    return { event: "heart", x: p.x, y: p.y };
                 } else {
                     this.activatePower();
                     p.markedForDeletion = true;
@@ -193,7 +196,13 @@ class Player extends Entity {
             return;
         }
         const types = Object.values(POWERS);
-        const p = types[Math.floor(Math.random() * types.length)];
+        this.grantPower(types[Math.floor(Math.random() * types.length)]);
+    }
+
+    // Starts a specific power (replacing any running one) for its full,
+    // perk-stretched duration.
+    grantPower(p) {
+        const ability = this.skin.ability || {};
         this.activePower = p;
         this.powerTimer = p.time * (ability.powerDurationMult || 1);
         if (p === POWERS.DOUBLE) this.doubleReady = true;
