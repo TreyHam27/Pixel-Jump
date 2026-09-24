@@ -55,6 +55,19 @@ try {
     if (plain.update(1, { keys: { buffer: 6 } }, [], []) === "double_jump") throw new Error("Only AIR JUMP (or DOUBLE) jumps in mid-air");
     console.log("AIR JUMP SUCCESS");
 
+    // A power the Pixel already has for good is never rolled.
+    const rolls = (id) => {
+        const gm = new Game();
+        equip(gm, id);
+        const seen = new Set();
+        for (let i = 0; i < 400; i++) { gm.player.activePower = null; gm.player.activatePower(); seen.add(gm.player.activePower); }
+        return seen;
+    };
+    if (rolls('prism').has(POWERS.DOUBLE)) throw new Error("AIR JUMP Pixels should never roll DOUBLE JUMP");
+    if (rolls('hoarder').has(POWERS.MAGNET)) throw new Error("Magnet Pixels should never roll MAGNET");
+    if (rolls('unit734').size !== Object.keys(POWERS).length) throw new Error("A Pixel without overlaps rolls every power");
+    console.log("NO DUD POWERS SUCCESS");
+
     // EMP: drones and their shots are wiped every few seconds; the boss is spared.
     game = new Game();
     equip(game, 'pulsewarden');

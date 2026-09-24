@@ -49,7 +49,13 @@ const PLATFORM_GEN_VERSION = 3;
 const POWERUP_CHANCE_MIN = 0.06;
 const POWERUP_CHANCE_MAX = 0.12;
 const POWERUP_RAMP_METERS = 8000;
-const HEART_CHANCE = 0.035;
+// Hearts thin out with height (HEART_CHANCE_START at 0m down to
+// HEART_CHANCE_END at HEART_RAMP_METERS) and are always more than a screen
+// apart, so at most one is ever in view.
+const HEART_CHANCE_START = 0.04;
+const HEART_CHANCE_END = 0.01;
+const HEART_RAMP_METERS = 8000;
+const HEART_MIN_GAP = 1000; // px of world height between hearts (> CONFIG.HEIGHT)
 const SHARD_CHANCE = 0.4;
 const SHARD_VALUE = 10;
 // How far above the top of the screen platforms are generated in advance.
@@ -152,8 +158,8 @@ const SKINS = [
     // bottom two carry one big stat (+30% jump already means 1.7x the jump
     // height), and every tier above adds a wildcard
     // perk on top of a stat boost. At roughly 320-360 gems per 1000m climbed
-    // (plus 150 per boss) the top tier is a long grind, softened once GEMS x2
-    // is owned. See Game.renderGemShop().
+    // (plus 150 per boss) the lower tiers come quickly; the top tier at 50,000
+    // stays a grind for serious players. See Game.renderGemShop().
     { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.5 } },
     { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.3 } },
     { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { speedMult: 1.25, gravityMult: 0.7 } },
@@ -162,7 +168,7 @@ const SKINS = [
     { id: 'pulsewarden', name: "Pulse Warden", color: "#00ff99", eye: "#003322", cost: 5000, ability: { jumpMult: 1.25, dronePulseSec: 5 } },
     { id: 'hoarder', name: "Crystal Hoarder", color: "#33e0ff", eye: "#002233", cost: 9000, ability: { speedMult: 1.25, shardMagnetRadius: 150, shardMult: 2 } },
     { id: 'aegis', name: "Aegis", color: "#3366ff", eye: "#ffffff", cost: 15000, ability: { jumpMult: 1.25, extraRevive: 1, biomeImmune: true } },
-    { id: 'overclock', name: "Overclock", color: "#ff2222", eye: "#ffe600", cost: 25000, ability: { speedMult: 1.3, jumpMult: 1.3, powerDurationMult: 2, scoreMult: 2 } },
+    { id: 'overclock', name: "Overclock", color: "#ff2222", eye: "#ffe600", cost: 50000, ability: { speedMult: 1.3, jumpMult: 1.3, powerDurationMult: 2, scoreMult: 2 } },
 
     // Secret skins: never shown in the menu picker until their distance is
     // reached (see Game.unlockedSkinIndexes()), one per new biome.
@@ -179,7 +185,9 @@ function skinIndexById(id) {
 // Perks: the passive buff a Pixel grants, keyed by its SKINS[i].ability key.
 // `label` is the short tag shown on the menu/shop, `describe(value)` the full
 // stat text revealed on hover/tap, and `active(value)` whether a value does
-// anything at all (a 1x multiplier doesn't). Tags render in this order.
+// anything at all (a 1x multiplier doesn't). `covers` names the POWERS entry
+// the perk already gives for good, which that Pixel then never rolls. Tags
+// render in this order.
 const perkPct = (mult) => Math.round(Math.abs(mult - 1) * 100) + '%';
 const PERKS = [
     { key: 'speedMult', label: 'SPEED', color: '#00ccff', active: v => !!v && v !== 1,
@@ -190,13 +198,13 @@ const PERKS = [
       describe: v => (v < 1 ? '-' : '+') + perkPct(v) + ' gravity' + (v < 1 ? ' (floatier)' : '') },
     { key: 'powerDurationMult', label: 'POWER', color: '#ffaa00', active: v => !!v && v !== 1,
       describe: v => Number.isInteger(v) ? 'Power-ups last ' + v + 'x as long' : '+' + perkPct(v) + ' power-up duration' },
-    { key: 'shardMagnetRadius', label: 'MAGNET', color: '#ffff00', active: v => !!v,
+    { key: 'shardMagnetRadius', label: 'MAGNET', color: '#ffff00', active: v => !!v, covers: 'MAGNET',
       describe: () => 'Always pulls in nearby gems' },
     { key: 'extraRevive', label: 'REVIVE', color: '#00ffaa', active: v => !!v,
       describe: v => v + ' free revive every run' },
     { key: 'startAtScore', label: 'RIFT', color: '#9933ff', active: v => !!v,
       describe: v => 'Solo runs start at ' + Math.floor(v / 10) + 'm (The Rift)' },
-    { key: 'airJump', label: 'AIR JUMP', color: '#ff66ff', active: v => !!v,
+    { key: 'airJump', label: 'AIR JUMP', color: '#ff66ff', active: v => !!v, covers: 'DOUBLE',
       describe: () => 'Always has a double jump' },
     { key: 'dronePulseSec', label: 'EMP', color: '#00ff99', active: v => !!v,
       describe: v => 'Every ' + v + 's, destroys all drones on screen (solo only)' },

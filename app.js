@@ -1963,6 +1963,7 @@ class Game {
         // World y of the next platform to generate (screen y = wy + score).
         // An integer counter, so every co-op client derives identical heights.
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
+        this.state.lastHeartWY = null;
         this.fillPlatforms();
         this.particles = new ParticleSystem();
         this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
@@ -2016,14 +2017,15 @@ class Game {
                 isShard: false,
                 markedForDeletion: false
             });
-        } else if (this.seededRandom() < HEART_CHANCE) {
+        } else if (this.heartAllowedAt(wy, scoreMeters)) {
             // Always generated (so every client builds the same level), but
             // only shown to a player with no extra lives left.
+            this.state.lastHeartWY = wy;
             this.powerups.push({
-                x: x + w / 2 - 10,
-                y: y - 34,
-                startY: y - 34,
-                w: 20, h: 20,
+                x: x + w / 2 - 14,
+                y: y - 40,
+                startY: y - 40,
+                w: 28, h: 28,
                 isShard: false,
                 isHeart: true,
                 markedForDeletion: false
@@ -2039,6 +2041,16 @@ class Game {
                 markedForDeletion: false
             });
         }
+    }
+
+    // Rolls for a heart on the platform at `wy`: never within HEART_MIN_GAP
+    // of the last one (generation runs in height order, so this is the same
+    // on every client), and rarer the higher it is.
+    heartAllowedAt(wy, meters) {
+        const last = this.state.lastHeartWY;
+        if (last !== null && last !== undefined && last - wy < HEART_MIN_GAP) return false;
+        const ramp = Math.min(1, meters / HEART_RAMP_METERS);
+        return this.seededRandom() < HEART_CHANCE_START + (HEART_CHANCE_END - HEART_CHANCE_START) * ramp;
     }
 
     // Keeps platforms generated up to PLATFORM_LOOKAHEAD above the screen, so
@@ -2256,8 +2268,8 @@ class Game {
     // A pickup emoji, drawn once (with its glow) into an offscreen canvas at
     // screen density. Drawing emoji text with shadowBlur every frame was the
     // most expensive thing on the screen for phones.
-    makePickupSprite(emoji, glow) {
-        const size = 40;
+    makePickupSprite(emoji, glow, fontSize = 18) {
+        const size = Math.round(fontSize * 2.2);
         const dpr = this.renderer.dpr || 1;
         const c = document.createElement('canvas');
         c.width = size * dpr;
@@ -2269,14 +2281,14 @@ class Game {
         ctx.shadowColor = glow;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '18px sans-serif';
+        ctx.font = fontSize + 'px sans-serif';
         ctx.fillText(emoji, size / 2, size / 2);
         return { canvas: c, size };
     }
 
     makePickupSprites() {
         this.gemSprite = this.makePickupSprite('💎', '#00ffff');
-        this.heartSprite = this.makePickupSprite('❤️', '#ff3366');
+        this.heartSprite = this.makePickupSprite('❤️', '#ff3366', 28);
     }
 
     // Draws a pre-rendered pickup sprite centred on pickup `p`.
@@ -2302,7 +2314,7 @@ class Game {
             localStorage.setItem('lp_extraLives', this.state.extraLives);
             this.updateExtraLifeUI();
         }
-        this.particles.spawn(event.x + 10, event.y + 10, "#ff3366", 20);
+        this.particles.spawn(event.x + 14, event.y + 14, "#ff3366", 20);
         sounds.play('powerup');
         this.showAlert("EXTRA LIFE +1 ❤", 'success');
     }
