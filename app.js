@@ -1614,7 +1614,7 @@ class Game {
         if (this.ui.shopLifeCount) this.ui.shopLifeCount.innerText = this.state.extraLives;
         const hearts = this.ui.lifeDisplay;
         if (hearts) {
-            const text = "❤ " + this.state.extraLives;
+            const text = this.state.extraLives + " ❤️";
             if (hearts.innerText !== text && hearts.classList) {
                 hearts.classList.remove('life-pop');
                 void hearts.offsetWidth; // restart the animation
@@ -2360,7 +2360,7 @@ class Game {
         }
         this.particles.spawn(event.x + 14, event.y + 14, "#ff3366", 20);
         sounds.play('powerup');
-        this.notify("EXTRA LIFE +1 ❤", 'success');
+        this.notify("EXTRA LIFE +1 ❤️", 'success');
     }
 
     // ---------------------------------------------------- challenge links
