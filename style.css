@@ -311,6 +311,14 @@ canvas {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 215, 0, 0.3);
 }
 
+/* A life was spent */
+#system-alert.alert-life {
+    border-color: rgba(255, 51, 102, 0.4);
+    border-left-color: #ff3366;
+    color: #ff5c85;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(255, 51, 102, 0.2);
+}
+
 /* Urgent, attention-grabbing pulse (co-op respawn countdown) */
 #system-alert.alert-pulse {
     border-color: rgba(192, 77, 255, 0.5);

@@ -115,7 +115,11 @@ function biomeAt(meters) {
 // Shop consumables. Extra lives are bought with shards and carried between
 // runs as stock — each one is spent automatically on a death that would
 // otherwise end the run (see Game.die()).
-const EXTRA_LIFE_COST = 100;
+const EXTRA_LIFE_COST = 50;
+// A spent life (or revive) springs up a red safety net for a second that
+// bounces the player back in.
+const RESCUE_NET_FRAMES = 60;
+const RESCUE_NET_COLOR = '#ff3366';
 const MAX_EXTRA_LIVES = 3;
 
 // Multiplayer: host + up to 3 guests (NetworkManager.maxGuests must match).

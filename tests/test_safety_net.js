@@ -66,6 +66,43 @@ try {
     assert(game.safetyNet.deploy === 0 && game.safetyNet.impact === 0, "reset clears the net");
 
     console.log("SAFETY NET SUCCESS");
+
+    // A spent life: a red rescue net bounces you back in for a second, with
+    // no floor platform, and a red notice.
+    game = new Game();
+    game.startGame();
+    game.state.extraLives = 2;
+    const alerts = [];
+    const realAlert = game.showAlert.bind(game);
+    game.showAlert = (text, type) => { alerts.push([text, type]); realAlert(text, type); };
+    const platformsBefore = game.platforms.length;
+    game.player.y = CONFIG.HEIGHT + 10;
+    game.die();
+    assert(game.state.running && game.state.extraLives === 1, "a life was spent");
+    assert(game.safetyNet.rescue && game.safetyNet.deploy === 1, "red rescue net is up");
+    assert(game.player.y === CONFIG.HEIGHT - 60 && game.player.vy === CONFIG.BOUNCE_FORCE, "bounced back in from the net");
+    assert(game.platforms.length === platformsBefore, "no floor platform");
+    assert(alerts.some(([t, type]) => /EXTRA LIFE SPENT/.test(t) && type === 'life'), "red life notice");
+    // Falling again inside the second bounces instead of costing a life.
+    game.update(1);
+    game.player.y = CONFIG.HEIGHT + 10;
+    game.die();
+    assert(game.state.extraLives === 1, "caught by the rescue net, no second life spent");
+    for (let i = 0; i < RESCUE_NET_FRAMES + 40; i++) { game.player.y = 300; game.player.vy = 0; game.update(1); }
+    assert(game.state.rescueNetT === 0 && game.safetyNet.deploy === 0, "the net is gone after a second");
+    game.player.y = CONFIG.HEIGHT + 10;
+    game.die();
+    assert(game.state.extraLives === 0, "after that, a fall spends a life again");
+    console.log("RESCUE NET SUCCESS");
+
+    // The free revive uses the same net.
+    game = new Game();
+    game.startGame();
+    const before = game.platforms.length;
+    game.state.running = false;
+    game.revive();
+    assert(game.safetyNet.rescue && game.state.rescueNetT === RESCUE_NET_FRAMES && game.platforms.length === before, "revive uses the rescue net");
+    console.log("REVIVE NET SUCCESS");
 } catch(e) {
     console.error("CRASH:", e.stack);
     process.exitCode = 1;

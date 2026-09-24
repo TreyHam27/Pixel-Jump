@@ -1696,9 +1696,9 @@ class Game {
     // calls this every second just keeps resetting the timer, so it stays up
     // continuously and disappears 4s after the final update.
     showAlert(text, type = 'info') {
-        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', unlock: '🎨' };
+        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', unlock: '🎨', life: '💔' };
         const el = this.ui.alert;
-        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-unlock');
+        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-unlock', 'alert-life');
         el.classList.add('alert-' + type, 'alert-visible');
         this.ui.alertIcon.innerText = icons[type] || icons.info;
         this.ui.alertText.innerText = text;
@@ -1750,19 +1750,23 @@ class Game {
     // screen. `deploy` eases the net in and out with the power-up; `impact`,
     // `impactX` and `phase` drive the decaying wobble after each bounce.
     makeSafetyNetState() {
-        return { deploy: 0, impact: 0, impactX: CONFIG.WIDTH / 2, phase: 0, expiring: false };
+        return { deploy: 0, impact: 0, impactX: CONFIG.WIDTH / 2, phase: 0, expiring: false, rescue: false };
     }
 
     updateSafetyNet(dt) {
         const net = this.safetyNet;
-        const active = this.player.activePower === POWERS.SAFETY;
+        const power = this.player.activePower === POWERS.SAFETY;
+        if (this.state.rescueNetT > 0) this.state.rescueNetT = Math.max(0, this.state.rescueNetT - dt);
+        // The power's own (purple) net takes over from a red rescue net.
+        if (power) net.rescue = false;
+        const active = power || this.state.rescueNetT > 0;
 
         net.deploy = active
             ? Math.min(1, net.deploy + 0.08 * dt)
             : Math.max(0, net.deploy - 0.06 * dt);
         // Warn over the last ~2.5 seconds. A fixed window rather than a fraction
         // of the timer, since skin abilities can stretch the power's duration.
-        net.expiring = active && this.player.powerTimer < 150;
+        net.expiring = power && this.player.powerTimer < 150;
 
         if (net.impact > 0) {
             net.phase += 0.5 * dt;
@@ -1896,6 +1900,27 @@ class Game {
         }
     }
 
+    // A spent life or revive: a red safety net springs up for a second and
+    // bounces the player back in from the bottom of the screen.
+    deployRescueNet() {
+        this.state.rescueNetT = RESCUE_NET_FRAMES;
+        this.safetyNet.rescue = true;
+        this.player.y = CONFIG.HEIGHT - 60;
+        this.player.launch(CONFIG.BOUNCE_FORCE);
+        this.bounceSafetyNet();
+    }
+
+    // A fall onto a deployed net (the SAFETY NET power, or a rescue net still
+    // up) bounces instead of killing. Enemy hits aren't caught. True if caught.
+    catchWithNet(forceDie) {
+        if (forceDie || !(this.player.activePower === POWERS.SAFETY || this.state.rescueNetT > 0)) return false;
+        this.player.y = CONFIG.HEIGHT - 60;
+        this.player.vy = CONFIG.BOUNCE_FORCE;
+        this.bounceSafetyNet();
+        this.particles.spawn(this.player.x, CONFIG.HEIGHT, this.safetyNet.rescue ? RESCUE_NET_COLOR : POWERS.SAFETY.color, 30);
+        return true;
+    }
+
     // Kick the trampoline into its bounce wobble, centred on where the player
     // hit it.
     bounceSafetyNet() {
@@ -1970,9 +1995,10 @@ class Game {
         // An integer counter, so every co-op client derives identical heights.
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
         this.state.lastHeartWY = null;
-        // The best height before this run, marked in the level so you can see
-        // yourself pass it (bestHeight itself climbs along with you).
-        this.state.bestMarkerM = this.state.bestHeight || 0;
+        this.state.rescueNetT = 0;
+        // The high score before this run, marked in the level so you can see
+        // yourself pass it (highScore itself climbs along with you).
+        this.state.bestMarkerScore = this.state.highScore || 0;
         // Beginner tips are painted onto the starting screen (world space), so
         // they scroll away as you climb past them.
         this.state.tipAnchorWY = -this.state.score;
@@ -2389,14 +2415,21 @@ class Game {
 
     // A dashed gold line at the height where the displayed score reaches
     // the target (the player crosses it at the camera line).
-    // A dashed line across the level at your best height so far, fixed in
-    // place: it reaches your Pixel exactly as you set a new best, then
-    // scrolls away below. Not shown on a first run or from a checkpoint
-    // start already above it.
+    // Screen y where the displayed score reaches `meters`: the line meets
+    // the player exactly as the score passes it.
+    scoreLineY(meters) {
+        return CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD - (meters * 10 - (this.state.score + (this.state.bonusScore || 0)));
+    }
+
+    // A dashed line across the level at your high score from before this run.
+    // It stays put as you climb (it slides toward you only when score comes
+    // without height: SCORE x2, a boss bonus), meets your Pixel exactly as
+    // you set a new high score, then scrolls away below. Not shown on a first
+    // run or from a checkpoint start already above it.
     drawBestLine() {
-        const best = this.state.bestMarkerM;
+        const best = this.state.bestMarkerScore;
         if (!(best > 0) || best <= (this.state.startMeters || 0)) return;
-        const y = CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD - (best * 10 - this.state.score);
+        const y = this.scoreLineY(best);
         if (y < -20 || y > CONFIG.HEIGHT + 20) return;
         const ctx = this.renderer.ctx;
         ctx.save();
@@ -2409,7 +2442,7 @@ class Game {
         ctx.lineTo(CONFIG.WIDTH, y);
         ctx.stroke();
         // The label sits on a dark tab so platforms behind it can't swallow it.
-        const label = 'BEST HEIGHT ' + fmtNum(best) + 'm';
+        const label = 'HIGH SCORE ' + fmtNum(best) + 'm';
         const font = 'bold 15px Orbitron, sans-serif';
         ctx.font = font;
         const w = (ctx.measureText ? ctx.measureText(label).width : label.length * 10) + 16;
@@ -2426,7 +2459,7 @@ class Game {
     drawChallengeLine() {
         if (!this.challengeActive() || this.state.challengeBeaten) return;
         const ctx = this.renderer.ctx;
-        const y = CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD - (this.challenge.meters * 10 - (this.state.score + (this.state.bonusScore || 0)));
+        const y = this.scoreLineY(this.challenge.meters);
         if (y < -20 || y > CONFIG.HEIGHT + 20) return;
         ctx.save();
         ctx.strokeStyle = '#ffd700';
@@ -2569,13 +2602,7 @@ class Game {
             return;
         }
 
-        if (!forceDie && this.player.activePower === POWERS.SAFETY) {
-            this.player.y = CONFIG.HEIGHT - 60;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.bounceSafetyNet();
-            this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
-            return;
-        }
+        if (this.catchWithNet(forceDie)) return;
 
         this.state.runDeaths = (this.state.runDeaths || 0) + 1;
         if (this.useSpareLife()) return;
@@ -2615,28 +2642,19 @@ class Game {
         return false;
     }
 
-    // Throws the player back up from the bottom of the screen onto a
-    // temporary floor, behind a fresh HARD SHIELD.
+    // Bounces the player back in on a red rescue net, behind a fresh HARD
+    // SHIELD, with a red notice (a life is gone).
     rescuePlayer(color, text) {
-        this.player.y = CONFIG.HEIGHT - 200;
-        this.player.launch(CONFIG.BOUNCE_FORCE);
-        this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+        this.deployRescueNet();
         this.player.grantPower(POWERS.SHIELD);
         sounds.play('powerup');
         this.particles.spawn(this.player.x + 13, this.player.y + 13, color, 30, "blast");
-        this.showAlert(text, 'success');
+        this.showAlert(text, 'life');
     }
 
     handleMultiplayerDeath(forceDie) {
         if (this.player.isDead) return;
-
-        if (!forceDie && this.player.activePower === POWERS.SAFETY) {
-            this.player.y = CONFIG.HEIGHT - 60;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.bounceSafetyNet();
-            this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
-            return;
-        }
+        if (this.catchWithNet(forceDie)) return;
 
         this.state.runDeaths = (this.state.runDeaths || 0) + 1;
         if (this.useSpareLife()) return;
@@ -2770,10 +2788,7 @@ class Game {
         this.input.resetInput();
         this.lastTime = performance.now();
 
-        this.player.y = CONFIG.HEIGHT - 200;
-        this.player.launch(CONFIG.BOUNCE_FORCE);
-
-        this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+        this.deployRescueNet();
         this.player.grantPower(POWERS.SHIELD);
 
         this.showAlert("LIFE RESTORED", 'success');
@@ -3308,7 +3323,7 @@ class Game {
         if (this.state.running) this.drawBestLine();
         if (this.state.running) this.drawChallengeLine();
 
-        this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
+        this.renderer.drawSafetyNet(this.safetyNet, this.safetyNet.rescue ? RESCUE_NET_COLOR : POWERS.SAFETY.color, this.state.time);
         if (this.state.running && !this.player.isDead) this.renderer.drawWrapEdges(this.player.x, this.player.w);
 
         if (!this.player.isDead) this.player.draw(this.renderer.ctx);
