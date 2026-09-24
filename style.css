@@ -1630,10 +1630,11 @@ canvas {
     }
 }
 
-/* First-run controls hint, low over the playfield. */
+/* First-run controls hint, in the upper middle of the playfield: the player
+   starts at the bottom, so a hint down there would cover them. */
 #controls-hint {
     position: absolute;
-    bottom: calc(40px + var(--safe-bottom));
+    top: 34%;
     left: 50%;
     transform: translateX(-50%);
     width: max-content;
