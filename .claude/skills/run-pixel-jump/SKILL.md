@@ -6,7 +6,7 @@ description: Run, start, play, drive, or screenshot the Pixel Jump browser game 
 # Run Pixel Jump
 
 Pixel Jump is a static HTML5 canvas game (`index.html` + `app.js` + `js/*.js`,
-no build step, no `package.json`). The agent path is
+no build step, no npm dependencies). The agent path is
 `.claude/skills/run-pixel-jump/driver.mjs`: it serves the repo with
 `python3 -m http.server`, opens it in headless Chromium through Playwright,
 runs a list of steps (click/keys/wait/screenshot/eval), then shuts everything
@@ -16,7 +16,7 @@ Verified on macOS (Darwin, Node 26, Python 3, Playwright 1.63).
 
 ## Prerequisites
 
-`node_modules/` is gitignored and there's no `package.json`, so install
+`node_modules/` is gitignored and `package.json` has no dependencies, so install
 Playwright without saving it:
 
 ```bash
@@ -52,7 +52,7 @@ Steps run in order:
 Verified recipes:
 
 ```bash
-# Warp to 500m (jumps biomes, fires height-based unlocks such as "SKIN UNLOCKED: The Ghost")
+# Warp to 500m (jumps biomes, fires height-based unlocks such as "PIXEL UNLOCKED: The Ghost")
 node .claude/skills/run-pixel-jump/driver.mjs start wait 300 eval '__game.state.score = 5000' wait 1500 ss warp score
 
 # Inspect state

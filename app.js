@@ -1730,8 +1730,9 @@ class Game {
 
     // EMP perk: every N seconds, wipe every drone on screen (regular, shooter
     // and laser drones) and every bullet in flight. The boss and the biome's
-    // meteors are immune. Solo only: in co-op every client runs its own
-    // enemies, so one player's EMP would desync what the party sees.
+    // meteors are immune. Solo only: in co-op the host owns every enemy and
+    // guests only draw mirrors of them, so a guest's pulse would just hide
+    // drones that are still there for everyone else.
     updateDronePulse(dt, perks) {
         if (!perks.dronePulseSec || this.state.multiplayer) return;
         this.state.pulseTimer = (this.state.pulseTimer || 0) + dt;
