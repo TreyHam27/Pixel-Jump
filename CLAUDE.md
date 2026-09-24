@@ -15,6 +15,8 @@ npm run serve                   # python3 -m http.server 8765 → http://localho
 
 To drive the real game in headless Chromium (screenshots, touch/DPR emulation, `eval` against the live game), use the `run-pixel-jump` skill (`.claude/skills/run-pixel-jump/`). It needs `npm install --no-save playwright && npx playwright install chromium`. `Game` isn't a global; the driver exposes the live instance as `window.__game`.
 
+After any gameplay, UI or CSS change, verify it in the real game with `/run-pixel-jump` before opening a PR. Look at the screenshots, and run a `PJ_TOUCH=1` pass for anything touch- or layout-related. The node tests use a mocked DOM, so they can't catch rendering or tap bugs.
+
 ## Shipping: merging to `main` is deploying
 
 GitHub Pages serves `main` as-is, so a merge is live immediately. CI (`.github/workflows/test.yml`, `npm test` on Node 20) runs on PRs and on pushes to `main`, and it is the only gate. Work on a branch and open a PR.
