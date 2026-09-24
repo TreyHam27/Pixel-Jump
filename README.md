@@ -22,8 +22,8 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 - **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC; COPY CODE shares it).
   - Levels are generated identically on every client.
   - The host runs every drone, bullet, meteor and the boss. Everyone faces the same enemies, stomps count toward one shared boss health bar, and a boss kill pays everyone.
-  - Teammates move smoothly between updates, and a player who is down sees whom they're spectating. Only public STUN servers are configured, so players behind strict NATs (some mobile carriers and office networks) need a TURN relay: add one with your own credentials to `EXTRA_ICE_SERVERS` in `js/config.js`.
-- **Extra lives:** buy them in the shop; ads are off (`ADS_ENABLED` in `js/config.js`).
+  - Teammates move smoothly between updates, and a player who is down sees whom they're spectating. Only public STUN servers are configured, so players behind strict NATs (school and office networks, some mobile carriers) can't connect; the join then fails with "THIS NETWORK MAY BLOCK CO-OP". A TURN relay fixes that: add one with your own credentials to `EXTRA_ICE_SERVERS` in `js/config.js`.
+- **Extra lives (❤):** buy them in the shop, or pick up a heart. Hearts only appear while you have no extra lives left. A spent life (solo or co-op) throws you back up with a HARD SHIELD. Ads are off (`ADS_ENABLED` in `js/config.js`).
 - **Run summary and Records:** every run ends with a summary card. RECORDS shows lifetime stats and every achievement (secret Pixels stay hidden until earned).
 - **Settings:** volume, mute, the daily ghost, reduced motion, and on-screen touch buttons. Solo runs pause when you switch tabs.
 - **Phones and PWA:**

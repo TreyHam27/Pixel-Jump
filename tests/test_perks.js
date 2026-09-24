@@ -2,9 +2,10 @@ const { setupMocks, loadGameSource } = require('./test_helpers');
 
 setupMocks();
 
-// Regression test for the gem-shop Pixel perks: POWER (2x duration), PHOENIX
-// (power-up on a spent life), EMP (periodic drone wipe, solo only), GEMS x2,
-// SHIELDED (biome-effect immunity) and SCORE x2 (display score only).
+// Regression test for the gem-shop Pixel perks: POWER (2x duration), AIR JUMP
+// (always a double jump), EMP (periodic drone wipe, solo only), GEMS x2,
+// SHIELDED (biome-effect immunity) and SCORE x2 (display score only), plus
+// the HARD SHIELD every spent life comes back with.
 eval(loadGameSource() + `
 try {
     const equip = (game, id) => { game.viewParams.skinIndex = skinIndexById(id); game.startGame(); };
@@ -24,24 +25,50 @@ try {
     }
     console.log("POWER 2X SUCCESS");
 
-    // PHOENIX: spending an extra life also grants a power-up.
-    game = new Game();
-    game.state.extraLives = 1;
-    equip(game, 'prism');
-    game.die(true);
-    if (!game.state.running) throw new Error("Run should continue on the banked life");
-    if (!game.player.activePower) throw new Error("PHOENIX should grant a power-up when a life is spent");
-    console.log("PHOENIX SUCCESS");
-
-    // Without PHOENIX, a spent life grants nothing.
+    // Any spent life comes back behind a HARD SHIELD.
     game = new Game();
     game.state.extraLives = 1;
     equip(game, 'unit734');
     game.die(true);
-    if (game.player.activePower) throw new Error("Only PHOENIX should grant a power-up on a spent life");
-    console.log("NO PHOENIX WITHOUT PERK SUCCESS");
+    if (!game.state.running) throw new Error("Run should continue on the banked life");
+    if (game.player.activePower !== POWERS.SHIELD) throw new Error("A spent life should grant HARD SHIELD");
+    console.log("SPENT LIFE SHIELD SUCCESS");
 
-    // EMP: drones and their shots are wiped every 7s; the boss is spared.
+    // AIR JUMP (Prism): a second jump in mid-air without the DOUBLE power.
+    game = new Game();
+    equip(game, 'prism');
+    const air = game.player;
+    const input = { keys: { left: false, right: false, buffer: 0 } };
+    air.grounded = true;
+    air.update(1, input, [], []);   // arms the double jump
+    air.grounded = false; air.coyote = 0; air.vy = 5;
+    input.keys.buffer = 6;
+    if (air.update(1, input, [], []) !== "double_jump") throw new Error("AIR JUMP should allow a mid-air jump");
+    input.keys.buffer = 6;
+    if (air.update(1, input, [], []) === "double_jump") throw new Error("AIR JUMP is one extra jump, not infinite");
+    game = new Game();
+    equip(game, 'unit734');
+    const plain = game.player;
+    plain.grounded = true;
+    plain.update(1, { keys: { buffer: 0 } }, [], []);
+    plain.grounded = false; plain.coyote = 0; plain.vy = 5;
+    if (plain.update(1, { keys: { buffer: 6 } }, [], []) === "double_jump") throw new Error("Only AIR JUMP (or DOUBLE) jumps in mid-air");
+    console.log("AIR JUMP SUCCESS");
+
+    // A power the Pixel already has for good is never rolled.
+    const rolls = (id) => {
+        const gm = new Game();
+        equip(gm, id);
+        const seen = new Set();
+        for (let i = 0; i < 400; i++) { gm.player.activePower = null; gm.player.activatePower(); seen.add(gm.player.activePower); }
+        return seen;
+    };
+    if (rolls('prism').has(POWERS.DOUBLE)) throw new Error("AIR JUMP Pixels should never roll DOUBLE JUMP");
+    if (rolls('hoarder').has(POWERS.MAGNET)) throw new Error("Magnet Pixels should never roll MAGNET");
+    if (rolls('unit734').size !== Object.keys(POWERS).length) throw new Error("A Pixel without overlaps rolls every power");
+    console.log("NO DUD POWERS SUCCESS");
+
+    // EMP: drones and their shots are wiped every few seconds; the boss is spared.
     game = new Game();
     equip(game, 'pulsewarden');
     const drone = new Drone(300, 1);

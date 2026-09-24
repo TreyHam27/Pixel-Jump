@@ -67,16 +67,14 @@ try {
     assert(html.includes('Unit 734'), "known skins still show by name");
     console.log("FAME ESCAPE SUCCESS");
 
-    // PHOENIX also fires on a co-op revive.
-    localStorage.setItem('lp_owned_skins', JSON.stringify(['prism']));
+    // A co-op respawn comes back behind a HARD SHIELD.
     window.network = { myId: 'me', send() {} };
     g = new Game();
-    g.equipSkin(skinIndexById('prism'));
     g.startMultiplayerGame(77);
     g.player.isDead = true;
     g.mpRevive();
-    assert(g.player.activePower, "PHOENIX grants a power-up on a co-op revive");
-    console.log("PHOENIX COOP SUCCESS");
+    assert(g.player.activePower === POWERS.SHIELD, "a co-op respawn grants HARD SHIELD");
+    console.log("COOP RESPAWN SHIELD SUCCESS");
 } catch (e) {
     console.error("FAILED:", e.stack || e);
     process.exitCode = 1;
