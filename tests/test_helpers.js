@@ -9,6 +9,8 @@ function makeMockContext() {
         shadowBlur: 0, shadowColor: '', globalAlpha: 1,
         fillRect() {}, strokeRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
         stroke() {}, fill() {}, arc() {}, fillText() {}, save() {}, restore() {},
+        setTransform() {}, scale() {}, translate() {}, drawImage() {}, setLineDash() {},
+        measureText() { return { width: 0 }; },
         createRadialGradient() { return { addColorStop() {} }; }
     };
 }

@@ -22,7 +22,13 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 - **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC). Levels are generated identically on every client. Only public STUN servers are configured, so players behind strict NATs (some mobile carriers and office networks) need a TURN relay: add one with your own credentials to `EXTRA_ICE_SERVERS` in `js/config.js`.
 - **Extra lives:** buy them in the shop; ads are off (`ADS_ENABLED` in `js/config.js`).
 - **Run summary and Records:** every run ends with a summary card. RECORDS shows lifetime stats and every achievement (secret Pixels stay hidden until earned).
-- **Settings:** volume, mute, the daily ghost, and reduced motion. Solo runs pause when you switch tabs.
+- **Settings:** volume, mute, the daily ghost, reduced motion, and on-screen touch buttons. Solo runs pause when you switch tabs.
+- **Phones and PWA:**
+  - On-screen touch pads and a sharp high-DPI canvas.
+  - Installable from the browser menu ("Add to Home Screen"), and playable offline once it's been loaded.
+- **Share and challenge:**
+  - The end-of-run card's SHARE RUN sends a score card image with a link, or copies the link where sharing isn't available.
+  - A solo run's link (`?beat=1234&d=YYYYMMDD`) puts a TARGET line on that day's layout for whoever opens it the same day.
 
 ## Run locally
 
@@ -66,3 +72,8 @@ GitHub Pages serves `main` directly, so every merge goes live straight away.
 - **Bump `GAME_VERSION`** in `js/config.js`, and the matching `?v=` query on every script/stylesheet in `index.html`, whenever you ship. `tests/test_version.js` checks they agree. This stops browsers mixing cached files from different deploys.
 - **Bump `NET_PROTOCOL`** in `js/config.js` whenever co-op messages, level generation, or the order of `SKINS`/`POWERS` change. Players on different protocols are told to refresh instead of joining a desynced run.
 - **Bump `PLATFORM_GEN_VERSION`** when level generation changes, so ghosts from the old generator are dropped.
+- **The service worker (`sw.js`)** has its own `VERSION`, which must equal `GAME_VERSION` (the tests check). Bumping it drops the old offline caches.
+  - The worker only registers on the live https site, so local development never serves stale cached files.
+  - To try it locally, open `http://localhost:8765/?sw`.
+- **Link previews** use `og-image.png` and the absolute URLs in `index.html`'s `<head>`. Update them if the site moves.
+- **Vendored libraries** live in `js/vendor/` (see its README).

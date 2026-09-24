@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 26" shape-rendering="crispEdges">
+  <!-- Unit 734, simplified for 16px legibility: flat pink square filling the canvas, no glow, no grid -->
+  <rect x="0" y="0" width="26" height="26" fill="#ff3366" shape-rendering="crispEdges"/>
+  <rect x="5" y="7" width="5" height="5" fill="#ffffff" shape-rendering="crispEdges"/>
+  <rect x="16" y="7" width="5" height="5" fill="#ffffff" shape-rendering="crispEdges"/>
+</svg>

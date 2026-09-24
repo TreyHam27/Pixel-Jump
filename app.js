@@ -26,6 +26,20 @@ function fmtDuration(totalSeconds) {
 
 const isPlainObject = v => !!v && typeof v === 'object' && !Array.isArray(v);
 
+// A challenge link (?beat=1234&d=20260923) sets a target on that day's
+// layout. Every solo run on a given day uses the same daily seed, so the
+// target is fair; on any other day the link is ignored.
+function parseChallenge(search, todaySeed) {
+    let params;
+    try { params = new URLSearchParams(search || ''); } catch (e) { return null; }
+    const meters = parseInt(params.get('beat'), 10);
+    const day = parseInt(params.get('d'), 10);
+    if (!(meters > 0) || meters > 1e7 || day !== todaySeed) return null;
+    return { meters };
+}
+
+const SITE_URL = 'https://treyham27.github.io/Pixel-Jump/';
+
 // Lifetime totals shown on the Records screen (lp_stats).
 const STAT_DEFAULTS = { runs: 0, meters: 0, gems: 0, powerups: 0, livesLost: 0, seconds: 0 };
 
@@ -175,8 +189,32 @@ class Game {
             recordsStats: document.getElementById("records-stats"),
             recordsList: document.getElementById("records-list"),
             recordsCount: document.getElementById("records-count"),
-            controlsHint: document.getElementById("controls-hint")
+            controlsHint: document.getElementById("controls-hint"),
+
+            // Phones, challenge links and sharing
+            touchControls: document.getElementById("touch-controls"),
+            setTouch: document.getElementById("set-touch"),
+            challengeHud: document.getElementById("challenge-hud"),
+            runShareBtn: document.getElementById("run-share-btn"),
+            shareToast: document.getElementById("share-toast")
         };
+        this.touchPads = this.ui.touchControls && this.ui.touchControls.querySelectorAll
+            ? {
+                left: this.ui.touchControls.querySelector('.touch-pad--left'),
+                right: this.ui.touchControls.querySelector('.touch-pad--right'),
+                jump: this.ui.touchControls.querySelector('.touch-pad--jump')
+            }
+            : {};
+        // Touch pads follow the current primary pointer (a 2-in-1 can switch).
+        const coarse = typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)') : null;
+        this.coarsePointer = !!(coarse && coarse.matches);
+        if (coarse && coarse.addEventListener) {
+            coarse.addEventListener('change', (e) => {
+                this.coarsePointer = e.matches;
+                this.updateTouchControls();
+            });
+        }
+        this.challenge = parseChallenge(typeof location !== 'undefined' ? location.search : '', this.getDailySeed());
         // Everyone else in the run, keyed by peer ID (pid).
         this.remotePlayers = new Map();
         // Current party: [{ pid, name, slot, isHost }]. The host owns the
@@ -217,6 +255,12 @@ class Game {
         }
         this.setMenuPanel('sp');
         this.applySettings();
+        this.gemSprite = this.makeGemSprite();
+        this.renderer.onResize = () => {
+            this.layoutTouchControls();
+            this.gemSprite = this.makeGemSprite();
+        };
+        this.layoutTouchControls();
 
         this.loop = this.loop.bind(this);
         requestAnimationFrame(this.loop);
@@ -465,6 +509,8 @@ class Game {
         setting(this.ui.setMuted, 'muted', el => el.checked);
         setting(this.ui.setGhost, 'showGhost', el => el.checked);
         setting(this.ui.setMotion, 'reducedMotion', el => el.checked);
+        setting(this.ui.setTouch, 'touchControls', el => el.checked);
+        on(this.ui.runShareBtn, () => this.shareRun());
 
         // Leaving the tab or window pauses a solo run.
         document.addEventListener('visibilitychange', () => { if (document.hidden) this.autoPause(); });
@@ -494,6 +540,7 @@ class Game {
         this.ui.pauseNote.hidden = !this.state.multiplayer;
         this.ui.pauseQuitBtn.innerText = this.state.multiplayer ? "LEAVE PARTY" : "QUIT RUN";
         this.ui.pauseOverlay.hidden = false;
+        this.updateTouchControls();
     }
 
     resumeGame() {
@@ -512,6 +559,7 @@ class Game {
         this.state.paused = false;
         this.ui.pauseOverlay.hidden = true;
         this.closeSettings();
+        this.updateTouchControls();
     }
 
     togglePause() {
@@ -546,7 +594,8 @@ class Game {
             volume: Number.isFinite(saved.volume) ? Math.max(0, Math.min(1, saved.volume)) : 0.8,
             muted: saved.muted === true,
             showGhost: saved.showGhost !== false,
-            reducedMotion: typeof saved.reducedMotion === 'boolean' ? saved.reducedMotion : prefersReduced
+            reducedMotion: typeof saved.reducedMotion === 'boolean' ? saved.reducedMotion : prefersReduced,
+            touchControls: saved.touchControls !== false
         };
     }
 
@@ -559,6 +608,7 @@ class Game {
         sounds.setMuted(this.settings.muted);
         if (document.body && document.body.classList) document.body.classList.toggle('reduce-motion', this.settings.reducedMotion);
         this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
+        this.updateTouchControls();
     }
 
     openSettings() {
@@ -567,6 +617,7 @@ class Game {
         this.ui.setMuted.checked = s.muted;
         this.ui.setGhost.checked = s.showGhost;
         this.ui.setMotion.checked = s.reducedMotion;
+        if (this.ui.setTouch) this.ui.setTouch.checked = s.touchControls;
         this.ui.settingsOverlay.hidden = false;
         this.settingsOpen = true;
     }
@@ -1767,6 +1818,229 @@ class Game {
         this.state.pausedMs = 0;
         this.pauseStartedAt = 0;
         this.showControlsHint();
+        this.updateTouchControls();
+        this.startChallenge();
+    }
+
+    // ------------------------------------------------------- touch controls
+    // Lays the (visual-only) pads over the canvas, which is letterboxed
+    // inside the screen.
+    layoutTouchControls() {
+        const tc = this.ui.touchControls;
+        const canvas = this.renderer.canvas;
+        if (!tc || !canvas || !canvas.getBoundingClientRect || !canvas.parentElement) return;
+        const c = canvas.getBoundingClientRect();
+        const box = canvas.parentElement.getBoundingClientRect();
+        tc.style.left = (c.left - box.left) + 'px';
+        tc.style.top = (c.top - box.top) + 'px';
+        tc.style.width = c.width + 'px';
+        tc.style.height = c.height + 'px';
+    }
+
+    // Pads show on touch screens during a live, unpaused run (unless turned
+    // off in Settings; the invisible zones keep working either way).
+    updateTouchControls() {
+        if (!this.ui.touchControls) return;
+        const show = this.coarsePointer && this.settings.touchControls && this.state.running && !this.pauseMenuOpen;
+        this.ui.touchControls.hidden = !show;
+        this.touchPadsShown = show;
+    }
+
+    // Lights up the pads being pressed.
+    updateTouchPadStates() {
+        if (!this.touchPadsShown) return;
+        const keys = this.input.keys;
+        const want = { left: keys.left, right: keys.right, jump: keys.buffer > 0 };
+        const last = this.touchPadLast || (this.touchPadLast = {});
+        for (const k of ['left', 'right', 'jump']) {
+            const pad = this.touchPads[k];
+            if (pad && last[k] !== want[k]) {
+                pad.classList.toggle('is-active', want[k]);
+                last[k] = want[k];
+            }
+        }
+    }
+
+    // --------------------------------------------------------- gem sprite
+    // The pickup gem, drawn once (with its glow) into an offscreen canvas at
+    // screen density. Drawing emoji text with shadowBlur every frame was the
+    // most expensive thing on the screen for phones.
+    makeGemSprite() {
+        const size = 40;
+        const dpr = this.renderer.dpr || 1;
+        const c = document.createElement('canvas');
+        c.width = size * dpr;
+        c.height = size * dpr;
+        const ctx = c.getContext && c.getContext('2d');
+        if (!ctx) return null;
+        if (ctx.scale) ctx.scale(dpr, dpr);
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = '#00ffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '18px sans-serif';
+        ctx.fillText('💎', size / 2, size / 2);
+        return { canvas: c, size };
+    }
+
+    // ---------------------------------------------------- challenge links
+    startChallenge() {
+        const ch = this.challenge;
+        const active = this.challengeActive();
+        this.state.challengeBeaten = false;
+        if (!this.ui.challengeHud) return;
+        this.ui.challengeHud.hidden = !active;
+        if (active) {
+            this.ui.challengeHud.classList.remove('beaten');
+            this.ui.challengeHud.innerText = 'TARGET ' + fmtNum(ch.meters) + 'm';
+        }
+    }
+
+    // Only a normal solo start on today's layout: a checkpoint start (The
+    // Void begins at 5000m) is a different climb and would pass most targets
+    // before the first jump.
+    challengeActive() {
+        return !!this.challenge && !this.state.multiplayer && this.state.runSeed === this.getDailySeed()
+            && !this.state.startMeters;
+    }
+
+    // A dashed gold line at the height where the displayed score reaches
+    // the target (the player crosses it at the camera line).
+    drawChallengeLine() {
+        if (!this.challengeActive() || this.state.challengeBeaten) return;
+        const ctx = this.renderer.ctx;
+        const y = CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD - (this.challenge.meters * 10 - (this.state.score + (this.state.bonusScore || 0)));
+        if (y < -20 || y > CONFIG.HEIGHT + 20) return;
+        ctx.save();
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 2;
+        if (ctx.setLineDash) ctx.setLineDash([10, 8]);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(CONFIG.WIDTH, y);
+        ctx.stroke();
+        ctx.restore();
+        this.renderer.drawText('TARGET ' + fmtNum(this.challenge.meters) + 'm', CONFIG.WIDTH - 8, y - 6, 'bold 12px Orbitron, sans-serif', '#ffd700', 'right');
+    }
+
+    // ---------------------------------------------------------------- share
+    // The link a shared run points at: today's challenge for a solo daily
+    // run, the plain game otherwise.
+    shareUrl(run) {
+        const base = (typeof location !== 'undefined' && /^https?:$/.test(location.protocol || ''))
+            ? location.origin + location.pathname
+            : SITE_URL;
+        if (!run.multiplayer && !run.start && run.seed === this.getDailySeed() && run.score > 0) {
+            return base + '?beat=' + run.score + '&d=' + run.seed;
+        }
+        return base;
+    }
+
+    // Web Share with a score-card image where the platform supports files,
+    // then plain Web Share, then copying the link.
+    async shareRun() {
+        const run = this.lastRun;
+        if (!run) return;
+        const url = this.shareUrl(run);
+        const text = run.multiplayer
+            ? `Our party climbed ${fmtNum(run.score)}m in Pixel Jump co-op!`
+            : `I climbed ${fmtNum(run.score)}m in today's Pixel Jump. Can you beat it?`;
+        const nav = typeof navigator !== 'undefined' ? navigator : {};
+        try {
+            if (nav.share && nav.canShare && typeof File !== 'undefined') {
+                const blob = await this.renderShareImage(run);
+                const file = blob && new File([blob], 'pixel-jump-run.png', { type: 'image/png' });
+                if (file && nav.canShare({ files: [file] })) {
+                    await nav.share({ files: [file], text: text + ' ' + url });
+                    return;
+                }
+            }
+            if (nav.share) {
+                await nav.share({ title: 'Pixel Jump', text, url });
+                return;
+            }
+            if (nav.clipboard && nav.clipboard.writeText) {
+                await nav.clipboard.writeText(text + ' ' + url);
+                this.showShareToast('LINK COPIED!');
+                return;
+            }
+        } catch (e) {
+            if (e && e.name === 'AbortError') return; // closed the share sheet
+        }
+        this.showShareToast(url);
+    }
+
+    showShareToast(text) {
+        const t = this.ui.shareToast;
+        if (!t) return;
+        t.innerText = text;
+        t.hidden = false;
+        clearTimeout(this.shareToastTimer);
+        this.shareToastTimer = setTimeout(() => { t.hidden = true; }, 4000);
+    }
+
+    // A 1080x1080 score card for sharing: title, distance, the Pixel, biome
+    // and date. Resolves to a PNG blob (or null where canvases can't export).
+    renderShareImage(run) {
+        return new Promise(resolve => {
+            const S = 1080;
+            const c = document.createElement('canvas');
+            c.width = S; c.height = S;
+            const ctx = c.getContext && c.getContext('2d');
+            if (!ctx || !c.toBlob) { resolve(null); return; }
+
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, S, S);
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = 0; i <= S; i += 60) {
+                ctx.moveTo(i, 0); ctx.lineTo(i, S);
+                ctx.moveTo(0, i); ctx.lineTo(S, i);
+            }
+            ctx.stroke();
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'alphabetic';
+            ctx.shadowColor = '#c04dff';
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 96px Orbitron, sans-serif';
+            ctx.fillText('PIXEL JUMP', S / 2, 170);
+
+            ctx.shadowColor = 'rgba(255,255,255,0.6)';
+            ctx.shadowBlur = 24;
+            ctx.font = '900 170px Orbitron, sans-serif';
+            ctx.fillText(fmtNum(run.score) + 'm', S / 2, 430);
+            ctx.shadowBlur = 0;
+
+            ctx.font = '700 40px Orbitron, sans-serif';
+            ctx.fillStyle = run.newBest ? '#ffd700' : '#8c8c8c';
+            ctx.fillText(run.newBest ? '★ NEW BEST ★' : (run.multiplayer ? 'CO-OP RUN' : "TODAY'S DAILY RUN"), S / 2, 510);
+
+            // The Pixel, at the in-game proportions (26px body, 5px eyes).
+            const k = 8, px = S / 2 - 13 * k, py = 590;
+            ctx.shadowColor = run.color;
+            ctx.shadowBlur = 40;
+            ctx.fillStyle = run.color;
+            ctx.fillRect(px, py, 26 * k, 26 * k);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = run.eye;
+            ctx.fillRect(px + 5 * k, py + 7 * k, 5 * k, 5 * k);
+            ctx.fillRect(px + 16 * k, py + 7 * k, 5 * k, 5 * k);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '700 44px Orbitron, sans-serif';
+            ctx.fillText(run.skinName.toUpperCase(), S / 2, 870);
+            ctx.fillStyle = '#00ffff';
+            ctx.font = '700 34px Orbitron, sans-serif';
+            ctx.fillText(run.biome.toUpperCase() + ' · ' + run.date, S / 2, 930);
+            ctx.fillStyle = '#8c8c8c';
+            ctx.font = '700 30px Orbitron, sans-serif';
+            ctx.fillText(SITE_URL.replace(/^https:\/\//, '').replace(/\/$/, ''), S / 2, 1030);
+
+            c.toBlob(blob => resolve(blob), 'image/png');
+        });
     }
 
     die(forceDie = false) {
@@ -1821,6 +2095,7 @@ class Game {
         this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 40, "blast");
 
         this.state.running = false;
+        this.updateTouchControls(); // not over a revive prompt
 
         if (!this.state.revived) {
             this.ads.showRevivePrompt(
@@ -2032,6 +2307,21 @@ class Game {
         this.updateSkinUI();
         this.renderGemShop();
         this.updateExtraLifeUI();
+        const skin = SKINS[this.viewParams.skinIndex] || SKINS[0];
+        const seed = String(this.state.runSeed);
+        this.lastRun = {
+            score: finalScore,
+            newBest: !!this.state.isNewBest,
+            multiplayer: this.state.multiplayer,
+            seed: this.state.runSeed,
+            start: this.state.startMeters || 0,
+            biome: this.renderer.currentBiome.name,
+            skinName: skin.name, color: skin.color, eye: skin.eye,
+            date: /^\d{8}$/.test(seed) ? `${seed.slice(0, 4)}-${seed.slice(4, 6)}-${seed.slice(6)}` : new Date().toISOString().slice(0, 10)
+        };
+        if (this.ui.shareToast) this.ui.shareToast.hidden = true;
+        this.updateTouchControls();
+        if (this.ui.challengeHud) this.ui.challengeHud.hidden = true;
         this.showRunCard(finalScore);
     }
 
@@ -2394,6 +2684,15 @@ class Game {
 
         let displayScore = this.runScore();
         if (displayScore > this.state.maxScore) this.state.maxScore = displayScore;
+        if (!this.state.challengeBeaten && this.challengeActive() && displayScore >= this.challenge.meters) {
+            this.state.challengeBeaten = true;
+            this.showAlert("TARGET BEATEN!", 'reward');
+            if (this.ui.challengeHud) {
+                this.ui.challengeHud.innerText = 'TARGET ' + fmtNum(this.challenge.meters) + 'm ✓';
+                this.ui.challengeHud.classList.add('beaten');
+            }
+        }
+        this.updateTouchPadStates();
         if (displayScore > this.state.highScore) {
             this.state.highScore = displayScore;
             localStorage.setItem('lp_best', this.state.highScore);
@@ -2437,14 +2736,20 @@ class Game {
         this.powerups.forEach(p => {
             p.y = p.startY + Math.sin(this.state.time * 0.1) * 5;
             if (p.isShard) {
-                // Same 💎 as the shard counter, with a pulsing cyan glow.
+                // Same 💎 as the gem counter, pre-rendered with its glow;
+                // the pulse is just the sprite's opacity.
                 const ctx = this.renderer.ctx;
-                ctx.save();
-                ctx.shadowBlur = 10 + Math.sin(this.state.time * 5) * 4;
-                ctx.shadowColor = "#00ffff";
-                ctx.textBaseline = "middle";
-                this.renderer.drawText("💎", p.x + p.w / 2, p.y + p.h / 2, "18px sans-serif", "#fff");
-                ctx.restore();
+                const sprite = this.gemSprite;
+                if (sprite) {
+                    ctx.globalAlpha = 0.8 + 0.2 * Math.sin(this.state.time * 0.3);
+                    ctx.drawImage(sprite.canvas, p.x + p.w / 2 - sprite.size / 2, p.y + p.h / 2 - sprite.size / 2, sprite.size, sprite.size);
+                    ctx.globalAlpha = 1;
+                } else {
+                    ctx.save();
+                    ctx.textBaseline = "middle";
+                    this.renderer.drawText("💎", p.x + p.w / 2, p.y + p.h / 2, "18px sans-serif", "#fff");
+                    ctx.restore();
+                }
             } else {
                 let hue = (this.state.time * 5) % 360;
                 this.renderer.drawRect(p.x, p.y, p.w, p.h, `hsl(${hue}, 100%, 50%)`, { blur: 15, color: `hsl(${hue}, 100%, 50%)` });
@@ -2456,6 +2761,7 @@ class Game {
         this.projectiles.forEach(p => p.draw(this.renderer.ctx));
 
         if (this.state.running && this.settings.showGhost) this.drawGhost();
+        if (this.state.running) this.drawChallengeLine();
 
         this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
 
@@ -2498,4 +2804,12 @@ class Game {
 
 window.onload = () => {
     new Game();
+
+    // Installable / offline play. Only on the live https site (or a local
+    // server opened with ?sw), so local development never serves stale
+    // cached files.
+    const wantSW = location.protocol === 'https:' || new URLSearchParams(location.search).has('sw');
+    if (wantSW && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker not registered:', err));
+    }
 };
