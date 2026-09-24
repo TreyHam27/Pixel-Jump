@@ -5,6 +5,21 @@ function rectsIntersect(r1, r2) {
         r2.y + r2.h < r1.y);
 }
 
+// Draws a Pixel: its body (with an optional glow) and eyes looking `look`
+// px sideways. Shared by the player, teammates and the daily ghost.
+function drawPixel(ctx, x, y, skin, look = 0, glowColor = null, glowBlur = 10) {
+    if (glowColor) {
+        ctx.shadowBlur = glowBlur;
+        ctx.shadowColor = glowColor;
+    }
+    ctx.fillStyle = skin.color;
+    ctx.fillRect(x, y, 26, 26);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = skin.eye;
+    ctx.fillRect(x + 5 + look, y + 7, 5, 5);
+    ctx.fillRect(x + 16 + look, y + 7, 5, 5);
+}
+
 class Entity {
     constructor(x, y, w, h, color) {
         this.x = x; this.y = y; this.w = w; this.h = h;
@@ -73,9 +88,11 @@ class Player extends Entity {
         // Apply Movement
         this.x += this.vx * dt;
 
-        // Screen Wrap
-        if (this.x > CONFIG.WIDTH) this.x = -this.w;
-        if (this.x < -this.w) this.x = CONFIG.WIDTH;
+        // Screen wrap: the sides are one seam. x stays in [0, WIDTH); past
+        // WIDTH - w the Pixel straddles the edge and draw() shows the rest of
+        // it coming in on the left.
+        if (this.x >= CONFIG.WIDTH) this.x -= CONFIG.WIDTH;
+        if (this.x < 0) this.x += CONFIG.WIDTH;
 
         // Gravity & Jetpack
         if (this.activePower && this.activePower.name === "JETPACK") {
@@ -129,7 +146,9 @@ class Player extends Entity {
                 // Platforms scrolled below the screen are kept around briefly
                 // before being culled; don't let an invisible one catch a fall.
                 if (p.y >= CONFIG.HEIGHT - 3) continue;
-                if (this.x + this.w > p.x && this.x < p.x + p.w) {
+                // Also the part of us that has wrapped round to the left edge.
+                const overlaps = (x) => x + this.w > p.x && x < p.x + p.w;
+                if (overlaps(this.x) || overlaps(this.x - CONFIG.WIDTH)) {
                     let bottom = this.y + this.h;
                     let limit = p.y + p.h + (this.vy * dt) + 10;
 
@@ -212,24 +231,15 @@ class Player extends Entity {
     }
 
     draw(ctx) {
-        // Glow
-        if (this.activePower) {
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = this.activePower.color;
-        } else {
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = this.color;
+        const glow = this.activePower ? this.activePower.color : this.color;
+        const blur = this.activePower ? 20 : 10;
+        const look = this.vx > 0.5 ? 4 : (this.vx < -0.5 ? -4 : 0);
+        drawPixel(ctx, this.x, this.y, this.skin, look, glow, blur);
+        // Straddling the right edge: the rest of the Pixel is already coming
+        // in on the left.
+        if (this.x > CONFIG.WIDTH - this.w) {
+            drawPixel(ctx, this.x - CONFIG.WIDTH, this.y, this.skin, look, glow, blur);
         }
-
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.w, this.h);
-        ctx.shadowBlur = 0;
-
-        // Eyes
-        ctx.fillStyle = this.skin.eye;
-        let look = this.vx > 0.5 ? 4 : (this.vx < -0.5 ? -4 : 0);
-        ctx.fillRect(this.x + 5 + look, this.y + 7, 5, 5);
-        ctx.fillRect(this.x + 16 + look, this.y + 7, 5, 5);
     }
 }
 

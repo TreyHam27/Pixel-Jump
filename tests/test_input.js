@@ -38,6 +38,33 @@ try {
     input.resetInput();
     input.onKeyDown(typing);
     assert(!input.keys.left, "typing a name doesn't steer");
+
+    // No usable e.code (IMEs, remote desktops): fall back to the character.
+    input.resetInput();
+    input.onKeyDown(key('', { key: 'A' }));
+    assert(input.keys.left, "e.key 'A' moves left when e.code is empty");
+    input.onKeyUp(key('', { key: 'a' }));
+    assert(!input.keys.left, "...and releases on keyup");
+    // AZERTY: the key labelled A is KeyQ; it moves left and lets go cleanly.
+    input.onKeyDown(key('KeyQ', { key: 'a' }));
+    assert(input.keys.left, "the key labelled A moves left on AZERTY");
+    input.onKeyUp(key('KeyQ', { key: 'a' }));
+    assert(!input.keys.left, "...and releases");
+
+    // Shortcuts aren't moves, and letting go of Cmd releases everything
+    // (macOS never sends the keyup of a key released under Cmd).
+    input.onKeyDown(key('KeyD', { key: 'd', ctrlKey: true }));
+    assert(!input.keys.right, "Ctrl+D is a shortcut, not a move");
+    input.onKeyDown(key('KeyD', { key: 'd' }));
+    input.onKeyUp(key('MetaLeft', { key: 'Meta' }));
+    assert(!input.keys.right, "releasing Cmd releases held keys");
+
+    // A focused checkbox or slider (left over from Settings) doesn't eat keys;
+    // only text fields do.
+    const checkbox = { closest: (sel) => sel === 'input, textarea, select' ? {} : null };
+    input.onKeyDown(key('KeyA', { key: 'a', target: checkbox }));
+    assert(input.keys.left, "a focused checkbox doesn't block movement");
+    input.resetInput();
     console.log("KEY CODES SUCCESS");
 
     // preventDefault only mid-run (menus keep normal keyboard behaviour).

@@ -94,6 +94,8 @@ class Game {
         // without a queue each new one would overwrite the last mid-display.
         this.achievementQueue = [];
         this.achievementShowing = false;
+        this.noticeQueue = [];
+        this.noticeTimer = null;
 
         this.seedSkinAchievements();
 
@@ -102,7 +104,6 @@ class Game {
         this.pauseMenuOpen = false;
         this.settingsOpen = false;
         this.runCardOpen = false;
-        this.hintShowing = false;
 
         // Gameplay keys/touches are only intercepted during a run (including
         // while dead and spectating in co-op), and not while the pause menu
@@ -161,7 +162,7 @@ class Game {
             mpPartyCode: document.getElementById("mp-party-code"),
             mpLeaveBtn: document.getElementById("mp-leave-btn"),
 
-            // Pause, settings, run card, records, first-run hint
+            // Pause, settings, run card, records
             pauseBtn: document.getElementById("pause-btn"),
             pauseOverlay: document.getElementById("pause-overlay"),
             pauseNote: document.getElementById("pause-note"),
@@ -190,11 +191,12 @@ class Game {
             recordsStats: document.getElementById("records-stats"),
             recordsList: document.getElementById("records-list"),
             recordsCount: document.getElementById("records-count"),
-            controlsHint: document.getElementById("controls-hint"),
 
             // Phones, challenge links and sharing
             touchControls: document.getElementById("touch-controls"),
             setTouch: document.getElementById("set-touch"),
+            setTouchRow: document.getElementById("set-touch-row"),
+            setTips: document.getElementById("set-tips"),
             challengeHud: document.getElementById("challenge-hud"),
             runShareBtn: document.getElementById("run-share-btn"),
             shareToast: document.getElementById("share-toast"),
@@ -215,6 +217,7 @@ class Game {
             coarse.addEventListener('change', (e) => {
                 this.coarsePointer = e.matches;
                 this.updateTouchControls();
+                this.updateTouchSettingRow();
             });
         }
         this.challenge = parseChallenge(typeof location !== 'undefined' ? location.search : '', this.getDailySeed());
@@ -333,7 +336,7 @@ class Game {
                 return;
             }
             if (!this.canQuickStart(e)) return;
-            const role = InputHandler.codeRole(e.code);
+            const role = InputHandler.eventRole(e);
             if (role === 'left' || role === 'right') {
                 e.preventDefault();
                 this.changeSkin(role === 'left' ? -1 : 1);
@@ -520,6 +523,7 @@ class Game {
         setting(this.ui.setGhost, 'showGhost', el => el.checked);
         setting(this.ui.setMotion, 'reducedMotion', el => el.checked);
         setting(this.ui.setTouch, 'touchControls', el => el.checked);
+        setting(this.ui.setTips, 'showTips', el => el.checked);
         on(this.ui.runShareBtn, () => this.shareRun());
 
         // Leaving the tab or window pauses a solo run.
@@ -556,6 +560,7 @@ class Game {
     resumeGame() {
         if (!this.pauseMenuOpen) return;
         this.closePauseUI();
+        this.blurFocus();
         // Restart the frame clock so the paused time isn't one giant step.
         this.lastTime = 0;
     }
@@ -605,7 +610,8 @@ class Game {
             muted: saved.muted === true,
             showGhost: saved.showGhost !== false,
             reducedMotion: typeof saved.reducedMotion === 'boolean' ? saved.reducedMotion : prefersReduced,
-            touchControls: saved.touchControls !== false
+            touchControls: saved.touchControls !== false,
+            showTips: saved.showTips !== false
         };
     }
 
@@ -628,13 +634,22 @@ class Game {
         this.ui.setGhost.checked = s.showGhost;
         this.ui.setMotion.checked = s.reducedMotion;
         if (this.ui.setTouch) this.ui.setTouch.checked = s.touchControls;
+        if (this.ui.setTips) this.ui.setTips.checked = s.showTips;
+        this.updateTouchSettingRow();
         this.ui.settingsOverlay.hidden = false;
         this.settingsOpen = true;
+    }
+
+    // TOUCH BUTTONS only means anything on a touch screen.
+    updateTouchSettingRow() {
+        if (this.ui.setTouchRow) this.ui.setTouchRow.hidden = !this.coarsePointer;
     }
 
     closeSettings() {
         this.ui.settingsOverlay.hidden = true;
         this.settingsOpen = false;
+        // A slider or checkbox left focused must not swallow the run's keys.
+        if (this.state.running) this.blurFocus();
     }
 
     // ---------------------------------------------------------------- stats
@@ -749,28 +764,6 @@ class Game {
                 <span class="achievement-desc">${this.escapeHtml(desc || '')}</span></div>
             </div>`;
         }).join('');
-    }
-
-    // ------------------------------------------------------ first-run hint
-    // The very first run gets a short how-to-play, in keyboard or touch
-    // terms. It goes after a few seconds, or soon after the first jump.
-    showControlsHint() {
-        if (localStorage.getItem('lp_seen_hint')) return;
-        localStorage.setItem('lp_seen_hint', '1');
-        const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-        this.ui.controlsHint.innerHTML = touch
-            ? 'HOLD THE LEFT QUARTER TO GO ◀ · THE NEXT QUARTER TO GO ▶<br>TAP THE RIGHT HALF TO JUMP'
-            : '← → OR A D TO MOVE · SPACE, ↑ OR W TO JUMP<br>ESC TO PAUSE';
-        this.ui.controlsHint.hidden = false;
-        this.hintShowing = true;
-        clearTimeout(this.hintTimer);
-        this.hintTimer = setTimeout(() => this.hideControlsHint(), 7000);
-    }
-
-    hideControlsHint() {
-        clearTimeout(this.hintTimer);
-        this.hintShowing = false;
-        this.ui.controlsHint.hidden = true;
     }
 
     // Keyboard shortcuts only apply on the solo menu itself: never mid-run,
@@ -975,7 +968,7 @@ class Game {
         if (!rp) return;
         this.remotePlayers.delete(pid);
         if (this.state.running && this.state.multiplayer) {
-            this.showAlert(`${rp.name || 'A PLAYER'} LEFT`, 'warning');
+            this.notify(`${rp.name || 'A PLAYER'} LEFT`, 'warning');
             // They may have been the last one standing.
             this.checkAllDead();
         }
@@ -1488,6 +1481,7 @@ class Game {
         this.ui.next.style.visibility = showArrows;
 
         if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = fmtNum(this.state.shards) + " 💎";
+        this.updateShopBadge();
         if (this.ui.skinAbility) this.ui.skinAbility.innerHTML = this.renderPerkTags(s.ability);
     }
 
@@ -1597,6 +1591,23 @@ class Game {
         });
     }
 
+    // Something in the shop you could buy right now: a Pixel you don't own
+    // yet, or an extra life with room in the stock.
+    shopHasAffordable() {
+        const shards = this.state.shards;
+        if (this.state.extraLives < MAX_EXTRA_LIVES && shards >= EXTRA_LIFE_COST) return true;
+        return this.gemShopSkins().some(({ s }) => !this.ownedSkins.includes(s.id) && shards >= s.cost);
+    }
+
+    updateShopBadge() {
+        const btn = this.ui.shopOpenBtn;
+        if (!btn || !btn.classList) return;
+        const can = this.shopHasAffordable();
+        btn.classList.toggle('can-buy', can);
+        const badge = btn.querySelector && btn.querySelector('.shop-badge');
+        if (badge) badge.hidden = !can;
+    }
+
     // Extra lives are stock rather than a one-shot toggle: the card shows how
     // many are banked, and the button locks at MAX_EXTRA_LIVES.
     updateExtraLifeUI() {
@@ -1624,6 +1635,7 @@ class Game {
         this.ui.shopLifeBtn.classList.toggle('maxed', full);
         this.ui.shopLifeBtn.classList.toggle('unaffordable', !full && !affordable);
         this.ui.shopLifeBtn.disabled = full;
+        this.updateShopBadge();
     }
 
     buyExtraLife() {
@@ -1684,15 +1696,36 @@ class Game {
     // calls this every second just keeps resetting the timer, so it stays up
     // continuously and disappears 4s after the final update.
     showAlert(text, type = 'info') {
-        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', life: '💔' };
+        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', unlock: '🎨', life: '💔' };
         const el = this.ui.alert;
-        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-life');
+        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-unlock', 'alert-life');
         el.classList.add('alert-' + type, 'alert-visible');
         this.ui.alertIcon.innerText = icons[type] || icons.info;
         this.ui.alertText.innerText = text;
 
         if (this.alertHideTimer) clearTimeout(this.alertHideTimer);
         this.alertHideTimer = setTimeout(() => this.hideAlert(), 4000);
+    }
+
+    // One-shot notices (biome changes, unlocks, rewards) take turns in the
+    // alert box instead of overwriting each other: a secret Pixel unlocks on
+    // the very frame its biome is entered.
+    notify(text, type = 'info') {
+        this.noticeQueue.push([text, type]);
+        if (!this.noticeTimer) this.showNextNotice();
+    }
+
+    showNextNotice() {
+        const next = this.noticeQueue.shift();
+        if (!next) { this.noticeTimer = null; return; }
+        this.showAlert(next[0], next[1]);
+        this.noticeTimer = setTimeout(() => this.showNextNotice(), 2200);
+    }
+
+    clearNotices() {
+        this.noticeQueue = [];
+        if (this.noticeTimer) clearTimeout(this.noticeTimer);
+        this.noticeTimer = null;
     }
 
     hideAlert() {
@@ -1850,7 +1883,7 @@ class Game {
         this.state.bonusScore += BOSS_BONUS_METERS * 10;
         this.addShards(BOSS_GEM_BOUNTY);
         this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
-        this.showAlert(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎`, 'reward');
+        this.notify(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎`, 'reward');
         sounds.play('powerup');
     }
 
@@ -1941,12 +1974,7 @@ class Game {
         this.ghostRec = this.state.multiplayer ? null : { nextT: 0, pts: [] };
         this.ghostPlayback = this.state.multiplayer ? null : this.loadGhost();
 
-        // Skip past any story beats already covered by a checkpoint start
-        // (normal 0m starts just find index 0, since STORY[0].h > 0).
-        let startDisplayScore = Math.floor(this.state.score / 10);
-        this.storyIndex = STORY.findIndex(s => s.h > startDisplayScore);
-        if (this.storyIndex === -1) this.storyIndex = STORY.length;
-
+        const startDisplayScore = Math.floor(this.state.score / 10);
         this.renderer.updateBiome(startDisplayScore);
         this.lastBiomeName = this.renderer.currentBiome.name;
 
@@ -1968,6 +1996,12 @@ class Game {
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
         this.state.lastHeartWY = null;
         this.state.rescueNetT = 0;
+        // The high score before this run, marked in the level so you can see
+        // yourself pass it (highScore itself climbs along with you).
+        this.state.bestMarkerScore = this.state.highScore || 0;
+        // Beginner tips are painted onto the starting screen (world space), so
+        // they scroll away as you climb past them.
+        this.state.tipAnchorWY = -this.state.score;
         this.fillPlatforms();
         this.particles = new ParticleSystem();
         this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
@@ -1982,6 +2016,7 @@ class Game {
         this.spectating = null;
 
         this.ui.power.style.opacity = 0;
+        this.clearNotices();
         this.hideAlert();
     }
 
@@ -2120,30 +2155,82 @@ class Game {
         if (stored && stored.score >= finalScore) return;
         const ghost = {
             v: 2, gen: PLATFORM_GEN_VERSION, seed: this.state.runSeed, start: this.state.startMeters,
-            score: finalScore, step: GHOST_STEP, pts: rec.pts
+            score: finalScore, step: GHOST_STEP, pts: rec.pts,
+            skin: (SKINS[this.viewParams.skinIndex] || SKINS[0]).id
         };
         try { localStorage.setItem('lp_ghost', JSON.stringify(ghost)); } catch (e) { /* storage full: keep the old one */ }
     }
 
+    // The ghost is the recorded Pixel, dimmed, following a smooth curve
+    // (Catmull-Rom) through the samples rather than straight lines, so jump
+    // arcs stay round. It snaps across a screen wrap.
     drawGhost() {
         const g = this.ghostPlayback;
         if (!g) return;
         const f = this.state.time / g.step;
         const i = Math.floor(f);
         if (i * 2 + 3 >= g.pts.length) return; // the recorded run is over
-        let x = g.pts[i * 2], y = g.pts[i * 2 + 1];
-        const nx = g.pts[i * 2 + 2], ny = g.pts[i * 2 + 3];
-        // Interpolate between samples, except across a screen wrap.
-        if (Math.abs(nx - x) < 300) {
-            x += (nx - x) * (f - i);
-            y += (ny - y) * (f - i);
+        const pt = (k) => {
+            const j = Math.max(0, Math.min(k, g.pts.length / 2 - 1));
+            return [g.pts[j * 2], g.pts[j * 2 + 1]];
+        };
+        const p0 = pt(i - 1), p1 = pt(i), p2 = pt(i + 1), p3 = pt(i + 2);
+        const t = f - i;
+        let x = p1[0], y = p1[1];
+        const wraps = [p0, p1, p2, p3].some((p, k, a) => k > 0 && Math.abs(p[0] - a[k - 1][0]) >= 300);
+        if (!wraps) {
+            const cr = (a, b, c, d) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
+            x = cr(p0[0], p1[0], p2[0], p3[0]);
+            y = cr(p0[1], p1[1], p2[1], p3[1]);
+        } else if (Math.abs(p2[0] - p1[0]) < 300) {
+            x += (p2[0] - p1[0]) * t;
+            y += (p2[1] - p1[1]) * t;
         }
         const screenY = y + this.state.score;
         if (screenY > -50 && screenY < CONFIG.HEIGHT + 50) {
-            this.renderer.ctx.globalAlpha = 0.3;
-            this.renderer.ctx.fillStyle = "#ffffff";
-            this.renderer.ctx.fillRect(x, screenY, 26, 26);
-            this.renderer.ctx.globalAlpha = 1;
+            const skin = SKINS[skinIndexById(g.skin)] || SKINS[0];
+            const dx = p2[0] - p1[0];
+            const look = Math.abs(dx) >= 300 ? 0 : (dx > 3 ? 4 : (dx < -3 ? -4 : 0));
+            const ctx = this.renderer.ctx;
+            ctx.globalAlpha = 0.4;
+            drawPixel(ctx, x, screenY, skin, look);
+            if (x > CONFIG.WIDTH - 26) drawPixel(ctx, x - CONFIG.WIDTH, screenY, skin, look);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // The beginner tips, fixed to the run's starting screen: how to move and
+    // jump just above the floor, and the screen wrap a little higher. Every
+    // run shows them (SHOW TIPS in Settings turns them off). Drawn under the
+    // platforms, like signs painted on the background.
+    drawTips() {
+        const ctx = this.renderer.ctx;
+        const base = this.state.tipAnchorWY + this.state.score; // screen y of the run's start
+        const touch = this.coarsePointer;
+        const tips = [
+            { y: base + CONFIG.HEIGHT - 190, lines: touch
+                ? ['HOLD ◀ ▶ TO MOVE', 'TAP THE RIGHT HALF TO JUMP']
+                : ['← → / A D TO MOVE', 'SPACE / ↑ / W TO JUMP · ESC TO PAUSE'] },
+            { y: base + CONFIG.HEIGHT - 360, lines: ['THE SIDES WRAP AROUND'], edges: true }
+        ];
+        for (const tip of tips) {
+            const h = tip.lines.length * 22 + 14;
+            if (tip.y + h < 0 || tip.y - h > CONFIG.HEIGHT) continue;
+            ctx.save();
+            ctx.globalAlpha = 0.45;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, tip.y - h / 2, CONFIG.WIDTH, h);
+            ctx.globalAlpha = 0.75;
+            ctx.textBaseline = 'middle';
+            tip.lines.forEach((line, k) => {
+                const ly = tip.y - (tip.lines.length - 1) * 11 + k * 22;
+                this.renderer.drawText(line, CONFIG.WIDTH / 2, ly, 'bold 15px Orbitron, "Courier New", monospace', '#00ffcc');
+            });
+            if (tip.edges) {
+                this.renderer.drawText('◀', 16, tip.y, 'bold 20px sans-serif', '#00ffcc');
+                this.renderer.drawText('▶', CONFIG.WIDTH - 16, tip.y, 'bold 20px sans-serif', '#00ffcc');
+            }
+            ctx.restore();
         }
     }
 
@@ -2174,13 +2261,18 @@ class Game {
         this.fillPlatforms();
     }
 
-    startGame(isMp = false, mpSeed = null) {
-        // Whatever menu button had focus must not catch the Space/Enter that
-        // follows (buttons activate on keyup), and keys held in the menu
-        // shouldn't carry into the run.
+    // Drops focus from whatever menu control has it, so it can't catch the
+    // game's keys (buttons activate on Space/Enter keyup).
+    blurFocus() {
         if (typeof document !== 'undefined' && document.activeElement && document.activeElement.blur) {
             document.activeElement.blur();
         }
+    }
+
+    startGame(isMp = false, mpSeed = null) {
+        // Whatever menu button had focus must not catch the Space/Enter that
+        // follows, and keys held in the menu shouldn't carry into the run.
+        this.blurFocus();
         this.input.resetInput();
         this.closeRunCard();
         this.closeSettings();
@@ -2202,7 +2294,6 @@ class Game {
         this.state.runStartTime = performance.now();
         this.state.pausedMs = 0;
         this.pauseStartedAt = 0;
-        this.showControlsHint();
         this.updateTouchControls();
         this.startChallenge();
     }
@@ -2298,7 +2389,7 @@ class Game {
         }
         this.particles.spawn(event.x + 14, event.y + 14, "#ff3366", 20);
         sounds.play('powerup');
-        this.showAlert("EXTRA LIFE +1 ❤️", 'success');
+        this.notify("EXTRA LIFE +1 ❤️", 'success');
     }
 
     // ---------------------------------------------------- challenge links
@@ -2324,10 +2415,51 @@ class Game {
 
     // A dashed gold line at the height where the displayed score reaches
     // the target (the player crosses it at the camera line).
+    // Screen y where the displayed score reaches `meters`: the line meets
+    // the player exactly as the score passes it.
+    scoreLineY(meters) {
+        return CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD - (meters * 10 - (this.state.score + (this.state.bonusScore || 0)));
+    }
+
+    // A dashed line across the level at your high score from before this run.
+    // It stays put as you climb (it slides toward you only when score comes
+    // without height: SCORE x2, a boss bonus), meets your Pixel exactly as
+    // you set a new high score, then scrolls away below. Not shown on a first
+    // run or from a checkpoint start already above it.
+    drawBestLine() {
+        const best = this.state.bestMarkerScore;
+        if (!(best > 0) || best <= (this.state.startMeters || 0)) return;
+        const y = this.scoreLineY(best);
+        if (y < -20 || y > CONFIG.HEIGHT + 20) return;
+        const ctx = this.renderer.ctx;
+        ctx.save();
+        ctx.strokeStyle = '#ff3366';
+        ctx.globalAlpha = 0.8;
+        ctx.lineWidth = 2;
+        if (ctx.setLineDash) ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(CONFIG.WIDTH, y);
+        ctx.stroke();
+        // The label sits on a dark tab so platforms behind it can't swallow it.
+        const label = 'HIGH SCORE ' + fmtNum(best) + 'm';
+        const font = 'bold 15px Orbitron, sans-serif';
+        ctx.font = font;
+        const w = (ctx.measureText ? ctx.measureText(label).width : label.length * 10) + 16;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#0a0a0e';
+        ctx.fillRect(4, y - 24, w, 22);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ff3366';
+        ctx.fillRect(4, y - 24, 3, 22);
+        ctx.restore();
+        this.renderer.drawText(label, 12, y - 8, font, '#ff3366', 'left');
+    }
+
     drawChallengeLine() {
         if (!this.challengeActive() || this.state.challengeBeaten) return;
         const ctx = this.renderer.ctx;
-        const y = CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD - (this.challenge.meters * 10 - (this.state.score + (this.state.bonusScore || 0)));
+        const y = this.scoreLineY(this.challenge.meters);
         if (y < -20 || y > CONFIG.HEIGHT + 20) return;
         ctx.save();
         ctx.strokeStyle = '#ffd700';
@@ -2672,7 +2804,6 @@ class Game {
         }
         let finalScore = this.runScore();
         this.closePauseUI();
-        this.hideControlsHint();
         this.recordRunStats(Math.max(0, Math.floor(this.state.score / 10) - (this.state.startMeters || 0)));
 
         // Don't leave a half-retracted net hanging over the menu.
@@ -2703,6 +2834,7 @@ class Game {
 
         this.ui.hud.style.opacity = 0;
         this.ui.power.style.opacity = 0;
+        this.clearNotices();
         this.hideAlert();
 
         this.ui.menuLast.innerText = "LAST RUN: " + fmtNum(finalScore) + "m";
@@ -2777,7 +2909,10 @@ class Game {
                 localStorage.setItem('lp_achievements', JSON.stringify(this.achievements));
                 const label = g.skin ? "PIXEL UNLOCKED: " + g.name : g.name;
                 if (this.state.running && this.state.runUnlocks) this.state.runUnlocks.push((g.skin ? "🎨 " : "🏅 ") + label);
-                this.showAchievement(label, g.skin ? "🎨" : "🏅");
+                // New Pixels are announced like the game's other notices;
+                // everything else gets the achievement badge.
+                if (g.skin) this.notify(label, 'unlock');
+                else this.showAchievement(label, "🏅");
             }
         });
     }
@@ -2846,7 +2981,7 @@ class Game {
 
         if (this.renderer.currentBiome.name !== this.lastBiomeName) {
             if (this.lastBiomeName) { // skip the callout on the very first frame of a run
-                this.showAlert("ENTERING " + this.renderer.currentBiome.name.toUpperCase(), 'info');
+                this.notify("ENTERING " + this.renderer.currentBiome.name.toUpperCase(), 'info');
             }
             this.lastBiomeName = this.renderer.currentBiome.name;
         }
@@ -2940,11 +3075,6 @@ class Game {
         if (event === "jump") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#fff");
             sounds.play('jump');
-            // They've got the idea: let the first-run hint go shortly.
-            if (this.hintShowing) {
-                clearTimeout(this.hintTimer);
-                this.hintTimer = setTimeout(() => this.hideControlsHint(), 2000);
-            }
         } else if (event === "double_jump") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, POWERS.DOUBLE.color);
             sounds.play('jump');
@@ -3101,12 +3231,6 @@ class Game {
             localStorage.setItem('lp_best_height', heightMeters);
         }
 
-        // Story beats: a short SYSTEM line as each height is first passed.
-        if (this.storyIndex < STORY.length && heightMeters >= STORY[this.storyIndex].h) {
-            this.showAlert(STORY[this.storyIndex].t, 'info');
-            this.storyIndex++;
-        }
-
         // Dead and waiting to respawn while the rest of the party went quiet:
         // end the run rather than wait forever.
         if (this.state.multiplayer && this.player.isDead && !this.anyRemoteAlive()) {
@@ -3118,7 +3242,7 @@ class Game {
         if (displayScore > this.state.maxScore) this.state.maxScore = displayScore;
         if (!this.state.challengeBeaten && this.challengeActive() && displayScore >= this.challenge.meters) {
             this.state.challengeBeaten = true;
-            this.showAlert("TARGET BEATEN!", 'reward');
+            this.notify("TARGET BEATEN!", 'reward');
             if (this.ui.challengeHud) {
                 this.ui.challengeHud.innerText = 'TARGET ' + fmtNum(this.challenge.meters) + 'm ✓';
                 this.ui.challengeHud.classList.add('beaten');
@@ -3154,6 +3278,7 @@ class Game {
     draw() {
         this.renderer.clear(this.state.bgOffset);
         this.renderer.drawGrid(this.state.bgOffset);
+        if (this.state.running && this.settings.showTips) this.drawTips();
 
         this.platforms.forEach(p => {
             this.renderer.ctx.fillStyle = "#333";
@@ -3195,9 +3320,11 @@ class Game {
         this.projectiles.forEach(p => p.draw(this.renderer.ctx));
 
         if (this.state.running && this.settings.showGhost) this.drawGhost();
+        if (this.state.running) this.drawBestLine();
         if (this.state.running) this.drawChallengeLine();
 
         this.renderer.drawSafetyNet(this.safetyNet, this.safetyNet.rescue ? RESCUE_NET_COLOR : POWERS.SAFETY.color, this.state.time);
+        if (this.state.running && !this.player.isDead) this.renderer.drawWrapEdges(this.player.x, this.player.w);
 
         if (!this.player.isDead) this.player.draw(this.renderer.ctx);
 
