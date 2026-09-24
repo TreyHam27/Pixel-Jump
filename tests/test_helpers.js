@@ -63,7 +63,10 @@ function setupMocks() {
     global.document = {
         getElementById: () => makeMockElement(),
         createElement: () => makeMockElement(),
-        body: makeMockElement()
+        body: makeMockElement(),
+        addEventListener() {}, removeEventListener() {},
+        hidden: false,
+        activeElement: null
     };
     global.performance = { now: () => 1000 };
     global.requestAnimationFrame = () => {};

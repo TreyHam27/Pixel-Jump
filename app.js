@@ -47,6 +47,10 @@ class Game {
 
         this.seedSkinAchievements();
 
+        // Gameplay keys/touches are only intercepted during a run (including
+        // while dead and spectating in co-op); the menus keep normal input.
+        this.input.isActive = () => this.state.running;
+
         this.ui = {
             menu: document.getElementById("menu-layer"),
             startBtn: document.getElementById("start-prompt"),
@@ -194,16 +198,21 @@ class Game {
         // on the menu always starts a run.
         this.ui.menu.onclick = (e) => {
             if (e.target.closest('#skin-container') || e.target.closest('.mode-switch-arrow')) return;
-            this.startGame();
+            this.requestSoloStart();
         };
 
-        // Keyboard-start: any movement/jump key starts the game from the SP
-        // menu, same as clicking it (matches the on-screen "CLICK TO START").
+        // Keyboard on the solo menu: left/right browse the Pixel picker, and
+        // Space / Enter / Up / W start a run (same as clicking the menu).
         window.addEventListener('keydown', (e) => {
-            if (this.activeMenuPanel !== 'sp' || this.state.running) return;
-            const startKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's', ' '];
-            if (!startKeys.includes(e.key)) return;
-            this.startGame();
+            if (!this.canQuickStart(e)) return;
+            const role = InputHandler.codeRole(e.code);
+            if (role === 'left' || role === 'right') {
+                e.preventDefault();
+                this.changeSkin(role === 'left' ? -1 : 1);
+            } else if (role === 'jump' || e.code === 'Enter' || e.code === 'NumpadEnter') {
+                e.preventDefault();
+                this.requestSoloStart();
+            }
         });
 
         // Multiplayer UI Bindings
@@ -347,6 +356,30 @@ class Game {
                 }, { passive: true });
             }
         }
+    }
+
+    // Keyboard shortcuts only apply on the solo menu itself: never mid-run,
+    // never from a held (auto-repeating) key left over from the last run,
+    // never while typing, and never under the revive prompt.
+    canQuickStart(e) {
+        if (e.repeat || this.state.running) return false;
+        if (this.activeMenuPanel !== 'sp') return false;
+        const revive = this.ads && this.ads.reviveOverlay;
+        if (revive && revive.style.display === 'flex') return false;
+        const t = e.target;
+        if (t && t.closest && t.closest('input, textarea, select')) return false;
+        return true;
+    }
+
+    // A solo start from the menu (click, tap or key). While in a co-op party
+    // the party screen is the place to be, so go back there instead.
+    requestSoloStart() {
+        if (this.state.running) return;
+        if (this.inParty()) {
+            this.ui.toMpBtn.onclick();
+            return;
+        }
+        this.startGame();
     }
 
     // Co-op menu status pill. `state` is one of 'pending' | 'success' | 'danger'
@@ -1054,6 +1087,13 @@ class Game {
     }
 
     startGame(isMp = false, mpSeed = null) {
+        // Whatever menu button had focus must not catch the Space/Enter that
+        // follows (buttons activate on keyup), and keys held in the menu
+        // shouldn't carry into the run.
+        if (typeof document !== 'undefined' && document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+        this.input.resetInput();
         this.state.running = true;
         this.state.multiplayer = isMp;
         this.state.deathCount = 0;

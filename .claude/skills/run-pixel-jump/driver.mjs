@@ -17,6 +17,7 @@
 //   ss <name>        screenshot -> $PJ_OUT/<name>.png
 //   score            print #score-display text
 //   text <sel>       print textContent of a selector
+//   @steps.json      (argument) splice in a JSON array of steps from a file
 //   eval <js>        evaluate JS in the page and print the result;
 //                    the live Game instance is window.__game
 //                    (e.g. '__game.state.score', '__game.player.y')
@@ -28,7 +29,7 @@
 // Exits 1 if the page threw any error or logged console.error.
 import { createRequire } from 'module';
 import { spawn } from 'child_process';
-import { mkdirSync } from 'fs';
+import { mkdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -40,7 +41,10 @@ const port = Number(process.env.PJ_PORT || 8765);
 const out = path.resolve(process.env.PJ_OUT || 'pj-shots');
 mkdirSync(out, { recursive: true });
 
-let steps = process.argv.slice(2);
+// `@file.json` expands to the JSON array of steps in that file (handy for
+// long recipes, and for JS snippets that are awkward to shell-quote).
+let steps = process.argv.slice(2).flatMap(a =>
+    a.startsWith('@') ? JSON.parse(readFileSync(a.slice(1), 'utf8')).map(String) : [a]);
 if (!steps.length) steps = 'ss menu start wait 500 jump wait 1000 ss run score'.split(' ');
 
 const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'],
