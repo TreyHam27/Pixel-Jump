@@ -1,3 +1,19 @@
+// Reads a JSON save. A missing, corrupt or wrong-shaped value falls back
+// instead of throwing, so one bad localStorage entry can't stop the game from
+// starting.
+function loadJSON(key, fallback, isValid = () => true) {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw === null || raw === undefined) return fallback;
+        const value = JSON.parse(raw);
+        return isValid(value) ? value : fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+const isStringArray = v => Array.isArray(v) && v.every(x => typeof x === 'string');
+
 class Game {
     constructor() {
         this.input = new InputHandler();
@@ -11,10 +27,10 @@ class Game {
         this.enemies = [];
         this.projectiles = [];
         this.safetyNet = this.makeSafetyNetState();
-        this.achievements = JSON.parse(localStorage.getItem('lp_achievements')) || [];
+        this.achievements = loadJSON('lp_achievements', [], isStringArray);
         this.migrateSkinSaves();
         // Owned gem-shop Pixels, by SKINS id.
-        this.ownedSkins = JSON.parse(localStorage.getItem('lp_owned_skins')) || [];
+        this.ownedSkins = loadJSON('lp_owned_skins', [], isStringArray);
 
         this.state = {
             running: false,
@@ -25,6 +41,11 @@ class Game {
             maxScore: 0,
             bonusScore: 0,
             highScore: parseInt(localStorage.getItem('lp_best')) || 0,
+            // Best real height reached, in meters. Distance-gated Pixels unlock
+            // on this, not on highScore: the SCORE x2 perk and boss bonuses
+            // inflate the score, and must not unlock them early. Older saves
+            // only have lp_best, so they start from that.
+            bestHeight: parseInt(localStorage.getItem('lp_best_height')) || parseInt(localStorage.getItem('lp_best')) || 0,
             shards: parseInt(localStorage.getItem('lp_shards')) || 0,
             loops: parseInt(localStorage.getItem('lp_loops')) || 0,
             skinIndex: Math.max(0, skinIndexById(localStorage.getItem('lp_skin'))),
@@ -46,6 +67,10 @@ class Game {
         this.achievementShowing = false;
 
         this.seedSkinAchievements();
+
+        // Gameplay keys/touches are only intercepted during a run (including
+        // while dead and spectating in co-op); the menus keep normal input.
+        this.input.isActive = () => this.state.running;
 
         this.ui = {
             menu: document.getElementById("menu-layer"),
@@ -194,16 +219,21 @@ class Game {
         // on the menu always starts a run.
         this.ui.menu.onclick = (e) => {
             if (e.target.closest('#skin-container') || e.target.closest('.mode-switch-arrow')) return;
-            this.startGame();
+            this.requestSoloStart();
         };
 
-        // Keyboard-start: any movement/jump key starts the game from the SP
-        // menu, same as clicking it (matches the on-screen "CLICK TO START").
+        // Keyboard on the solo menu: left/right browse the Pixel picker, and
+        // Space / Enter / Up / W start a run (same as clicking the menu).
         window.addEventListener('keydown', (e) => {
-            if (this.activeMenuPanel !== 'sp' || this.state.running) return;
-            const startKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's', ' '];
-            if (!startKeys.includes(e.key)) return;
-            this.startGame();
+            if (!this.canQuickStart(e)) return;
+            const role = InputHandler.codeRole(e.code);
+            if (role === 'left' || role === 'right') {
+                e.preventDefault();
+                this.changeSkin(role === 'left' ? -1 : 1);
+            } else if (role === 'jump' || e.code === 'Enter' || e.code === 'NumpadEnter') {
+                e.preventDefault();
+                this.requestSoloStart();
+            }
         });
 
         // Multiplayer UI Bindings
@@ -279,7 +309,7 @@ class Game {
                 // Ensures the host DEFINITELY gets the name even if the first packet is lost
                 const sendHandshake = () => {
                     console.log("MP: Sending Handshake...");
-                    window.network.send({ type: 'handshake', name: this.getMpName() });
+                    window.network.send({ type: 'handshake', name: this.getMpName(), v: NET_PROTOCOL, build: GAME_VERSION });
                 };
                 if (this.handshakeInterval) clearInterval(this.handshakeInterval);
                 this.handshakeInterval = setInterval(sendHandshake, 1000);
@@ -347,6 +377,30 @@ class Game {
                 }, { passive: true });
             }
         }
+    }
+
+    // Keyboard shortcuts only apply on the solo menu itself: never mid-run,
+    // never from a held (auto-repeating) key left over from the last run,
+    // never while typing, and never under the revive prompt.
+    canQuickStart(e) {
+        if (e.repeat || this.state.running) return false;
+        if (this.activeMenuPanel !== 'sp') return false;
+        const revive = this.ads && this.ads.reviveOverlay;
+        if (revive && revive.style.display === 'flex') return false;
+        const t = e.target;
+        if (t && t.closest && t.closest('input, textarea, select')) return false;
+        return true;
+    }
+
+    // A solo start from the menu (click, tap or key). While in a co-op party
+    // the party screen is the place to be, so go back there instead.
+    requestSoloStart() {
+        if (this.state.running) return;
+        if (this.inParty()) {
+            this.ui.toMpBtn.onclick();
+            return;
+        }
+        this.startGame();
     }
 
     // Co-op menu status pill. `state` is one of 'pending' | 'success' | 'danger'
@@ -491,6 +545,14 @@ class Game {
         const net = window.network;
         console.log("MP: Received Handshake from", data.name);
 
+        // Different builds generate different levels (and may disagree on
+        // the Pixel list), so they can't share a run.
+        if (data.v !== NET_PROTOCOL) {
+            net.sendTo(fromId, { type: 'version_mismatch', v: NET_PROTOCOL, build: GAME_VERSION });
+            setTimeout(() => net.closePeer(fromId), 300);
+            return;
+        }
+
         if (this.state.running) {
             net.sendTo(fromId, { type: 'party_busy' });
             setTimeout(() => net.closePeer(fromId), 300);
@@ -515,7 +577,7 @@ class Game {
             member.name = name;
         }
 
-        net.sendTo(fromId, { type: 'handshake_ack', party: this.party });
+        net.sendTo(fromId, { type: 'handshake_ack', party: this.party, v: NET_PROTOCOL, build: GAME_VERSION });
         this.broadcastParty();
     }
 
@@ -536,6 +598,10 @@ class Game {
             console.log("MP: Received Handshake ACK");
             if (this.handshakeInterval) clearInterval(this.handshakeInterval);
             this.handshakeInterval = null;
+            if (data.v !== NET_PROTOCOL) {
+                this.leaveParty("HOST IS ON AN OLDER VERSION — BOTH REFRESH", 'danger');
+                return;
+            }
             this.applyParty(data.party);
             this.enterPartyView(net.friendId);
             this.setMpStatus("WAITING FOR LEADER TO START...", 'success');
@@ -543,6 +609,8 @@ class Game {
             if (!this.state.isHost) this.applyParty(data.party);
         } else if (data.type === 'party_full') {
             this.leaveParty(`PARTY IS FULL (${MAX_PARTY_SIZE}/${MAX_PARTY_SIZE})`, 'danger');
+        } else if (data.type === 'version_mismatch') {
+            if (!this.state.isHost) this.leaveParty("VERSION MISMATCH — REFRESH THE PAGE", 'danger');
         } else if (data.type === 'party_busy') {
             this.leaveParty("RUN IN PROGRESS — TRY AGAIN SOON", 'danger');
         } else if (data.type === 'party_closed') {
@@ -624,7 +692,7 @@ class Game {
         const s = SKINS[index];
         if (!s) return true;
         if (s.cost !== undefined) return !this.ownedSkins.includes(s.id);
-        return this.state.highScore < s.unlock;
+        return this.state.bestHeight < s.unlock;
     }
 
     // The menu picker only ever offers Pixels the player can actually use:
@@ -720,9 +788,10 @@ class Game {
         const owned = this.ownedSkins.includes(s.id);
         const equipped = owned && this.viewParams.skinIndex === i;
         const affordable = this.state.shards >= s.cost;
-        // Tiers glow harder the higher they sit, and anything past the plain
-        // stat perks gets the premium frame, so the ladder reads at a glance.
-        const premium = skinPerks(s.ability).some(({ perk }) => !['speedMult', 'jumpMult', 'gravityMult'].includes(perk.key));
+        // Tiers glow harder the higher they sit, and the top four (the
+        // run-changing perks) get the premium frame, so the ladder reads at a
+        // glance.
+        const premium = rows.length - this.gemShopIndex <= 4;
 
         let btnLabel = 'BUY';
         if (equipped) btnLabel = 'EQUIPPED';
@@ -908,10 +977,10 @@ class Game {
         return Math.floor((this.state.score + (this.state.bonusScore || 0)) / 10);
     }
 
-    // EMP perk: every N seconds, wipe every regular drone on screen (and the
-    // shots they've fired). The boss is immune, and so are meteors/lasers-in-
-    // flight that belong to the biome. Solo only: in co-op every client runs
-    // its own enemies, so one player's EMP would desync what the party sees.
+    // EMP perk: every N seconds, wipe every drone on screen (regular, shooter
+    // and laser drones) and every bullet in flight. The boss and the biome's
+    // meteors are immune. Solo only: in co-op every client runs its own
+    // enemies, so one player's EMP would desync what the party sees.
     updateDronePulse(dt, perks) {
         if (!perks.dronePulseSec || this.state.multiplayer) return;
         this.state.pulseTimer = (this.state.pulseTimer || 0) + dt;
@@ -928,6 +997,88 @@ class Game {
         });
         this.projectiles.forEach(p => { if (p instanceof Projectile) p.markedForDeletion = true; });
         if (hits) sounds.play('powerup');
+    }
+
+    // The player the boss hovers over: the lowest one still alive (the one the
+    // camera follows), so in co-op it never parks over someone's corpse.
+    bossFocus() {
+        let focus = this.player.isDead ? null : this.player;
+        this.remotePlayers.forEach(rp => {
+            if (!rp.isDead && (!focus || rp.y > focus.y)) focus = rp;
+        });
+        return focus || this.player;
+    }
+
+    // Touching the boss. Landing on top of it (falling, feet near its top edge,
+    // or feet above it last frame so a fast fall can't tunnel through) deals a
+    // hit and bounces you high. Otherwise a jetpack or HARD SHIELD absorbs the
+    // crash (the boss survives: it can't be rammed to death), and while it's
+    // exposed at your level a side bump only knocks you back. Anything else
+    // is fatal.
+    resolveBossContact(boss) {
+        const p = this.player;
+        const feet = p.y + p.h;
+        const onTop = p.vy > 0 && (feet < boss.y + 40 || (p.prevBottom !== undefined && p.prevBottom <= boss.y + 12));
+        if (onTop) {
+            p.y = boss.y - p.h;
+            if (boss.takeDamage(this.particles)) {
+                p.vy = CONFIG.BOUNCE_FORCE;
+                sounds.play('jump');
+            } else {
+                p.vy = CONFIG.JUMP_FORCE; // still flashing: a harmless hop
+            }
+            return;
+        }
+        if (p.activePower === POWERS.ROCKET || p.activePower === POWERS.SHIELD) {
+            const color = p.activePower.color;
+            p.activePower = null;
+            p.powerTimer = 0;
+            p.invuln = 45;
+            this.knockBackFrom(boss);
+            this.particles.spawn(p.x, p.y, color, 20, "blast");
+            sounds.play('powerup');
+            return;
+        }
+        if (boss.isExposed()) {
+            p.invuln = 30;
+            this.knockBackFrom(boss);
+            sounds.play('hit');
+            return;
+        }
+        this.die(true);
+    }
+
+    knockBackFrom(boss) {
+        const p = this.player;
+        p.vx = (p.x + p.w / 2 < boss.x + boss.w / 2) ? -9 : 9;
+        p.vy = -6;
+    }
+
+    // Boss down: bonus distance on the scoreboard (not the camera, so
+    // biomes don't skip and co-op stays aligned), a gem bounty, and the next
+    // boss a full loop further on.
+    onBossDefeated() {
+        this.state.bossActive = false;
+        this.state.runLoops = (this.state.runLoops || 0) + 1;
+        this.state.loops = (this.state.loops || 0) + 1;
+        localStorage.setItem('lp_loops', this.state.loops);
+        this.state.bonusScore += BOSS_BONUS_METERS * 10;
+        this.addShards(BOSS_GEM_BOUNTY);
+        this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
+        this.showAlert(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎`, 'reward');
+        sounds.play('powerup');
+    }
+
+    // Banks gems and pops the counter.
+    addShards(n) {
+        this.state.shards += n;
+        localStorage.setItem('lp_shards', this.state.shards);
+        if (this.ui.shardDisplay) {
+            this.ui.shardDisplay.innerText = this.state.shards + " 💎";
+            this.ui.shardDisplay.classList.remove('gem-pop');
+            void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
+            this.ui.shardDisplay.classList.add('gem-pop');
+        }
     }
 
     // PHOENIX perk: coming back from a fall also hands out a random power-up.
@@ -964,19 +1115,28 @@ class Game {
         this.state.usedExtraRevive = false;
         this.state.frames = 0;
         this.state.time = 0;
+        // Spawn/animation clocks in 60fps-frame units of game time (see
+        // tick()), so pacing is the same at 60, 120 or 144Hz.
+        this.state.timers = { drone: 0, laser: 0, meteor: 0, trail: 0, sync: 0 };
         this.state.revived = false;
         // Multiplayer passes an explicit shared seed so host/guest generate
         // identical platform layouts; single-player falls back to the daily seed.
         this.state.seed = seed !== null ? seed : this.getDailySeed();
+        // state.seed is the running RNG state from here on; these two are
+        // what identify the layout (for the ghost).
+        this.state.runSeed = this.state.seed;
+        this.state.startMeters = Math.floor(this.state.score / 10);
+        // Bosses beaten this run (drives drone difficulty) and where the next
+        // one appears. Measured from the start height, so a checkpoint start
+        // (The Void, 5000m) doesn't open straight into a boss.
+        this.state.runLoops = 0;
+        this.state.nextBossAt = this.state.startMeters + CONFIG.BOSS_LOOP_DISTANCE;
         this.state.powersCollected = 0;
         this.state.isNewBest = false;
-        this.state.ghostRecord = [];
-        let savedGhost = localStorage.getItem('lp_ghost');
-        if (savedGhost) {
-            try { this.ghostPlayback = JSON.parse(savedGhost); } catch (e) { this.ghostPlayback = []; }
-        } else {
-            this.ghostPlayback = [];
-        }
+        // Solo runs race (and record) a ghost of the day's best run on this
+        // exact layout; co-op has none.
+        this.ghostRec = this.state.multiplayer ? null : { nextT: 0, pts: [] };
+        this.ghostPlayback = this.state.multiplayer ? null : this.loadGhost();
 
         // Skip past any story beats already covered by a checkpoint start
         // (normal 0m starts just find index 0, since STORY[0].h > 0).
@@ -993,13 +1153,17 @@ class Game {
 
         localStorage.setItem('lp_skin', SKINS[this.viewParams.skinIndex].id);
 
-        this.platforms = [{ x: 0, y: CONFIG.HEIGHT - 40, w: CONFIG.WIDTH, h: 40 }];
-        let y = CONFIG.HEIGHT - 140;
-        while (y > -CONFIG.HEIGHT) { this.spawnPlatform(y); y -= CONFIG.PLATFORM_BASE_GAP; }
-
+        // Pickups are cleared *before* the first screen of platforms is built,
+        // or the shards and power-ups spawned on it would be thrown away.
         this.powerups = [];
         this.enemies = [];
         this.projectiles = [];
+
+        this.platforms = [{ x: 0, y: CONFIG.HEIGHT - 40, w: CONFIG.WIDTH, h: 40 }];
+        // World y of the next platform to generate (screen y = wy + score).
+        // An integer counter, so every co-op client derives identical heights.
+        this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
+        this.fillPlatforms();
         this.particles = new ParticleSystem();
         this.safetyNet = this.makeSafetyNetState();
         this.remotePlayers = new Map();
@@ -1008,12 +1172,18 @@ class Game {
         this.hideAlert();
     }
 
-    spawnPlatform(y) {
+    // Level generation. Everything a platform (and its pickup) gets is decided
+    // by its own world height `wy` (screen y minus score; more negative is
+    // higher) plus the seeded RNG, never by the camera. Co-op clients whose
+    // cameras lag each other therefore still build identical levels.
+    // seededRandom() is reserved for this: any other draw would desync them.
+    spawnPlatform(wy) {
+        const y = wy + this.state.score;
         let rand = this.seededRandom();
         let w = 100 + rand * 80;
         let x = this.seededRandom() * (CONFIG.WIDTH - w);
-        let scoreMeters = Math.floor(this.state.score / 10);
-        let hazards = this.renderer.currentBiome.hazards;
+        let scoreMeters = Math.max(0, Math.floor(-wy / 10));
+        let hazards = biomeAt(scoreMeters).hazards;
 
         let vx = 0;
         if (hazards.includes('moving')) {
@@ -1024,7 +1194,7 @@ class Game {
             }
         }
 
-        this.platforms.push({ x, y, w, h: 18, vx });
+        this.platforms.push({ x, y, w, h: 18, vx, wy });
 
         let chance = 0.08 * (1 - scoreMeters / 8000);
         chance = Math.max(0.015, chance);
@@ -1053,7 +1223,118 @@ class Game {
         }
     }
 
+    // Keeps platforms generated up to PLATFORM_LOOKAHEAD above the screen, so
+    // none ever pops into view, in strict height order.
+    fillPlatforms() {
+        while (this.state.nextPlatWY + this.state.score > -PLATFORM_LOOKAHEAD) {
+            this.spawnPlatform(this.state.nextPlatWY);
+            this.state.nextPlatWY -= CONFIG.PLATFORM_BASE_GAP;
+        }
+    }
+
+    // Game-time interval timer: true once per `every` frames' worth of dt
+    // (60fps units) regardless of refresh rate. A long frame fires it once,
+    // never as a burst of catch-up spawns.
+    tick(name, dt, every) {
+        const t = this.state.timers || (this.state.timers = {});
+        t[name] = (t[name] || 0) + dt;
+        if (t[name] < every) return false;
+        t[name] = Math.min(t[name] - every, every);
+        return true;
+    }
+
+    // Today's ghost for this exact layout, or null. A ghost recorded on
+    // another day, from another start height or by an older level generator
+    // would just wander through thin air.
+    loadGhost() {
+        const g = loadJSON('lp_ghost', null);
+        if (!g || g.v !== 2 || g.gen !== PLATFORM_GEN_VERSION) return null;
+        if (g.seed !== this.state.runSeed || g.start !== this.state.startMeters) return null;
+        if (!Array.isArray(g.pts) || !(g.step > 0)) return null;
+        return g;
+    }
+
+    // Samples the player on a fixed game-time cadence (every GHOST_STEP
+    // frames of dt), so playback speed doesn't depend on the refresh rate.
+    recordGhost() {
+        const rec = this.ghostRec;
+        if (!rec) return;
+        while (this.state.time >= rec.nextT && rec.pts.length < GHOST_MAX_POINTS * 2) {
+            rec.pts.push(Math.round(this.player.x), Math.round(this.player.y - this.state.score));
+            rec.nextT += GHOST_STEP;
+        }
+    }
+
+    // Keeps the best solo run of the day on this layout.
+    saveGhost(finalScore) {
+        const rec = this.ghostRec;
+        if (!rec || this.state.multiplayer || rec.pts.length < 4) return;
+        const stored = this.loadGhost();
+        if (stored && stored.score >= finalScore) return;
+        const ghost = {
+            v: 2, gen: PLATFORM_GEN_VERSION, seed: this.state.runSeed, start: this.state.startMeters,
+            score: finalScore, step: GHOST_STEP, pts: rec.pts
+        };
+        try { localStorage.setItem('lp_ghost', JSON.stringify(ghost)); } catch (e) { /* storage full: keep the old one */ }
+    }
+
+    drawGhost() {
+        const g = this.ghostPlayback;
+        if (!g) return;
+        const f = this.state.time / g.step;
+        const i = Math.floor(f);
+        if (i * 2 + 3 >= g.pts.length) return; // the recorded run is over
+        let x = g.pts[i * 2], y = g.pts[i * 2 + 1];
+        const nx = g.pts[i * 2 + 2], ny = g.pts[i * 2 + 3];
+        // Interpolate between samples, except across a screen wrap.
+        if (Math.abs(nx - x) < 300) {
+            x += (nx - x) * (f - i);
+            y += (ny - y) * (f - i);
+        }
+        const screenY = y + this.state.score;
+        if (screenY > -50 && screenY < CONFIG.HEIGHT + 50) {
+            this.renderer.ctx.globalAlpha = 0.3;
+            this.renderer.ctx.fillStyle = "#ffffff";
+            this.renderer.ctx.fillRect(x, screenY, 26, 26);
+            this.renderer.ctx.globalAlpha = 1;
+        }
+    }
+
+    // Moves the camera up by `diff` px: everything on screen shifts down,
+    // anything that fell far below is culled, and new platforms are generated.
+    scrollCamera(diff, perks = this.player.skin.ability || {}) {
+        this.player.y += diff;
+        this.remotePlayers.forEach(rp => { rp.y += diff; });
+
+        this.state.score += diff;
+        // SCORE x2 perk: state.score is the camera's real height (it drives
+        // biomes, spawns and boss loops), so the extra distance is banked
+        // separately and only added to the score the player sees.
+        this.state.bonusScore += diff * ((perks.scoreMult || 1) - 1);
+        this.state.bgOffset += diff * 0.5;
+
+        this.platforms.forEach(p => p.y += diff);
+        this.powerups.forEach(p => { p.y += diff; p.startY += diff; });
+        this.enemies.forEach(e => { if (e.shiftY) e.shiftY(diff); else e.y += diff; });
+        this.projectiles.forEach(p => p.y += diff);
+        this.particles.particles.forEach(p => p.y += diff);
+
+        this.platforms = this.platforms.filter(p => p.y < CONFIG.HEIGHT + 100);
+        this.powerups = this.powerups.filter(p => p.y < CONFIG.HEIGHT + 100);
+        // Drones circle back instead of leaving, so cull the ones left below.
+        this.enemies = this.enemies.filter(e => e instanceof BossDrone || e.y < CONFIG.HEIGHT + 100);
+
+        this.fillPlatforms();
+    }
+
     startGame(isMp = false, mpSeed = null) {
+        // Whatever menu button had focus must not catch the Space/Enter that
+        // follows (buttons activate on keyup), and keys held in the menu
+        // shouldn't carry into the run.
+        if (typeof document !== 'undefined' && document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+        }
+        this.input.resetInput();
         this.state.running = true;
         this.state.multiplayer = isMp;
         this.state.deathCount = 0;
@@ -1073,6 +1354,9 @@ class Game {
     }
 
     die(forceDie = false) {
+        // Two hits in the same frame after the last life is spent must not
+        // end the run twice (double Hall of Fame entry, two interstitials).
+        if (!this.state.running) return;
         if (this.state.multiplayer) {
             this.handleMultiplayerDeath(forceDie);
             return;
@@ -1092,8 +1376,7 @@ class Game {
         if (equippedAbility.extraRevive && !this.state.usedExtraRevive) {
             this.state.usedExtraRevive = true;
             this.player.y = CONFIG.HEIGHT - 200;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.player.vx = 0;
+            this.player.launch(CONFIG.BOUNCE_FORCE);
             this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
             sounds.play('powerup');
             this.particles.spawn(this.player.x + 13, this.player.y + 13, "#00ffaa", 30, "blast");
@@ -1107,8 +1390,7 @@ class Game {
         // cheaper thing to burn first).
         if (this.consumeExtraLife()) {
             this.player.y = CONFIG.HEIGHT - 200;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.player.vx = 0;
+            this.player.launch(CONFIG.BOUNCE_FORCE);
             this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
             sounds.play('powerup');
             this.particles.spawn(this.player.x + 13, this.player.y + 13, "#ff3366", 30, "blast");
@@ -1224,6 +1506,9 @@ class Game {
     mpRevive() {
         // The run may have ended while the revive ad was playing.
         if (!this.state.running) return;
+        // Keys pressed while waiting (mashing through the prompt) must not
+        // fire the moment play resumes.
+        this.input.resetInput();
         this.player.isDead = false;
         const anchor = [...this.remotePlayers.values()].find(rp => !rp.isDead);
         if (anchor) {
@@ -1232,20 +1517,23 @@ class Game {
         } else {
             this.player.y = CONFIG.HEIGHT - 200;
         }
-        this.player.vy = 0;
+        this.player.launch(0);
 
         if (window.network) window.network.send({ type: 'revive', pid: window.network.myId });
-        this.showAlert("LIFE RESTORED", 'success');
+        const boost = this.phoenixBoost();
+        this.showAlert("LIFE RESTORED" + (boost ? " + " + boost : ""), 'success');
     }
 
     revive() {
         this.state.revived = true;
         this.state.running = true;
+        // Keys pressed on the revive prompt (Space on WATCH AD, mashing)
+        // must not turn into a jump that overrides the revive bounce.
+        this.input.resetInput();
         this.lastTime = performance.now();
 
         this.player.y = CONFIG.HEIGHT - 200;
-        this.player.vy = CONFIG.BOUNCE_FORCE;
-        this.player.vx = 0;
+        this.player.launch(CONFIG.BOUNCE_FORCE);
 
         this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
 
@@ -1266,9 +1554,7 @@ class Game {
         // Don't leave a half-retracted net hanging over the menu.
         this.safetyNet = this.makeSafetyNetState();
 
-        if (this.state.isNewBest && this.state.ghostRecord) {
-            localStorage.setItem('lp_ghost', JSON.stringify(this.state.ghostRecord));
-        }
+        this.saveGhost(finalScore);
         if (!this.state.multiplayer) {
             this.updateFame(finalScore);
         }
@@ -1303,16 +1589,22 @@ class Game {
         this.updateExtraLifeUI();
     }
 
+    loadFame() {
+        return loadJSON('lp_fame', [], v => Array.isArray(v))
+            .filter(f => f && typeof f === 'object' && Number.isFinite(f.score));
+    }
+
     updateFame(score) {
-        let fame = JSON.parse(localStorage.getItem('lp_fame')) || [];
-        fame.push({ score, skin: SKINS[this.viewParams.skinIndex].name, date: new Date().toLocaleDateString() });
+        let fame = this.loadFame();
+        const skin = SKINS[this.viewParams.skinIndex];
+        fame.push({ score, skin: skin.name, skinId: skin.id, date: new Date().toLocaleDateString() });
         fame.sort((a, b) => b.score - a.score);
         fame = fame.slice(0, 5);
         localStorage.setItem('lp_fame', JSON.stringify(fame));
     }
 
     updateFameUI() {
-        let fame = JSON.parse(localStorage.getItem('lp_fame')) || [];
+        let fame = this.loadFame();
 
         if (!fame.length) {
             this.ui.fame.innerHTML = `<div class="fame-empty">NO RUNS YET — SET A RECORD</div>`;
@@ -1320,16 +1612,17 @@ class Game {
         }
 
         this.ui.fame.innerHTML = fame.map((f, i) => {
-            // Entries store the skin by name, so a renamed/removed skin just
-            // falls back to the neutral swatch colour from the stylesheet.
-            const skin = SKINS.find(s => s.name === f.skin);
+            // Newer entries store the skin id; older ones only its name. A
+            // renamed or removed skin falls back to the neutral swatch colour.
+            const skin = SKINS.find(s => s.id === f.skinId) || SKINS.find(s => s.name === f.skin);
             const swatch = skin ? ` style="background:${skin.color}"` : '';
+            const name = skin ? skin.name : String(f.skin || '???');
             return `<div class="fame-row fame-row--${i + 1}">
                 <div class="fame-rank">${i + 1}</div>
                 <div class="fame-swatch"${swatch}></div>
-                <div class="fame-skin">${f.skin}</div>
-                <div class="fame-date">${f.date || ''}</div>
-                <div class="fame-score">${f.score}m</div>
+                <div class="fame-skin">${this.escapeHtml(name)}</div>
+                <div class="fame-date">${this.escapeHtml(f.date || '')}</div>
+                <div class="fame-score">${Math.floor(f.score)}m</div>
             </div>`;
         }).join('');
     }
@@ -1414,28 +1707,18 @@ class Game {
             this.lastBiomeName = this.renderer.currentBiome.name;
         }
 
-        if (this.state.frames % 5 === 0) {
-            if (!this.state.ghostRecord) this.state.ghostRecord = [];
-            this.state.ghostRecord.push({
-                x: Math.round(this.player.x),
-                y: Math.round(this.player.y - this.state.score)
-            });
-        }
+        this.recordGhost();
 
-        // Boss Fights & Loop Management
-        if (this.state.score > 0) {
-            let targetLoop = Math.floor(scoreMeters / CONFIG.BOSS_LOOP_DISTANCE);
-            if (targetLoop > (this.state.loops || 0)) {
-                if (!this.state.bossActive) {
-                    this.state.bossActive = true;
-                    this.enemies.push(new BossDrone(this.player.y - 600));
-                }
-            }
+        // Boss fights: one every BOSS_LOOP_DISTANCE metres of this run. It
+        // drops in from above the screen.
+        if (!this.state.bossActive && scoreMeters >= this.state.nextBossAt) {
+            this.state.bossActive = true;
+            this.enemies.push(new BossDrone(-120));
         }
 
         // Spawn Enemies (only if Boss isn't active)
-        if (!this.state.bossActive && scoreMeters > 60 && this.state.frames % Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))) === 0) {
-            const difficulty = 1 + (scoreMeters / 2000) + (this.state.loops || 0);
+        if (!this.state.bossActive && scoreMeters > 60 && this.tick('drone', dt, Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))))) {
+            const difficulty = 1 + (scoreMeters / 2000) + (this.state.runLoops || 0);
 
             if (scoreMeters > 300 && Math.random() < Math.min(0.5, (scoreMeters - 300) / 2400)) {
                 this.enemies.push(new ShooterDrone(this.player.y - 500, difficulty));
@@ -1444,7 +1727,7 @@ class Game {
             }
         }
 
-        if (hazards.includes('laser') && this.state.frames % 240 === 0) {
+        if (!this.state.bossActive && hazards.includes('laser') && this.tick('laser', dt, 240)) {
             this.enemies.push(new LaserDrone(this.player.y - 500));
         }
 
@@ -1457,7 +1740,10 @@ class Game {
             this.input.keys.right = tmp;
         }
 
-        let event = this.player.update(dt, this.input, this.platforms, this.powerups);
+        this.player.prevBottom = this.player.y + this.player.h;
+        // A dead co-op player's body is gone until they respawn: no physics,
+        // no landing on platforms, no pickups.
+        let event = this.player.isDead ? null : this.player.update(dt, this.input, this.platforms, this.powerups);
 
         if (glitching) {
             const tmp = this.input.keys.left;
@@ -1483,7 +1769,7 @@ class Game {
             let pulse = Math.sin(this.state.time * 0.05) * 0.3;
             this.player.vy += pulse * dt;
         }
-        if (hazards.includes('meteor') && this.state.frames % 90 === 0) {
+        if (hazards.includes('meteor') && this.tick('meteor', dt, 90)) {
             let startX = Math.random() * CONFIG.WIDTH;
             let vx = (Math.random() - 0.5) * 4;
             let vy = 4 + Math.random() * 5;
@@ -1506,19 +1792,12 @@ class Game {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, POWERS.DOUBLE.color);
             sounds.play('jump');
         } else if (event === "trail") {
-            if (this.state.frames % 2 === 0)
+            if (this.tick('trail', dt, 2))
                 this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 1, "trail");
         } else if (event === "thrust") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#ff3300", 2, "blast");
         } else if (event && event.event === "shard") {
-            this.state.shards += (event.value || 1) * (perks.shardMult || 1);
-            localStorage.setItem('lp_shards', this.state.shards);
-            if (this.ui.shardDisplay) {
-                this.ui.shardDisplay.innerText = this.state.shards + " 💎";
-                this.ui.shardDisplay.classList.remove('gem-pop');
-                void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
-                this.ui.shardDisplay.classList.add('gem-pop');
-            }
+            this.addShards((event.value || 1) * (perks.shardMult || 1));
             this.particles.spawn(event.x + 8, event.y + 8, "#00ffff", 10);
             sounds.play('powerup');
         } else if (event && event.event === "powerup") {
@@ -1538,38 +1817,28 @@ class Game {
 
             if (e instanceof ShooterDrone) {
                 e.update(enemyDt, this.player, this.projectiles);
-            } else if (e.constructor.name === "BossDrone") {
-                e.update(enemyDt, this.player, this.projectiles);
+            } else if (e instanceof BossDrone) {
+                e.update(enemyDt, this.bossFocus(), this.projectiles);
             } else {
                 e.update(enemyDt);
             }
 
             if (e.markedForDeletion) {
-                if (e.constructor.name === "BossDrone") {
-                    this.state.bossActive = false;
-                    this.state.loops = (this.state.loops || 0) + 1;
-                    localStorage.setItem('lp_loops', this.state.loops);
-                    this.showAlert(`LOOP ${this.state.loops} SECURED`, 'reward');
-                    this.state.score += 50000; // 5000m bonus
-                }
+                if (e instanceof BossDrone) this.onBossDefeated();
                 this.enemies.splice(i, 1);
                 continue;
             }
-            if (e.hidden || this.player.invuln > 0) continue;
+            if (e.hidden || this.player.invuln > 0 || this.player.isDead) continue;
             if (rectsIntersect(this.player, e)) {
-                if (e.constructor.name === "BossDrone" && this.player.vy > 0 && this.player.y + this.player.h < e.y + 40) {
-                    e.takeDamage(this.particles);
-                    this.player.vy = CONFIG.BOUNCE_FORCE;
-                    sounds.play('jump');
+                if (e instanceof BossDrone) {
+                    this.resolveBossContact(e);
                     continue;
                 }
-                // Crashing with the jetpack just burns it out; the boss can't be
-                // rammed to death, so it grants a moment of immunity instead.
+                // Crashing with the jetpack just burns it out (and the drone).
                 if (this.player.activePower === POWERS.ROCKET) {
                     this.player.activePower = null;
                     this.player.powerTimer = 0;
-                    if (e.constructor.name === "BossDrone") this.player.invuln = 45;
-                    else e.markedForDeletion = true;
+                    e.markedForDeletion = true;
                     this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
                     sounds.play('powerup');
                     continue;
@@ -1617,14 +1886,17 @@ class Game {
         this.particles.update(dt);
         this.updateSafetyNet(dt);
 
-        if (this.state.multiplayer && this.state.frames % 2 === 0 && !this.player.isDead) {
+        // Position sync at 30Hz of game time (not per rendered frame, which
+        // would be 2.4x the traffic on a 144Hz screen).
+        if (this.state.multiplayer && !this.player.isDead && this.tick('sync', dt, 2)) {
+            const r = v => Math.round(v * 10) / 10;
             window.network.send({
                 type: 'sync',
                 pid: window.network.myId,
-                x: this.player.x,
-                y: this.player.y - this.state.score,
-                vx: this.player.vx,
-                vy: this.player.vy,
+                x: r(this.player.x),
+                y: r(this.player.y - this.state.score),
+                vx: r(this.player.vx),
+                vy: r(this.player.vy),
                 skinIndex: this.viewParams.skinIndex,
                 activePowerId: this.player.activePower ? this.player.activePower.id : null
             });
@@ -1642,37 +1914,16 @@ class Game {
             targetY = aliveYs.length ? Math.max(...aliveYs) : threshold + 1; // everyone dead: no scroll
         }
 
-        if (targetY < threshold) {
-            let diff = threshold - targetY;
-
-            this.player.y += diff;
-            this.remotePlayers.forEach(rp => { rp.y += diff; });
-
-            this.state.score += diff;
-            // SCORE x2 perk: state.score is the camera's real height (it drives
-            // biomes, spawns and boss loops), so the extra distance is banked
-            // separately and only added to the score the player sees.
-            this.state.bonusScore += diff * ((perks.scoreMult || 1) - 1);
-            this.state.bgOffset += diff * 0.5;
-
-            this.platforms.forEach(p => p.y += diff);
-            this.powerups.forEach(p => { p.y += diff; p.startY += diff; });
-            this.enemies.forEach(p => p.y += diff);
-            this.projectiles.forEach(p => p.y += diff);
-            this.particles.particles.forEach(p => p.y += diff);
-
-            this.platforms = this.platforms.filter(p => p.y < CONFIG.HEIGHT + 100);
-            this.powerups = this.powerups.filter(p => p.y < CONFIG.HEIGHT + 100);
-            // Drones now circle back instead of leaving, so cull the ones left below.
-            this.enemies = this.enemies.filter(e => e.constructor.name === "BossDrone" || e.y < CONFIG.HEIGHT + 100);
-
-            let highest = CONFIG.HEIGHT;
-            this.platforms.forEach(p => { if (p.y < highest) highest = p.y; });
-            if (highest > 100) this.spawnPlatform(highest - CONFIG.PLATFORM_BASE_GAP);
-        }
+        if (targetY < threshold) this.scrollCamera(threshold - targetY, perks);
 
         if (!this.player.isDead && this.player.y > CONFIG.HEIGHT) {
             this.die();
+        }
+
+        const heightMeters = Math.floor(this.state.score / 10);
+        if (heightMeters > this.state.bestHeight) {
+            this.state.bestHeight = heightMeters;
+            localStorage.setItem('lp_best_height', heightMeters);
         }
 
         let displayScore = this.runScore();
@@ -1738,19 +1989,7 @@ class Game {
         this.enemies.forEach(e => e.draw(this.renderer.ctx));
         this.projectiles.forEach(p => p.draw(this.renderer.ctx));
 
-        if (this.ghostPlayback && this.ghostPlayback.length > 0) {
-            let idx = Math.floor(this.state.frames / 5);
-            if (idx < this.ghostPlayback.length) {
-                let pos = this.ghostPlayback[idx];
-                let screenY = pos.y + this.state.score;
-                if (screenY > -50 && screenY < CONFIG.HEIGHT + 50) {
-                    this.renderer.ctx.globalAlpha = 0.3;
-                    this.renderer.ctx.fillStyle = "#ffffff";
-                    this.renderer.ctx.fillRect(pos.x, screenY, 26, 26);
-                    this.renderer.ctx.globalAlpha = 1;
-                }
-            }
-        }
+        if (this.state.running) this.drawGhost();
 
         this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
 
@@ -1777,7 +2016,9 @@ class Game {
         const deltaTime = timestamp - this.lastTime;
         this.lastTime = timestamp;
 
-        let dt = deltaTime / (1000 / 60);
+        // performance.now() (reset on revive) and the rAF timestamp can
+        // disagree by a hair, so clamp at 0 as well as capping long frames.
+        let dt = Math.max(0, deltaTime) / (1000 / 60);
         if (dt > 4) dt = 4;
 
         this.update(dt);

@@ -37,10 +37,10 @@ try {
 
     // Confirm a regular drone can actually spawn again post-fix (previously
     // blocked forever since drone spawning is gated on !bossActive).
-    mockGame.state.score = 30000; // scoreMeters = 3000, past the 200m gate
-    // Spawn interval at this score is max(60, 120 - 3000/100) = 90 frames;
-    // update() increments frames first, so 89 -> 90 lands on the spawn tick.
-    mockGame.state.frames = 89;
+    mockGame.state.score = 30000; // scoreMeters = 3000, past the 60m gate
+    // Spawn interval at this score is max(60, 120 - 3000/100) = 90 frames of
+    // game time; the drone timer at 89 reaches 90 on this update(1).
+    mockGame.state.timers.drone = 89;
     mockGame.enemies = [];
     mockGame.update(1);
     if (mockGame.enemies.length === 0) {

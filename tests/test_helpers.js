@@ -28,7 +28,25 @@ function makeMockElement() {
     };
 }
 
+// The game's UI timers (alert auto-hide, achievement pops, respawn countdowns,
+// network watchdogs) would otherwise keep node alive for seconds after a test
+// finishes. Tests never wait on them, so let them lapse; a test that really
+// needs to wait uses sleep(), which keeps the process alive.
+const realSetTimeout = setTimeout;
+function sleep(ms) { return new Promise(r => realSetTimeout(r, ms)); }
+function unrefTimers() {
+    for (const name of ['setTimeout', 'setInterval']) {
+        const real = global[name];
+        global[name] = (...args) => {
+            const t = real(...args);
+            if (t && typeof t.unref === 'function') t.unref();
+            return t;
+        };
+    }
+}
+
 function setupMocks() {
+    unrefTimers();
     const store = {};
     global.localStorage = {
         getItem: (k) => Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null,
@@ -45,7 +63,10 @@ function setupMocks() {
     global.document = {
         getElementById: () => makeMockElement(),
         createElement: () => makeMockElement(),
-        body: makeMockElement()
+        body: makeMockElement(),
+        addEventListener() {}, removeEventListener() {},
+        hidden: false,
+        activeElement: null
     };
     global.performance = { now: () => 1000 };
     global.requestAnimationFrame = () => {};
@@ -74,4 +95,4 @@ function loadGameSource() {
         .replace(/window\.onload[\s\S]*$/, '');
 }
 
-module.exports = { setupMocks, loadGameSource };
+module.exports = { setupMocks, loadGameSource, sleep };

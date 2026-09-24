@@ -36,6 +36,16 @@ class Player extends Entity {
         this.invuln = 0; // frames of hit immunity (after a jetpack crash into the boss)
     }
 
+    // Throws the player upward from a revive or spent life. Standing on a
+    // platform when they died left grounded/coyote set, which let a buffered
+    // jump replace the launch with a weaker hop on the very next frame.
+    launch(vy) {
+        this.vy = vy;
+        this.vx = 0;
+        this.grounded = false;
+        this.coyote = 0;
+    }
+
     setSkin(index) {
         this.skin = SKINS[index];
         this.color = this.skin.color;
@@ -101,6 +111,10 @@ class Player extends Entity {
             if (this.coyote > 0) {
                 this.vy = jumpPwr;
                 this.coyote = 0;
+                // This returns before the platform check below, so drop the
+                // grounded flag here; otherwise next frame still counts as
+                // standing, refills coyote time and allows a mid-air re-jump.
+                this.grounded = false;
                 input.keys.buffer = 0;
                 return "jump";
             } else if (this.activePower === POWERS.DOUBLE && this.doubleReady) {
@@ -139,27 +153,11 @@ class Player extends Entity {
             let p = powerups[i];
 
             // Magnet Logic (temporary MAGNET power-up pulls any pickup)
-            if (this.activePower === POWERS.MAGNET) {
-                let dx = this.x - p.x;
-                let dy = this.y - p.y;
-                let dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < 200) {
-                    p.x += dx * 0.1;
-                    p.y += dy * 0.1;
-                }
-            }
+            if (this.activePower === POWERS.MAGNET) this.pullPickup(p, 200, dt);
 
             // Always-on shard pull from an equipped Pixel's permanent ability
             // (separate from, and stacks with, the temporary MAGNET power-up)
-            if (p.isShard && ability.shardMagnetRadius) {
-                let dx = this.x - p.x;
-                let dy = this.y - p.y;
-                let dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < ability.shardMagnetRadius) {
-                    p.x += dx * 0.1;
-                    p.y += dy * 0.1;
-                }
-            }
+            if (p.isShard && ability.shardMagnetRadius) this.pullPickup(p, ability.shardMagnetRadius, dt);
 
             if (rectsIntersect(this, p)) {
                 if (p.isShard) {
@@ -174,6 +172,19 @@ class Player extends Entity {
         }
 
         return event;
+    }
+
+    // Drags a pickup 10% of the way toward the player per 60fps frame. The
+    // pickup bobs around startY (Game.draw() rewrites y from it every frame),
+    // so the pull has to move startY too or it only ever works sideways.
+    pullPickup(p, radius, dt) {
+        const dx = this.x - p.x;
+        const dy = this.y - p.y;
+        if (dx * dx + dy * dy >= radius * radius) return;
+        const k = 1 - Math.pow(0.9, dt);
+        p.x += dx * k;
+        p.y += dy * k;
+        if (p.startY !== undefined) p.startY += dy * k;
     }
 
     activatePower() {
@@ -284,7 +295,7 @@ class Drone extends Entity {
         }
 
         this.x += this.v * dt;
-        this.y += Math.sin(this.x * 0.05 + this.sinOffset) * 2;
+        this.y += Math.sin(this.x * 0.05 + this.sinOffset) * 2 * dt;
         if ((this.v > 0 && this.x > CONFIG.WIDTH + 50) || (this.v < 0 && this.x < -100)) {
             this.hidden = true;
             this.exitSide = this.v > 0 ? 1 : -1;
@@ -501,64 +512,180 @@ class Meteor extends Entity {
 }
 
 class BossDrone extends Entity {
+    // A dt-driven state machine: enter -> hover -> telegraph -> dive ->
+    // exposed -> recover -> hover ... (see BOSS in config.js). The boss lives
+    // in screen space like everything else; shiftY() keeps its anchors in
+    // step when the camera scrolls. It keeps its own clock, so TIME WARP
+    // (which slows enemy dt) slows the whole fight.
     constructor(y) {
         super(CONFIG.WIDTH / 2 - 60, y, 120, 80, "#880000");
         this.hp = 10;
         this.maxHp = 10;
-        this.shootTimer = 100;
-        this.hoverY = y;
-        this.hoverOffsetX = 0;
+        this.state = 'enter';
+        this.timer = 120;
+        this.shootTimer = BOSS.VOLLEY;
+        this.t = 0;
+        this.strafe = 0;
+        this.invuln = 0;
+        this.laneX = this.x;
+        this.anchorY = y;
     }
 
-    update(dt, player, projectiles) {
-        let targetY = player.y - 450;
-        if (this.hoverY < targetY) {
-            this.hoverY += (targetY - this.hoverY) * 0.05 * dt;
-        } else {
-            this.hoverY = targetY;
-        }
+    get raging() { return this.hp <= this.maxHp / 2; }
 
-        this.y = this.hoverY + Math.sin(Date.now() * 0.002) * 20;
+    // Exposed (or still climbing away): side contact knocks you back
+    // instead of killing you.
+    isExposed() { return this.state === 'exposed' || this.state === 'recover'; }
 
-        this.hoverOffsetX += 2 * dt;
-        this.x = (CONFIG.WIDTH / 2 - this.w / 2) + Math.sin(this.hoverOffsetX * 0.02) * 150;
+    shiftY(d) {
+        this.y += d;
+        this.anchorY += d;
+    }
 
-        this.shootTimer -= dt;
-        if (this.shootTimer <= 0) {
-            for (let i = -1; i <= 1; i++) {
-                projectiles.push(new Projectile(this.x + this.w / 2, this.y + this.h, i * 3, 6));
-            }
-            this.shootTimer = 90;
+    // `focus` is the player it hovers over; `pickDiveTarget` chooses whom to
+    // dive at (the focus by default).
+    update(dt, focus, projectiles, pickDiveTarget = () => focus) {
+        this.t += dt;
+        if (this.invuln > 0) this.invuln -= dt;
+
+        const hoverY = Math.max(BOSS.HOVER_MIN_Y, focus.y - BOSS.HOVER_OFFSET);
+        const easeY = (target, rate) => { this.y += (target - this.y) * (1 - Math.pow(1 - rate, dt)); };
+
+        switch (this.state) {
+            case 'enter':
+                easeY(hoverY, 0.05);
+                this.timer -= dt;
+                if (this.timer <= 0 || Math.abs(this.y - hoverY) < 4) this.enterHover();
+                break;
+
+            case 'hover':
+                this.strafe += dt;
+                this.x = (CONFIG.WIDTH / 2 - this.w / 2) + Math.sin(this.strafe * 0.02) * 150;
+                easeY(hoverY, 0.08);
+                this.shootTimer -= dt;
+                if (this.shootTimer <= 0) {
+                    this.fireVolley(projectiles);
+                    this.shootTimer = this.raging ? BOSS.VOLLEY_RAGE : BOSS.VOLLEY;
+                }
+                this.timer -= dt;
+                if (this.timer <= 0) this.lockOn(pickDiveTarget() || focus);
+                break;
+
+            case 'telegraph':
+                // Slide over the lane and rear back; the warning column (see
+                // draw) shows exactly where it will come down.
+                this.x += (this.laneX - this.x) * (1 - Math.pow(0.8, dt));
+                easeY(Math.max(-40, hoverY - BOSS.WINDUP), 0.1);
+                this.timer -= dt;
+                if (this.timer <= 0) {
+                    this.x = this.laneX;
+                    this.state = 'dive';
+                }
+                break;
+
+            case 'dive':
+                this.y = Math.min(this.anchorY, this.y + BOSS.DIVE_SPEED * dt);
+                if (this.y >= this.anchorY) {
+                    this.state = 'exposed';
+                    this.timer = BOSS.EXPOSED;
+                }
+                break;
+
+            case 'exposed':
+                this.y = this.anchorY;
+                this.timer -= dt;
+                if (this.timer <= 0) this.startRecover();
+                break;
+
+            case 'recover':
+                easeY(hoverY, 0.1);
+                this.timer -= dt;
+                if (this.timer <= 0) this.enterHover();
+                break;
         }
     }
 
+    enterHover() {
+        this.state = 'hover';
+        this.timer = this.raging ? BOSS.HOVER_RAGE : BOSS.HOVER;
+    }
+
+    startRecover() {
+        this.state = 'recover';
+        this.timer = BOSS.RECOVER;
+    }
+
+    // Commit to a dive at `target`: its lane, and a landing height that puts
+    // the boss's top just above the target's feet (a normal jump clears it).
+    lockOn(target) {
+        this.laneX = Math.max(0, Math.min(CONFIG.WIDTH - this.w, target.x + target.w / 2 - this.w / 2));
+        this.anchorY = Math.max(100, Math.min(640, target.y + target.h - BOSS.ABOVE_FEET));
+        this.state = 'telegraph';
+        this.timer = this.raging ? BOSS.TELEGRAPH_RAGE : BOSS.TELEGRAPH;
+    }
+
+    fireVolley(projectiles) {
+        const spread = this.raging ? 2 : 1;
+        for (let i = -spread; i <= spread; i++) {
+            projectiles.push(new Projectile(this.x + this.w / 2 - 4, this.y + this.h, i * 3, 6));
+        }
+    }
+
+    // Returns true if the hit landed (it doesn't while the boss is still
+    // flashing from the last one).
     takeDamage(particles) {
+        if (this.invuln > 0 || this.markedForDeletion) return false;
         this.hp--;
+        this.invuln = BOSS.HIT_INVULN;
         particles.spawn(this.x + this.w / 2, this.y + this.h / 2, "#fff", 50, "blast");
-        this.hoverY -= 800;
-        this.shootTimer = 20;
         if (this.hp <= 0) {
             this.markedForDeletion = true;
+        } else {
+            this.startRecover();
+            this.shootTimer = 30;
         }
+        return true;
     }
 
     draw(ctx) {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.w, this.h);
+        // Warning column down to the landing spot while it winds up.
+        if (this.state === 'telegraph') {
+            const blink = 0.18 + 0.17 * Math.abs(Math.sin(this.t * 0.3));
+            ctx.fillStyle = `rgba(255, 0, 60, ${blink})`;
+            ctx.fillRect(this.laneX, this.y + this.h, this.w, Math.max(0, this.anchorY + this.h - (this.y + this.h)));
+            ctx.fillStyle = "rgba(255, 0, 60, 0.8)";
+            ctx.fillRect(this.laneX, this.anchorY + this.h - 3, this.w, 3);
+        }
+
+        const hovering = this.state === 'hover' || this.state === 'enter';
+        const y = this.y + (hovering ? Math.sin(this.t * 0.12) * 6 : 0);
+        const flashing = this.invuln > 0 && Math.floor(this.t / 3) % 2 === 0;
+
+        ctx.fillStyle = flashing ? "#ffffff" : (this.state === 'telegraph' && Math.floor(this.t / 4) % 2 ? "#cc2222" : this.color);
+        ctx.fillRect(this.x, y, this.w, 80);
+
+        // Exposed: the top edge lights up as the weak spot.
+        if (this.state === 'exposed') {
+            ctx.fillStyle = "#00ffcc";
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = "#00ffcc";
+            ctx.fillRect(this.x, y, this.w, 5);
+            ctx.shadowBlur = 0;
+        }
 
         ctx.fillStyle = "#ff0000";
-        ctx.fillRect(this.x, this.y - 15, this.w, 8);
+        ctx.fillRect(this.x, y - 15, this.w, 8);
         ctx.fillStyle = "#00ff00";
-        ctx.fillRect(this.x, this.y - 15, this.w * (this.hp / this.maxHp), 8);
+        ctx.fillRect(this.x, y - 15, this.w * (this.hp / this.maxHp), 8);
 
-        ctx.fillStyle = this.shootTimer < 20 ? "#fff" : "#ffaa00";
+        ctx.fillStyle = this.shootTimer < 20 && hovering ? "#fff" : (this.raging ? "#ff3300" : "#ffaa00");
         ctx.beginPath();
-        ctx.arc(this.x + this.w / 2, this.y + this.h / 2, 20, 0, Math.PI * 2);
+        ctx.arc(this.x + this.w / 2, y + 40, 20, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = "#444";
-        const rot = Math.sin(Date.now() * 0.2) * 20;
-        ctx.fillRect(this.x - 20, this.y + 10 + rot, 40, 6);
-        ctx.fillRect(this.x + this.w - 20, this.y + 10 - rot, 40, 6);
+        const rot = Math.sin(this.t * 3.3) * 20;
+        ctx.fillRect(this.x - 20, y + 10 + rot, 40, 6);
+        ctx.fillRect(this.x + this.w - 20, y + 10 - rot, 40, 6);
     }
 }

@@ -4,6 +4,13 @@
 // restart interstitial never fires. Flip to true once ready to run ads.
 const ADS_ENABLED = false;
 
+// Build identity. GAME_VERSION tags asset URLs (index.html ?v=...) so a
+// deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
+// match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
+// co-op messages, level generation, or the SKINS/POWERS order change.
+const GAME_VERSION = '1.5.0';
+const NET_PROTOCOL = 2;
+
 const CONFIG = {
     WIDTH: 600,
     HEIGHT: 800,
@@ -22,6 +29,40 @@ const CONFIG = {
     BOSS_LOOP_DISTANCE: 4000
 };
 
+// Level generation version: bump when spawnPlatform() would build a different
+// layout from the same seed (saved ghosts from other versions are dropped).
+const PLATFORM_GEN_VERSION = 2;
+// How far above the top of the screen platforms are generated in advance.
+const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
+// Ghost recording: one sample every GHOST_STEP frames of game time, capped
+// at GHOST_MAX_POINTS samples (about half an hour of climbing).
+const GHOST_STEP = 6;
+const GHOST_MAX_POINTS = 20000;
+
+// Boss fight tuning, in 60fps frames of game time. The boss hovers above the
+// player firing volleys, then telegraphs a dive (a warning column shows the
+// lane), swoops down to the player's level and sits there exposed: land on
+// top of it to deal damage. Below half health it rages (shorter windows,
+// wider volleys).
+const BOSS = {
+    HOVER_OFFSET: 380,   // hover this far above the player it's tracking
+    HOVER_MIN_Y: 30,     // ...but never higher than this on screen
+    HOVER: 150, HOVER_RAGE: 90,           // time between dives
+    VOLLEY: 80, VOLLEY_RAGE: 55,          // time between volleys while hovering
+    TELEGRAPH: 50, TELEGRAPH_RAGE: 38,    // warning before the dive
+    WINDUP: 30,          // how far it rears back while telegraphing
+    DIVE_SPEED: 16,      // px per frame
+    EXPOSED: 90,         // how long it sits at the player's level
+    RECOVER: 45,         // time to climb back to hover height
+    HIT_INVULN: 40,      // invulnerability after each hit
+    ABOVE_FEET: 50       // exposed: its top sits this far above the target's feet
+};
+// Beating the boss: bonus distance (score only, the camera doesn't move) and
+// a gem bounty (not doubled by GEMS x2). The next boss is BOSS_LOOP_DISTANCE
+// metres further on.
+const BOSS_BONUS_METERS = 500;
+const BOSS_GEM_BOUNTY = 150;
+
 // Each biome's `hazards` list is cumulative: once a hazard is introduced by a
 // biome, it stays active in every later biome too (by The Void, everything is
 // stacked at once — that's the intended "hardest tier" feel).
@@ -35,6 +76,15 @@ const BIOMES = [
     { threshold: 12000, name: "Static Field", bg: "#0a0a0a", grid: "#555555", platform: "#ffffff", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"] },
     { threshold: 17000, name: "The Void", bg: "#000000", grid: "#220022", platform: "#ff0055", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"] }
 ];
+
+// The biome at a given height in meters (the single source of truth for both
+// the renderer and level generation).
+function biomeAt(meters) {
+    for (let i = BIOMES.length - 1; i >= 0; i--) {
+        if (meters >= BIOMES[i].threshold) return BIOMES[i];
+    }
+    return BIOMES[0];
+}
 
 // Shop consumables. Extra lives are bought with shards and carried between
 // runs as stock — each one is spent automatically on a death that would
@@ -63,8 +113,9 @@ const SKINS = [
 
     // Gem-shop Pixels, cheapest first. The bottom tiers each carry one plain
     // stat perk; every tier above buys a unique perk stronger than the last.
-    // At roughly 200 shards per 1000m climbed the top tier is a long grind
-    // (softened once GEMS x2 is owned). See Game.renderGemShop().
+    // At roughly 160-180 gems per 1000m climbed (plus 150 per boss) the top
+    // tier is a long grind, softened once GEMS x2 is owned. See
+    // Game.renderGemShop().
     { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.15 } },
     { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.15 } },
     { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { gravityMult: 0.88 } },
@@ -157,7 +208,7 @@ const ACHIEVEMENTS = [
             id: 'skin:' + s.name,
             name: s.name,
             skin: true,
-            condition: (state) => state.highScore >= s.unlock
+            condition: (state) => state.bestHeight >= s.unlock
         }))
 ];
 

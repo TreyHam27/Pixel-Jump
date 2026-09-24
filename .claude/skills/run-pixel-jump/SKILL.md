@@ -62,6 +62,13 @@ node .claude/skills/run-pixel-jump/driver.mjs start wait 300 eval '[__game.playe
 node .claude/skills/run-pixel-jump/driver.mjs click '#shop-open-btn' wait 600 ss shop click '#shop-back-btn' wait 600 click '#to-mp-btn' wait 700 ss coop
 ```
 
+Phone check (touch events, 390x844): menu taps must go through real touch
+events, which is how the "can't start on a phone" bug was caught:
+
+```bash
+PJ_TOUCH=1 node .claude/skills/run-pixel-jump/driver.mjs tap '#shop-open-btn' wait 600 ss shop-touch tap '#shop-back-btn' wait 600 start wait 500 eval '__game.state.running'
+```
+
 Other useful selectors: `#prev-btn` / `#next-btn` (skin picker), `#to-sp-btn`,
 `#mp-host-btn`, `#mp-join-btn`, `#shop-life-btn`, `#gem-prev-btn` / `#gem-next-btn`.
 
@@ -74,11 +81,17 @@ python3 -m http.server 8765   # then open http://localhost:8765/
 ## Test
 
 Game-logic tests run under a mocked DOM (`tests/test_helpers.js`) with no
-browser. Each file is standalone:
+browser. Each file is standalone; `npm test` runs them all in parallel child
+processes and reports each file's real exit code:
 
 ```bash
-for f in tests/test_*.js; do [ "$f" = tests/test_helpers.js ] && continue; node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL $f"; done
+npm test                        # every tests/test_*.js
+node tests/run_all.js boss mp   # only files whose name contains a filter
+node tests/test_perks.js        # one file, full output
 ```
+
+The mocks `unref()` game timers so a test exits as soon as its code finishes;
+a test that genuinely needs to wait should use `sleep(ms)` from the helpers.
 
 ## Gotchas
 

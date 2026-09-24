@@ -36,7 +36,7 @@ try {
     }
 
     // Cross the first skin's threshold: badge recorded, popped, and persisted.
-    game.state.highScore = first.unlock;
+    game.state.bestHeight = first.unlock;
     game.checkAchievements();
     if (!game.achievements.includes(firstId)) {
         throw new Error("Reaching the unlock distance did not record the skin achievement");
@@ -68,7 +68,7 @@ try {
     const third = earnedSkins[2];
     game.achievementQueue = [];
     game.achievementShowing = false;
-    game.state.highScore = third.unlock;
+    game.state.bestHeight = third.unlock;
     game.checkAchievements();
     if (!game.achievements.includes('skin:' + second.name) ||
         !game.achievements.includes('skin:' + third.name)) {
@@ -99,7 +99,7 @@ try {
     if (returning.achievements.includes('skin:' + laterSkin.name)) {
         throw new Error("Back-fill awarded a skin the player has not reached");
     }
-    returning.state.highScore = laterSkin.unlock;
+    returning.state.bestHeight = laterSkin.unlock;
     returning.checkAchievements();
     if (!returning.ui.achievement.innerText.includes(laterSkin.name)) {
         throw new Error("A new unlock after back-fill should still pop");

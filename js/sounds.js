@@ -5,26 +5,54 @@
 class SoundManager {
     constructor() {
         this.ctx = null;
+        this.master = null;
         this.enabled = true;
+        this.volume = 0.8;
+        this.muted = false;
 
-        // Interaction required for AudioContext to start
-        window.addEventListener('mousedown', () => this.init(), { once: true });
-        window.addEventListener('touchstart', () => this.init(), { once: true });
+        // Browsers only let audio start from a user gesture. Keyboard players
+        // never click, and iOS can suspend the context again later, so every
+        // gesture gets a (cheap) chance to create or resume it.
+        const unlock = () => this.unlock();
+        ['pointerdown', 'keydown', 'touchend'].forEach(evt =>
+            window.addEventListener(evt, unlock, { capture: true }));
     }
 
-    init() {
-        if (this.ctx) return;
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    unlock() {
+        if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            this.ctx = new AudioCtx();
+            this.master = this.ctx.createGain();
+            this.master.connect(this.ctx.destination);
+            this.applyVolume();
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+    }
+
+    setVolume(v) {
+        this.volume = Math.max(0, Math.min(1, v));
+        this.applyVolume();
+    }
+
+    setMuted(muted) {
+        this.muted = !!muted;
+        this.applyVolume();
+    }
+
+    applyVolume() {
+        if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
     }
 
     play(type) {
-        if (!this.ctx || !this.enabled) return;
+        if (!this.ctx || !this.enabled || this.muted) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
 
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.master);
 
         const now = this.ctx.currentTime;
 
