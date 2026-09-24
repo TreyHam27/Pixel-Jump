@@ -36,6 +36,16 @@ class Player extends Entity {
         this.invuln = 0; // frames of hit immunity (after a jetpack crash into the boss)
     }
 
+    // Throws the player upward from a revive or spent life. Standing on a
+    // platform when they died left grounded/coyote set, which let a buffered
+    // jump replace the launch with a weaker hop on the very next frame.
+    launch(vy) {
+        this.vy = vy;
+        this.vx = 0;
+        this.grounded = false;
+        this.coyote = 0;
+    }
+
     setSkin(index) {
         this.skin = SKINS[index];
         this.color = this.skin.color;

@@ -1376,8 +1376,7 @@ class Game {
         if (equippedAbility.extraRevive && !this.state.usedExtraRevive) {
             this.state.usedExtraRevive = true;
             this.player.y = CONFIG.HEIGHT - 200;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.player.vx = 0;
+            this.player.launch(CONFIG.BOUNCE_FORCE);
             this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
             sounds.play('powerup');
             this.particles.spawn(this.player.x + 13, this.player.y + 13, "#00ffaa", 30, "blast");
@@ -1391,8 +1390,7 @@ class Game {
         // cheaper thing to burn first).
         if (this.consumeExtraLife()) {
             this.player.y = CONFIG.HEIGHT - 200;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.player.vx = 0;
+            this.player.launch(CONFIG.BOUNCE_FORCE);
             this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
             sounds.play('powerup');
             this.particles.spawn(this.player.x + 13, this.player.y + 13, "#ff3366", 30, "blast");
@@ -1508,6 +1506,9 @@ class Game {
     mpRevive() {
         // The run may have ended while the revive ad was playing.
         if (!this.state.running) return;
+        // Keys pressed while waiting (mashing through the prompt) must not
+        // fire the moment play resumes.
+        this.input.resetInput();
         this.player.isDead = false;
         const anchor = [...this.remotePlayers.values()].find(rp => !rp.isDead);
         if (anchor) {
@@ -1516,7 +1517,7 @@ class Game {
         } else {
             this.player.y = CONFIG.HEIGHT - 200;
         }
-        this.player.vy = 0;
+        this.player.launch(0);
 
         if (window.network) window.network.send({ type: 'revive', pid: window.network.myId });
         const boost = this.phoenixBoost();
@@ -1526,11 +1527,13 @@ class Game {
     revive() {
         this.state.revived = true;
         this.state.running = true;
+        // Keys pressed on the revive prompt (Space on WATCH AD, mashing)
+        // must not turn into a jump that overrides the revive bounce.
+        this.input.resetInput();
         this.lastTime = performance.now();
 
         this.player.y = CONFIG.HEIGHT - 200;
-        this.player.vy = CONFIG.BOUNCE_FORCE;
-        this.player.vx = 0;
+        this.player.launch(CONFIG.BOUNCE_FORCE);
 
         this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
 

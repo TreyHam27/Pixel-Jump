@@ -106,6 +106,25 @@ try {
     }
     assert(500 - top < 200, "one jump's height (~145px), not a flight: rose " + Math.round(500 - top));
     console.log("NO REJUMP SUCCESS");
+
+    // A jump pressed on the revive prompt can't weaken the revive bounce.
+    const rg = new Game();
+    rg.startGame();
+    rg.player.grounded = true; rg.player.coyote = 8; // died standing on a platform
+    rg.input.keys.buffer = 6;                        // Space on WATCH AD / mashing
+    rg.revive();
+    rg.update(1);
+    assert(rg.player.vy < CONFIG.JUMP_FORCE, "revive keeps its bounce, vy " + rg.player.vy);
+    // Same for a spent extra life mid-run (the key is really held then).
+    const eg = new Game();
+    eg.startGame();
+    eg.state.extraLives = 1;
+    eg.player.grounded = true; eg.player.coyote = 8;
+    eg.die(true);
+    eg.input.keys.buffer = 6;
+    eg.update(1);
+    assert(eg.player.vy < CONFIG.JUMP_FORCE, "extra-life launch isn't replaced by a hop, vy " + eg.player.vy);
+    console.log("REVIVE BOUNCE SUCCESS");
 } catch (e) {
     console.error("FAILED:", e.stack || e);
     process.exitCode = 1;
