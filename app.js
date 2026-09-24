@@ -1684,9 +1684,9 @@ class Game {
     // calls this every second just keeps resetting the timer, so it stays up
     // continuously and disappears 4s after the final update.
     showAlert(text, type = 'info') {
-        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱' };
+        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', life: '💔' };
         const el = this.ui.alert;
-        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse');
+        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-life');
         el.classList.add('alert-' + type, 'alert-visible');
         this.ui.alertIcon.innerText = icons[type] || icons.info;
         this.ui.alertText.innerText = text;
@@ -1717,19 +1717,23 @@ class Game {
     // screen. `deploy` eases the net in and out with the power-up; `impact`,
     // `impactX` and `phase` drive the decaying wobble after each bounce.
     makeSafetyNetState() {
-        return { deploy: 0, impact: 0, impactX: CONFIG.WIDTH / 2, phase: 0, expiring: false };
+        return { deploy: 0, impact: 0, impactX: CONFIG.WIDTH / 2, phase: 0, expiring: false, rescue: false };
     }
 
     updateSafetyNet(dt) {
         const net = this.safetyNet;
-        const active = this.player.activePower === POWERS.SAFETY;
+        const power = this.player.activePower === POWERS.SAFETY;
+        if (this.state.rescueNetT > 0) this.state.rescueNetT = Math.max(0, this.state.rescueNetT - dt);
+        // The power's own (purple) net takes over from a red rescue net.
+        if (power) net.rescue = false;
+        const active = power || this.state.rescueNetT > 0;
 
         net.deploy = active
             ? Math.min(1, net.deploy + 0.08 * dt)
             : Math.max(0, net.deploy - 0.06 * dt);
         // Warn over the last ~2.5 seconds. A fixed window rather than a fraction
         // of the timer, since skin abilities can stretch the power's duration.
-        net.expiring = active && this.player.powerTimer < 150;
+        net.expiring = power && this.player.powerTimer < 150;
 
         if (net.impact > 0) {
             net.phase += 0.5 * dt;
@@ -1863,6 +1867,27 @@ class Game {
         }
     }
 
+    // A spent life or revive: a red safety net springs up for a second and
+    // bounces the player back in from the bottom of the screen.
+    deployRescueNet() {
+        this.state.rescueNetT = RESCUE_NET_FRAMES;
+        this.safetyNet.rescue = true;
+        this.player.y = CONFIG.HEIGHT - 60;
+        this.player.launch(CONFIG.BOUNCE_FORCE);
+        this.bounceSafetyNet();
+    }
+
+    // A fall onto a deployed net (the SAFETY NET power, or a rescue net still
+    // up) bounces instead of killing. Enemy hits aren't caught. True if caught.
+    catchWithNet(forceDie) {
+        if (forceDie || !(this.player.activePower === POWERS.SAFETY || this.state.rescueNetT > 0)) return false;
+        this.player.y = CONFIG.HEIGHT - 60;
+        this.player.vy = CONFIG.BOUNCE_FORCE;
+        this.bounceSafetyNet();
+        this.particles.spawn(this.player.x, CONFIG.HEIGHT, this.safetyNet.rescue ? RESCUE_NET_COLOR : POWERS.SAFETY.color, 30);
+        return true;
+    }
+
     // Kick the trampoline into its bounce wobble, centred on where the player
     // hit it.
     bounceSafetyNet() {
@@ -1942,6 +1967,7 @@ class Game {
         // An integer counter, so every co-op client derives identical heights.
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
         this.state.lastHeartWY = null;
+        this.state.rescueNetT = 0;
         this.fillPlatforms();
         this.particles = new ParticleSystem();
         this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
@@ -2444,13 +2470,7 @@ class Game {
             return;
         }
 
-        if (!forceDie && this.player.activePower === POWERS.SAFETY) {
-            this.player.y = CONFIG.HEIGHT - 60;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.bounceSafetyNet();
-            this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
-            return;
-        }
+        if (this.catchWithNet(forceDie)) return;
 
         this.state.runDeaths = (this.state.runDeaths || 0) + 1;
         if (this.useSpareLife()) return;
@@ -2490,28 +2510,19 @@ class Game {
         return false;
     }
 
-    // Throws the player back up from the bottom of the screen onto a
-    // temporary floor, behind a fresh HARD SHIELD.
+    // Bounces the player back in on a red rescue net, behind a fresh HARD
+    // SHIELD, with a red notice (a life is gone).
     rescuePlayer(color, text) {
-        this.player.y = CONFIG.HEIGHT - 200;
-        this.player.launch(CONFIG.BOUNCE_FORCE);
-        this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+        this.deployRescueNet();
         this.player.grantPower(POWERS.SHIELD);
         sounds.play('powerup');
         this.particles.spawn(this.player.x + 13, this.player.y + 13, color, 30, "blast");
-        this.showAlert(text, 'success');
+        this.showAlert(text, 'life');
     }
 
     handleMultiplayerDeath(forceDie) {
         if (this.player.isDead) return;
-
-        if (!forceDie && this.player.activePower === POWERS.SAFETY) {
-            this.player.y = CONFIG.HEIGHT - 60;
-            this.player.vy = CONFIG.BOUNCE_FORCE;
-            this.bounceSafetyNet();
-            this.particles.spawn(this.player.x, CONFIG.HEIGHT, POWERS.SAFETY.color, 30);
-            return;
-        }
+        if (this.catchWithNet(forceDie)) return;
 
         this.state.runDeaths = (this.state.runDeaths || 0) + 1;
         if (this.useSpareLife()) return;
@@ -2645,10 +2656,7 @@ class Game {
         this.input.resetInput();
         this.lastTime = performance.now();
 
-        this.player.y = CONFIG.HEIGHT - 200;
-        this.player.launch(CONFIG.BOUNCE_FORCE);
-
-        this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
+        this.deployRescueNet();
         this.player.grantPower(POWERS.SHIELD);
 
         this.showAlert("LIFE RESTORED", 'success');
@@ -3189,7 +3197,7 @@ class Game {
         if (this.state.running && this.settings.showGhost) this.drawGhost();
         if (this.state.running) this.drawChallengeLine();
 
-        this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
+        this.renderer.drawSafetyNet(this.safetyNet, this.safetyNet.rescue ? RESCUE_NET_COLOR : POWERS.SAFETY.color, this.state.time);
 
         if (!this.player.isDead) this.player.draw(this.renderer.ctx);
 
