@@ -125,6 +125,36 @@ try {
     g.startGame();
     assert(!g.hintShowing, "not shown again");
     console.log("HINT SUCCESS");
+
+    // ---- Keyboard on the run card: Enter on a focused button is that
+    // button (MENU means menu), otherwise Space/Enter is PLAY AGAIN.
+    g = new Game();
+    g.startGame();
+    g.state.running = false;
+    g.gameOver();
+    const key = (code, target) => ({ code, repeat: false, target, preventDefault() {} });
+    const onButton = { closest: sel => sel === 'button' ? {} : null };
+    assert(g.handleRunCardKey(key('Enter', onButton)) === false && !g.state.running, "Enter on a focused MENU button isn't PLAY AGAIN");
+    assert(g.handleRunCardKey({ ...key('Space', null), repeat: true }) === false, "a held key never restarts");
+    assert(g.handleRunCardKey(key('Space', null)) === true && g.state.running, "Space with nothing focused plays again");
+    console.log("RUN CARD KEYS SUCCESS");
+
+    // ---- Paused time doesn't count as play time.
+    let clock = 1000;
+    performance.now = () => clock;
+    g = new Game();
+    g.startGame();
+    clock += 10000;          // 10s of play
+    g.pauseGame();
+    clock += 600000;         // 10 minutes paused (tabbed out)
+    g.resumeGame();
+    clock += 5000;           // 5s more
+    assert(Math.round(g.runSeconds()) === 15, "run time excludes the pause, got " + g.runSeconds());
+    g.pauseGame();
+    clock += 60000;
+    g.quitRun();             // quit from the pause menu: that pause doesn't count either
+    assert(g.ui.runCardStats.innerHTML.includes('0:15'), "run card shows 0:15");
+    console.log("PAUSED TIME SUCCESS");
 } catch (e) {
     console.error("FAILED:", e.stack || e);
     process.exitCode = 1;
