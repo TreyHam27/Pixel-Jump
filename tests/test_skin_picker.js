@@ -24,7 +24,7 @@ try {
     console.log("STARTER ONLY SUCCESS");
 
     // 400m high score + one bought Pixel: starter, Ghost, Matrix, Nebula.
-    game.state.highScore = 400;
+    game.state.bestHeight = 400;
     game.ownedSkins.push('nebula');
     const expected = [0, idx('ghost'), idx('matrix'), idx('nebula')];
     if (JSON.stringify(game.unlockedSkinIndexes()) !== JSON.stringify(expected)) {

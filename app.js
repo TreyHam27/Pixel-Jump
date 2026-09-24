@@ -1,3 +1,19 @@
+// Reads a JSON save. A missing, corrupt or wrong-shaped value falls back
+// instead of throwing, so one bad localStorage entry can't stop the game from
+// starting.
+function loadJSON(key, fallback, isValid = () => true) {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw === null || raw === undefined) return fallback;
+        const value = JSON.parse(raw);
+        return isValid(value) ? value : fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+const isStringArray = v => Array.isArray(v) && v.every(x => typeof x === 'string');
+
 class Game {
     constructor() {
         this.input = new InputHandler();
@@ -11,10 +27,10 @@ class Game {
         this.enemies = [];
         this.projectiles = [];
         this.safetyNet = this.makeSafetyNetState();
-        this.achievements = JSON.parse(localStorage.getItem('lp_achievements')) || [];
+        this.achievements = loadJSON('lp_achievements', [], isStringArray);
         this.migrateSkinSaves();
         // Owned gem-shop Pixels, by SKINS id.
-        this.ownedSkins = JSON.parse(localStorage.getItem('lp_owned_skins')) || [];
+        this.ownedSkins = loadJSON('lp_owned_skins', [], isStringArray);
 
         this.state = {
             running: false,
@@ -25,6 +41,11 @@ class Game {
             maxScore: 0,
             bonusScore: 0,
             highScore: parseInt(localStorage.getItem('lp_best')) || 0,
+            // Best real height reached, in meters. Distance-gated Pixels unlock
+            // on this, not on highScore: the SCORE x2 perk and boss bonuses
+            // inflate the score, and must not unlock them early. Older saves
+            // only have lp_best, so they start from that.
+            bestHeight: parseInt(localStorage.getItem('lp_best_height')) || parseInt(localStorage.getItem('lp_best')) || 0,
             shards: parseInt(localStorage.getItem('lp_shards')) || 0,
             loops: parseInt(localStorage.getItem('lp_loops')) || 0,
             skinIndex: Math.max(0, skinIndexById(localStorage.getItem('lp_skin'))),
@@ -671,7 +692,7 @@ class Game {
         const s = SKINS[index];
         if (!s) return true;
         if (s.cost !== undefined) return !this.ownedSkins.includes(s.id);
-        return this.state.highScore < s.unlock;
+        return this.state.bestHeight < s.unlock;
     }
 
     // The menu picker only ever offers Pixels the player can actually use:
@@ -767,9 +788,10 @@ class Game {
         const owned = this.ownedSkins.includes(s.id);
         const equipped = owned && this.viewParams.skinIndex === i;
         const affordable = this.state.shards >= s.cost;
-        // Tiers glow harder the higher they sit, and anything past the plain
-        // stat perks gets the premium frame, so the ladder reads at a glance.
-        const premium = skinPerks(s.ability).some(({ perk }) => !['speedMult', 'jumpMult', 'gravityMult'].includes(perk.key));
+        // Tiers glow harder the higher they sit, and the top four (the
+        // run-changing perks) get the premium frame, so the ladder reads at a
+        // glance.
+        const premium = rows.length - this.gemShopIndex <= 4;
 
         let btnLabel = 'BUY';
         if (equipped) btnLabel = 'EQUIPPED';
@@ -955,10 +977,10 @@ class Game {
         return Math.floor((this.state.score + (this.state.bonusScore || 0)) / 10);
     }
 
-    // EMP perk: every N seconds, wipe every regular drone on screen (and the
-    // shots they've fired). The boss is immune, and so are meteors/lasers-in-
-    // flight that belong to the biome. Solo only: in co-op every client runs
-    // its own enemies, so one player's EMP would desync what the party sees.
+    // EMP perk: every N seconds, wipe every drone on screen (regular, shooter
+    // and laser drones) and every bullet in flight. The boss and the biome's
+    // meteors are immune. Solo only: in co-op every client runs its own
+    // enemies, so one player's EMP would desync what the party sees.
     updateDronePulse(dt, perks) {
         if (!perks.dronePulseSec || this.state.multiplayer) return;
         this.state.pulseTimer = (this.state.pulseTimer || 0) + dt;
@@ -1225,8 +1247,7 @@ class Game {
     // another day, from another start height or by an older level generator
     // would just wander through thin air.
     loadGhost() {
-        let g = null;
-        try { g = JSON.parse(localStorage.getItem('lp_ghost')); } catch (e) { g = null; }
+        const g = loadJSON('lp_ghost', null);
         if (!g || g.v !== 2 || g.gen !== PLATFORM_GEN_VERSION) return null;
         if (g.seed !== this.state.runSeed || g.start !== this.state.startMeters) return null;
         if (!Array.isArray(g.pts) || !(g.step > 0)) return null;
@@ -1498,7 +1519,8 @@ class Game {
         this.player.vy = 0;
 
         if (window.network) window.network.send({ type: 'revive', pid: window.network.myId });
-        this.showAlert("LIFE RESTORED", 'success');
+        const boost = this.phoenixBoost();
+        this.showAlert("LIFE RESTORED" + (boost ? " + " + boost : ""), 'success');
     }
 
     revive() {
@@ -1564,16 +1586,22 @@ class Game {
         this.updateExtraLifeUI();
     }
 
+    loadFame() {
+        return loadJSON('lp_fame', [], v => Array.isArray(v))
+            .filter(f => f && typeof f === 'object' && Number.isFinite(f.score));
+    }
+
     updateFame(score) {
-        let fame = JSON.parse(localStorage.getItem('lp_fame')) || [];
-        fame.push({ score, skin: SKINS[this.viewParams.skinIndex].name, date: new Date().toLocaleDateString() });
+        let fame = this.loadFame();
+        const skin = SKINS[this.viewParams.skinIndex];
+        fame.push({ score, skin: skin.name, skinId: skin.id, date: new Date().toLocaleDateString() });
         fame.sort((a, b) => b.score - a.score);
         fame = fame.slice(0, 5);
         localStorage.setItem('lp_fame', JSON.stringify(fame));
     }
 
     updateFameUI() {
-        let fame = JSON.parse(localStorage.getItem('lp_fame')) || [];
+        let fame = this.loadFame();
 
         if (!fame.length) {
             this.ui.fame.innerHTML = `<div class="fame-empty">NO RUNS YET — SET A RECORD</div>`;
@@ -1581,16 +1609,17 @@ class Game {
         }
 
         this.ui.fame.innerHTML = fame.map((f, i) => {
-            // Entries store the skin by name, so a renamed/removed skin just
-            // falls back to the neutral swatch colour from the stylesheet.
-            const skin = SKINS.find(s => s.name === f.skin);
+            // Newer entries store the skin id; older ones only its name. A
+            // renamed or removed skin falls back to the neutral swatch colour.
+            const skin = SKINS.find(s => s.id === f.skinId) || SKINS.find(s => s.name === f.skin);
             const swatch = skin ? ` style="background:${skin.color}"` : '';
+            const name = skin ? skin.name : String(f.skin || '???');
             return `<div class="fame-row fame-row--${i + 1}">
                 <div class="fame-rank">${i + 1}</div>
                 <div class="fame-swatch"${swatch}></div>
-                <div class="fame-skin">${f.skin}</div>
-                <div class="fame-date">${f.date || ''}</div>
-                <div class="fame-score">${f.score}m</div>
+                <div class="fame-skin">${this.escapeHtml(name)}</div>
+                <div class="fame-date">${this.escapeHtml(f.date || '')}</div>
+                <div class="fame-score">${Math.floor(f.score)}m</div>
             </div>`;
         }).join('');
     }
@@ -1886,6 +1915,12 @@ class Game {
 
         if (!this.player.isDead && this.player.y > CONFIG.HEIGHT) {
             this.die();
+        }
+
+        const heightMeters = Math.floor(this.state.score / 10);
+        if (heightMeters > this.state.bestHeight) {
+            this.state.bestHeight = heightMeters;
+            localStorage.setItem('lp_best_height', heightMeters);
         }
 
         let displayScore = this.runScore();

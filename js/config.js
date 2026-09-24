@@ -113,8 +113,9 @@ const SKINS = [
 
     // Gem-shop Pixels, cheapest first. The bottom tiers each carry one plain
     // stat perk; every tier above buys a unique perk stronger than the last.
-    // At roughly 200 shards per 1000m climbed the top tier is a long grind
-    // (softened once GEMS x2 is owned). See Game.renderGemShop().
+    // At roughly 160-180 gems per 1000m climbed (plus 150 per boss) the top
+    // tier is a long grind, softened once GEMS x2 is owned. See
+    // Game.renderGemShop().
     { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.15 } },
     { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.15 } },
     { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { gravityMult: 0.88 } },
@@ -207,7 +208,7 @@ const ACHIEVEMENTS = [
             id: 'skin:' + s.name,
             name: s.name,
             skin: true,
-            condition: (state) => state.highScore >= s.unlock
+            condition: (state) => state.bestHeight >= s.unlock
         }))
 ];
 

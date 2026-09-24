@@ -126,6 +126,7 @@ try {
     // A checkpoint start at 5000m (The Void) doesn't open straight into a boss.
     {
         localStorage.setItem('lp_best', '20000');
+        localStorage.setItem('lp_best_height', '20000');
         const g = new Game();
         g.equipSkin(skinIndexById('thevoid'));
         g.startGame();
