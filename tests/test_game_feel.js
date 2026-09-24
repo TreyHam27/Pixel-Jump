@@ -158,6 +158,32 @@ try {
     assert(!/WRAP AROUND|TO MOVE/.test(tipTexts(g)), "SHOW TIPS off hides them");
     console.log("TIPS SUCCESS");
 
+    // ---- Your best height is marked in the level and stays put.
+    const bestTexts = (game) => {
+        const drawn = [];
+        const real = game.renderer.drawText.bind(game.renderer);
+        game.renderer.drawText = (text, x, y, ...rest) => { drawn.push([text, y]); real(text, x, y, ...rest); };
+        game.draw();
+        game.renderer.drawText = real;
+        return drawn.filter(([t]) => /^BEST HEIGHT/.test(t));
+    };
+    g = new Game();
+    g.state.bestHeight = 0;
+    g.startGame();
+    assert(bestTexts(g).length === 0, "no marker without a previous best");
+    g.state.bestHeight = 20;
+    g.startGame();
+    let marks = bestTexts(g);
+    assert(marks.length === 1 && marks[0][0] === 'BEST HEIGHT 20m', "marker at the previous best, got " + JSON.stringify(marks));
+    const y0 = marks[0][1];
+    g.scrollCamera(100);
+    g.state.bestHeight = 30; // climbing raises bestHeight; the marker stays at 20m
+    marks = bestTexts(g);
+    assert(marks.length === 1 && marks[0][0] === 'BEST HEIGHT 20m' && marks[0][1] === y0 + 100, "marker is fixed in the level");
+    g.scrollCamera(2000);
+    assert(bestTexts(g).length === 0, "scrolls away once passed");
+    console.log("BEST LINE SUCCESS");
+
     // ---- TOUCH BUTTONS only shows on touch screens.
     g = new Game();
     g.coarsePointer = false;

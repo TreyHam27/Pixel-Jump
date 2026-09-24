@@ -1970,6 +1970,9 @@ class Game {
         // An integer counter, so every co-op client derives identical heights.
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
         this.state.lastHeartWY = null;
+        // The best height before this run, marked in the level so you can see
+        // yourself pass it (bestHeight itself climbs along with you).
+        this.state.bestMarkerM = this.state.bestHeight || 0;
         // Beginner tips are painted onto the starting screen (world space), so
         // they scroll away as you climb past them.
         this.state.tipAnchorWY = -this.state.score;
@@ -2386,6 +2389,40 @@ class Game {
 
     // A dashed gold line at the height where the displayed score reaches
     // the target (the player crosses it at the camera line).
+    // A dashed line across the level at your best height so far, fixed in
+    // place: it reaches your Pixel exactly as you set a new best, then
+    // scrolls away below. Not shown on a first run or from a checkpoint
+    // start already above it.
+    drawBestLine() {
+        const best = this.state.bestMarkerM;
+        if (!(best > 0) || best <= (this.state.startMeters || 0)) return;
+        const y = CONFIG.HEIGHT * CONFIG.SCROLL_THRESHOLD - (best * 10 - this.state.score);
+        if (y < -20 || y > CONFIG.HEIGHT + 20) return;
+        const ctx = this.renderer.ctx;
+        ctx.save();
+        ctx.strokeStyle = '#ff3366';
+        ctx.globalAlpha = 0.8;
+        ctx.lineWidth = 2;
+        if (ctx.setLineDash) ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(CONFIG.WIDTH, y);
+        ctx.stroke();
+        // The label sits on a dark tab so platforms behind it can't swallow it.
+        const label = 'BEST HEIGHT ' + fmtNum(best) + 'm';
+        const font = 'bold 15px Orbitron, sans-serif';
+        ctx.font = font;
+        const w = (ctx.measureText ? ctx.measureText(label).width : label.length * 10) + 16;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#0a0a0e';
+        ctx.fillRect(4, y - 24, w, 22);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ff3366';
+        ctx.fillRect(4, y - 24, 3, 22);
+        ctx.restore();
+        this.renderer.drawText(label, 12, y - 8, font, '#ff3366', 'left');
+    }
+
     drawChallengeLine() {
         if (!this.challengeActive() || this.state.challengeBeaten) return;
         const ctx = this.renderer.ctx;
@@ -3268,6 +3305,7 @@ class Game {
         this.projectiles.forEach(p => p.draw(this.renderer.ctx));
 
         if (this.state.running && this.settings.showGhost) this.drawGhost();
+        if (this.state.running) this.drawBestLine();
         if (this.state.running) this.drawChallengeLine();
 
         this.renderer.drawSafetyNet(this.safetyNet, POWERS.SAFETY.color, this.state.time);
