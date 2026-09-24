@@ -281,14 +281,8 @@ class Game {
         // Keyboard on the solo menu: left/right browse the Pixel picker, and
         // Space / Enter / Up / W start a run (same as clicking the menu).
         window.addEventListener('keydown', (e) => {
-            // The end-of-run card takes Space/Enter as PLAY AGAIN (never a
-            // key still held from the run: that arrives as a repeat).
             if (this.runCardOpen) {
-                const confirm = e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter';
-                if (confirm && !e.repeat && !this.settingsOpen && !this.ui.runAgainBtn.hidden) {
-                    e.preventDefault();
-                    this.runCardPlayAgain();
-                }
+                this.handleRunCardKey(e);
                 return;
             }
             if (!this.canQuickStart(e)) return;
@@ -495,6 +489,7 @@ class Game {
         if (!this.state.running || this.pauseMenuOpen) return;
         this.pauseMenuOpen = true;
         this.state.paused = !this.state.multiplayer;
+        if (this.state.paused) this.pauseStartedAt = performance.now();
         this.input.resetInput();
         this.ui.pauseNote.hidden = !this.state.multiplayer;
         this.ui.pauseQuitBtn.innerText = this.state.multiplayer ? "LEAVE PARTY" : "QUIT RUN";
@@ -509,6 +504,10 @@ class Game {
     }
 
     closePauseUI() {
+        if (this.state.paused && this.pauseStartedAt) {
+            this.state.pausedMs = (this.state.pausedMs || 0) + (performance.now() - this.pauseStartedAt);
+        }
+        this.pauseStartedAt = 0;
         this.pauseMenuOpen = false;
         this.state.paused = false;
         this.ui.pauseOverlay.hidden = true;
@@ -594,14 +593,14 @@ class Game {
         st.gems += this.state.runGems || 0;
         st.powerups += this.state.powersCollected || 0;
         st.livesLost += this.state.runDeaths || 0;
-        st.seconds += Math.max(0, (performance.now() - this.state.runStartTime) / 1000);
+        st.seconds += this.runSeconds();
         localStorage.setItem('lp_stats', JSON.stringify(st));
     }
 
     // -------------------------------------------------------------- run card
     showRunCard(finalScore) {
         const s = this.state;
-        const secs = Math.max(0, Math.round((performance.now() - s.runStartTime) / 1000));
+        const secs = Math.round(this.runSeconds());
         const stats = [
             [fmtNum(s.runGems || 0) + ' 💎', 'GEMS'],
             [fmtNum(s.powersCollected || 0), 'POWER-UPS'],
@@ -623,6 +622,25 @@ class Game {
         this.ui.runCardWait.hidden = !guest;
         this.ui.runCard.hidden = false;
         this.runCardOpen = true;
+    }
+
+    // Space/Enter on the end-of-run card: PLAY AGAIN, unless a button has
+    // keyboard focus (tabbing to MENU and pressing Enter means MENU), and
+    // never from a key still held from the run (that arrives as a repeat).
+    handleRunCardKey(e) {
+        const confirm = e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter';
+        if (!confirm || e.repeat || this.settingsOpen || this.ui.runAgainBtn.hidden) return false;
+        if (e.target && e.target.closest && e.target.closest('button')) return false;
+        e.preventDefault();
+        this.runCardPlayAgain();
+        return true;
+    }
+
+    // Seconds of actual play in this run (time spent paused doesn't count).
+    runSeconds() {
+        let paused = this.state.pausedMs || 0;
+        if (this.state.paused && this.pauseStartedAt) paused += performance.now() - this.pauseStartedAt;
+        return Math.max(0, (performance.now() - this.state.runStartTime - paused) / 1000);
     }
 
     closeRunCard() {
@@ -1746,6 +1764,8 @@ class Game {
 
         this.state.gamesPlayedThisSession++;
         this.state.runStartTime = performance.now();
+        this.state.pausedMs = 0;
+        this.pauseStartedAt = 0;
         this.showControlsHint();
     }
 
