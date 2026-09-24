@@ -149,12 +149,13 @@ const SKINS = [
     { id: 'theend', name: "The End", color: "#111", eye: "red", unlock: 4000, ability: { gravityMult: 0.75 } },
 
     // Gem-shop Pixels, cheapest first. Each one beats every free Pixel: the
-    // bottom two carry one big stat, and every tier above adds a wildcard
+    // bottom two carry one big stat (+30% jump already means 1.7x the jump
+    // height), and every tier above adds a wildcard
     // perk on top of a stat boost. At roughly 320-360 gems per 1000m climbed
     // (plus 150 per boss) the top tier is a long grind, softened once GEMS x2
     // is owned. See Game.renderGemShop().
     { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.5 } },
-    { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.5 } },
+    { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.3 } },
     { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { speedMult: 1.25, gravityMult: 0.7 } },
     { id: 'obsidian', name: "Obsidian", color: "#1a0033", eye: "#ff00ff", cost: 1200, ability: { jumpMult: 1.25, powerDurationMult: 2 } },
     { id: 'prism', name: "Prism", color: "#ff00ff", eye: "#ffffff", cost: 2500, ability: { speedMult: 1.25, airJump: true } },
