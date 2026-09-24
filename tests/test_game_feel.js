@@ -104,7 +104,8 @@ try {
     assert(g.ui.recordsList.innerHTML.includes('Rift Diver'), "earned secret Pixel revealed");
     console.log("RECORDS SUCCESS");
 
-    // ---- Story beats appear as heights are passed.
+    // ---- No story chatter: climbing past the old story heights says
+    // nothing, but a new biome is still announced.
     g = new Game();
     g.startGame();
     let alerts = [];
@@ -112,19 +113,62 @@ try {
     g.state.score = 400; // 40m
     g.player.y = 400; g.player.vy = 0;
     g.update(1);
-    assert(alerts.some(t => /baseline altitude/.test(t)), "first story beat at 30m, got " + JSON.stringify(alerts));
-    console.log("STORY SUCCESS");
+    assert(!alerts.some(t => /SYSTEM/.test(t)), "no story messages, got " + JSON.stringify(alerts));
+    g.state.score = 6100; // 610m: Ionosphere
+    g.update(1);
+    const announced = alerts.concat(g.noticeQueue.map(([t]) => t));
+    assert(announced.includes("ENTERING IONOSPHERE"), "biome changes still announced, got " + JSON.stringify(announced));
+    g.clearNotices();
+    console.log("NO STORY SUCCESS");
 
-    // ---- The controls hint shows on the very first run only.
-    localStorage.removeItem('lp_seen_hint');
+    // ---- Notices take turns: a Pixel unlock and a biome change in the
+    // same frame both show, in order.
     g = new Game();
     g.startGame();
-    assert(g.hintShowing && g.ui.controlsHint.hidden === false, "hint on the first run");
-    g.gameOver();
-    assert(!g.hintShowing, "hint cleared at game over");
+    alerts = [];
+    const realShow = g.showAlert.bind(g);
+    g.showAlert = (text, type) => { alerts.push(text); realShow(text, type); };
+    g.notify("ENTERING THE RIFT");
+    g.notify("PIXEL UNLOCKED: Rift Diver", 'unlock');
+    assert(alerts.length === 1 && g.noticeQueue.length === 1, "the second notice waits its turn");
+    g.showNextNotice();
+    assert(alerts[1] === "PIXEL UNLOCKED: Rift Diver", "then it shows");
+    g.clearNotices();
+    console.log("NOTICE QUEUE SUCCESS");
+
+    // ---- Tips are painted onto the start of every run and scroll away;
+    // SHOW TIPS turns them off.
+    const tipTexts = (game) => {
+        const drawn = [];
+        const real = game.renderer.drawText.bind(game.renderer);
+        game.renderer.drawText = (text, ...rest) => { drawn.push(text); real(text, ...rest); };
+        game.draw();
+        game.renderer.drawText = real;
+        return drawn.join(' | ');
+    };
+    g = new Game();
     g.startGame();
-    assert(!g.hintShowing, "not shown again");
-    console.log("HINT SUCCESS");
+    assert(/WRAP AROUND/.test(tipTexts(g)) && /TO MOVE/.test(tipTexts(g)), "tips on the starting screen");
+    g.scrollCamera(1200);
+    assert(!/WRAP AROUND|TO MOVE/.test(tipTexts(g)), "tips scroll away as you climb");
+    g.gameOver();
+    g.startGame();
+    assert(/TO MOVE/.test(tipTexts(g)), "shown again on the next run");
+    g.settings.showTips = false;
+    assert(!/WRAP AROUND|TO MOVE/.test(tipTexts(g)), "SHOW TIPS off hides them");
+    console.log("TIPS SUCCESS");
+
+    // ---- TOUCH BUTTONS only shows on touch screens.
+    g = new Game();
+    g.coarsePointer = false;
+    g.openSettings();
+    assert(g.ui.setTouchRow.hidden === true, "hidden on desktop");
+    g.closeSettings();
+    g.coarsePointer = true;
+    g.openSettings();
+    assert(g.ui.setTouchRow.hidden === false, "shown on touch screens");
+    g.closeSettings();
+    console.log("TOUCH SETTING ROW SUCCESS");
 
     // ---- Keyboard on the run card: Enter on a focused button is that
     // button (MENU means menu), otherwise Space/Enter is PLAY AGAIN.

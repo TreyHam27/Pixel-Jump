@@ -303,6 +303,14 @@ canvas {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 215, 0, 0.25);
 }
 
+/* A newly unlocked Pixel */
+#system-alert.alert-unlock {
+    border-color: rgba(255, 215, 0, 0.45);
+    border-left-color: #ffd700;
+    color: #ffe766;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 215, 0, 0.3);
+}
+
 /* Urgent, attention-grabbing pulse (co-op respawn countdown) */
 #system-alert.alert-pulse {
     border-color: rgba(192, 77, 255, 0.5);
@@ -1669,32 +1677,11 @@ canvas {
     }
 }
 
-/* First-run controls hint, in the upper middle of the playfield: the player
-   starts at the bottom, so a hint down there would cover them. */
-#controls-hint {
-    position: absolute;
-    top: 34%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: max-content;
-    max-width: min(90%, 460px);
-    padding: 10px 16px;
-    background: rgba(10, 10, 14, 0.85);
-    border: 1px solid rgba(0, 255, 255, 0.4);
-    border-radius: var(--radius);
-    color: #bff;
-    font-size: 12px;
-    font-weight: bold;
-    line-height: 1.6;
-    letter-spacing: 1px;
-    text-align: center;
-    z-index: 12;
-}
-
-/* Below the HUD rows (score, BEST, power-up bar) instead of on top of them. */
+/* Below the HUD rows (score, BEST, power-up bar) and the system-message box,
+   so a badge and a notice can show at the same time. */
 #achievement-pop {
     position: absolute;
-    top: calc(128px + var(--safe-top));
+    top: calc(190px + var(--safe-top));
     background: #ffd700;
     color: #000;
     padding: 10px 20px;

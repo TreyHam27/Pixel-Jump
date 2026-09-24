@@ -44,21 +44,26 @@ try {
     if (game.isSkinLocked(SKINS.indexOf(first))) {
         throw new Error("Skin should be unlocked at its threshold");
     }
-    const popped = game.ui.achievement.innerText;
+    // Pixel unlocks are system notices (not the achievement badge).
+    const popped = game.ui.alertText.innerText;
     if (!popped.includes(first.name) || !popped.includes("PIXEL UNLOCKED")) {
-        throw new Error("Popup should name the unlocked skin, got: " + popped);
+        throw new Error("Notice should name the unlocked skin, got: " + popped);
+    }
+    if (game.achievementQueue.length || game.achievementShowing) {
+        throw new Error("A Pixel unlock should not use the achievement badge");
     }
     const stored = JSON.parse(localStorage.getItem('lp_achievements'));
     if (!stored.includes(firstId)) throw new Error("Skin achievement was not persisted");
     console.log("UNLOCK POPS AND PERSISTS SUCCESS");
 
     // Re-checking at the same score must not re-award or re-pop it.
-    game.ui.achievement.innerText = '';
+    game.ui.alertText.innerText = '';
+    game.clearNotices();
     game.checkAchievements();
     if (game.achievements.filter(id => id === firstId).length !== 1) {
         throw new Error("Skin achievement was awarded twice");
     }
-    if (game.ui.achievement.innerText !== '') {
+    if (game.ui.alertText.innerText !== '' || game.noticeQueue.length) {
         throw new Error("An already-earned achievement popped a second time");
     }
     console.log("NO DUPLICATE AWARD SUCCESS");
@@ -66,18 +71,17 @@ try {
     // Two unlocks in one frame: the first shows, the rest wait their turn.
     const second = earnedSkins[1];
     const third = earnedSkins[2];
-    game.achievementQueue = [];
-    game.achievementShowing = false;
+    game.clearNotices();
     game.state.bestHeight = third.unlock;
     game.checkAchievements();
     if (!game.achievements.includes('skin:' + second.name) ||
         !game.achievements.includes('skin:' + third.name)) {
         throw new Error("Skipping past several thresholds should award every skin passed");
     }
-    if (!game.ui.achievement.innerText.includes(second.name)) {
-        throw new Error("First of the batch should be on screen, got: " + game.ui.achievement.innerText);
+    if (!game.ui.alertText.innerText.includes(second.name)) {
+        throw new Error("First of the batch should be on screen, got: " + game.ui.alertText.innerText);
     }
-    if (!game.achievementQueue.some(t => t.includes(third.name))) {
+    if (!game.noticeQueue.some(([t]) => t.includes(third.name))) {
         throw new Error("Simultaneous unlock was dropped instead of queued");
     }
     console.log("SIMULTANEOUS UNLOCKS QUEUE SUCCESS");
@@ -92,7 +96,7 @@ try {
     if (!returning.achievements.includes('skin:' + third.name)) {
         throw new Error("Already-earned skins should be back-filled on load");
     }
-    if (returning.achievementQueue.length !== 0 || returning.achievementShowing) {
+    if (returning.noticeQueue.length !== 0 || returning.noticeTimer) {
         throw new Error("Back-filled skins should not pop popups");
     }
     const laterSkin = earnedSkins.find(s => s.unlock > third.unlock);
@@ -101,7 +105,7 @@ try {
     }
     returning.state.bestHeight = laterSkin.unlock;
     returning.checkAchievements();
-    if (!returning.ui.achievement.innerText.includes(laterSkin.name)) {
+    if (!returning.ui.alertText.innerText.includes(laterSkin.name)) {
         throw new Error("A new unlock after back-fill should still pop");
     }
     console.log("BACKFILL IS SILENT SUCCESS");

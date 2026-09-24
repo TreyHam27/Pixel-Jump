@@ -259,12 +259,3 @@ const ACHIEVEMENTS = [
             condition: (state) => state.bestHeight >= s.unlock
         }))
 ];
-
-const STORY = [
-    { h: 30, t: "SYSTEM: Unit 734. Maintain baseline altitude." },
-    { h: 150, t: "SYSTEM: Detected foreign objects. Use them." },
-    { h: 400, t: "SYSTEM: Why climb? Gravity is the only law." },
-    { h: 1000, t: "SYSTEM: You are exceeding recommended parameters." },
-    { h: 2500, t: "SYSTEM: Safety protocols disengaged." },
-    { h: 4000, t: "SYSTEM: Pixel Jump: The next level." }
-];

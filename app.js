@@ -94,6 +94,8 @@ class Game {
         // without a queue each new one would overwrite the last mid-display.
         this.achievementQueue = [];
         this.achievementShowing = false;
+        this.noticeQueue = [];
+        this.noticeTimer = null;
 
         this.seedSkinAchievements();
 
@@ -102,7 +104,6 @@ class Game {
         this.pauseMenuOpen = false;
         this.settingsOpen = false;
         this.runCardOpen = false;
-        this.hintShowing = false;
 
         // Gameplay keys/touches are only intercepted during a run (including
         // while dead and spectating in co-op), and not while the pause menu
@@ -161,7 +162,7 @@ class Game {
             mpPartyCode: document.getElementById("mp-party-code"),
             mpLeaveBtn: document.getElementById("mp-leave-btn"),
 
-            // Pause, settings, run card, records, first-run hint
+            // Pause, settings, run card, records
             pauseBtn: document.getElementById("pause-btn"),
             pauseOverlay: document.getElementById("pause-overlay"),
             pauseNote: document.getElementById("pause-note"),
@@ -190,11 +191,12 @@ class Game {
             recordsStats: document.getElementById("records-stats"),
             recordsList: document.getElementById("records-list"),
             recordsCount: document.getElementById("records-count"),
-            controlsHint: document.getElementById("controls-hint"),
 
             // Phones, challenge links and sharing
             touchControls: document.getElementById("touch-controls"),
             setTouch: document.getElementById("set-touch"),
+            setTouchRow: document.getElementById("set-touch-row"),
+            setTips: document.getElementById("set-tips"),
             challengeHud: document.getElementById("challenge-hud"),
             runShareBtn: document.getElementById("run-share-btn"),
             shareToast: document.getElementById("share-toast"),
@@ -215,6 +217,7 @@ class Game {
             coarse.addEventListener('change', (e) => {
                 this.coarsePointer = e.matches;
                 this.updateTouchControls();
+                this.updateTouchSettingRow();
             });
         }
         this.challenge = parseChallenge(typeof location !== 'undefined' ? location.search : '', this.getDailySeed());
@@ -520,6 +523,7 @@ class Game {
         setting(this.ui.setGhost, 'showGhost', el => el.checked);
         setting(this.ui.setMotion, 'reducedMotion', el => el.checked);
         setting(this.ui.setTouch, 'touchControls', el => el.checked);
+        setting(this.ui.setTips, 'showTips', el => el.checked);
         on(this.ui.runShareBtn, () => this.shareRun());
 
         // Leaving the tab or window pauses a solo run.
@@ -606,7 +610,8 @@ class Game {
             muted: saved.muted === true,
             showGhost: saved.showGhost !== false,
             reducedMotion: typeof saved.reducedMotion === 'boolean' ? saved.reducedMotion : prefersReduced,
-            touchControls: saved.touchControls !== false
+            touchControls: saved.touchControls !== false,
+            showTips: saved.showTips !== false
         };
     }
 
@@ -629,8 +634,15 @@ class Game {
         this.ui.setGhost.checked = s.showGhost;
         this.ui.setMotion.checked = s.reducedMotion;
         if (this.ui.setTouch) this.ui.setTouch.checked = s.touchControls;
+        if (this.ui.setTips) this.ui.setTips.checked = s.showTips;
+        this.updateTouchSettingRow();
         this.ui.settingsOverlay.hidden = false;
         this.settingsOpen = true;
+    }
+
+    // TOUCH BUTTONS only means anything on a touch screen.
+    updateTouchSettingRow() {
+        if (this.ui.setTouchRow) this.ui.setTouchRow.hidden = !this.coarsePointer;
     }
 
     closeSettings() {
@@ -752,28 +764,6 @@ class Game {
                 <span class="achievement-desc">${this.escapeHtml(desc || '')}</span></div>
             </div>`;
         }).join('');
-    }
-
-    // ------------------------------------------------------ first-run hint
-    // The very first run gets a short how-to-play, in keyboard or touch
-    // terms. It goes after a few seconds, or soon after the first jump.
-    showControlsHint() {
-        if (localStorage.getItem('lp_seen_hint')) return;
-        localStorage.setItem('lp_seen_hint', '1');
-        const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-        this.ui.controlsHint.innerHTML = touch
-            ? 'HOLD THE LEFT QUARTER TO GO ◀ · THE NEXT QUARTER TO GO ▶<br>TAP THE RIGHT HALF TO JUMP<br>THE SIDES WRAP AROUND'
-            : '← → OR A D TO MOVE · SPACE, ↑ OR W TO JUMP<br>THE SIDES WRAP AROUND · ESC TO PAUSE';
-        this.ui.controlsHint.hidden = false;
-        this.hintShowing = true;
-        clearTimeout(this.hintTimer);
-        this.hintTimer = setTimeout(() => this.hideControlsHint(), 7000);
-    }
-
-    hideControlsHint() {
-        clearTimeout(this.hintTimer);
-        this.hintShowing = false;
-        this.ui.controlsHint.hidden = true;
     }
 
     // Keyboard shortcuts only apply on the solo menu itself: never mid-run,
@@ -978,7 +968,7 @@ class Game {
         if (!rp) return;
         this.remotePlayers.delete(pid);
         if (this.state.running && this.state.multiplayer) {
-            this.showAlert(`${rp.name || 'A PLAYER'} LEFT`, 'warning');
+            this.notify(`${rp.name || 'A PLAYER'} LEFT`, 'warning');
             // They may have been the last one standing.
             this.checkAllDead();
         }
@@ -1706,15 +1696,36 @@ class Game {
     // calls this every second just keeps resetting the timer, so it stays up
     // continuously and disappears 4s after the final update.
     showAlert(text, type = 'info') {
-        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱' };
+        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', unlock: '🎨' };
         const el = this.ui.alert;
-        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse');
+        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-unlock');
         el.classList.add('alert-' + type, 'alert-visible');
         this.ui.alertIcon.innerText = icons[type] || icons.info;
         this.ui.alertText.innerText = text;
 
         if (this.alertHideTimer) clearTimeout(this.alertHideTimer);
         this.alertHideTimer = setTimeout(() => this.hideAlert(), 4000);
+    }
+
+    // One-shot notices (biome changes, unlocks, rewards) take turns in the
+    // alert box instead of overwriting each other: a secret Pixel unlocks on
+    // the very frame its biome is entered.
+    notify(text, type = 'info') {
+        this.noticeQueue.push([text, type]);
+        if (!this.noticeTimer) this.showNextNotice();
+    }
+
+    showNextNotice() {
+        const next = this.noticeQueue.shift();
+        if (!next) { this.noticeTimer = null; return; }
+        this.showAlert(next[0], next[1]);
+        this.noticeTimer = setTimeout(() => this.showNextNotice(), 2200);
+    }
+
+    clearNotices() {
+        this.noticeQueue = [];
+        if (this.noticeTimer) clearTimeout(this.noticeTimer);
+        this.noticeTimer = null;
     }
 
     hideAlert() {
@@ -1868,7 +1879,7 @@ class Game {
         this.state.bonusScore += BOSS_BONUS_METERS * 10;
         this.addShards(BOSS_GEM_BOUNTY);
         this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
-        this.showAlert(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎`, 'reward');
+        this.notify(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎`, 'reward');
         sounds.play('powerup');
     }
 
@@ -1938,12 +1949,7 @@ class Game {
         this.ghostRec = this.state.multiplayer ? null : { nextT: 0, pts: [] };
         this.ghostPlayback = this.state.multiplayer ? null : this.loadGhost();
 
-        // Skip past any story beats already covered by a checkpoint start
-        // (normal 0m starts just find index 0, since STORY[0].h > 0).
-        let startDisplayScore = Math.floor(this.state.score / 10);
-        this.storyIndex = STORY.findIndex(s => s.h > startDisplayScore);
-        if (this.storyIndex === -1) this.storyIndex = STORY.length;
-
+        const startDisplayScore = Math.floor(this.state.score / 10);
         this.renderer.updateBiome(startDisplayScore);
         this.lastBiomeName = this.renderer.currentBiome.name;
 
@@ -1964,6 +1970,9 @@ class Game {
         // An integer counter, so every co-op client derives identical heights.
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
         this.state.lastHeartWY = null;
+        // Beginner tips are painted onto the starting screen (world space), so
+        // they scroll away as you climb past them.
+        this.state.tipAnchorWY = -this.state.score;
         this.fillPlatforms();
         this.particles = new ParticleSystem();
         this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
@@ -1978,6 +1987,7 @@ class Game {
         this.spectating = null;
 
         this.ui.power.style.opacity = 0;
+        this.clearNotices();
         this.hideAlert();
     }
 
@@ -2160,6 +2170,41 @@ class Game {
         }
     }
 
+    // The beginner tips, fixed to the run's starting screen: how to move and
+    // jump just above the floor, and the screen wrap a little higher. Every
+    // run shows them (SHOW TIPS in Settings turns them off). Drawn under the
+    // platforms, like signs painted on the background.
+    drawTips() {
+        const ctx = this.renderer.ctx;
+        const base = this.state.tipAnchorWY + this.state.score; // screen y of the run's start
+        const touch = this.coarsePointer;
+        const tips = [
+            { y: base + CONFIG.HEIGHT - 190, lines: touch
+                ? ['HOLD ◀ ▶ TO MOVE', 'TAP THE RIGHT HALF TO JUMP']
+                : ['← → / A D TO MOVE', 'SPACE / ↑ / W TO JUMP · ESC TO PAUSE'] },
+            { y: base + CONFIG.HEIGHT - 360, lines: ['THE SIDES WRAP AROUND'], edges: true }
+        ];
+        for (const tip of tips) {
+            const h = tip.lines.length * 22 + 14;
+            if (tip.y + h < 0 || tip.y - h > CONFIG.HEIGHT) continue;
+            ctx.save();
+            ctx.globalAlpha = 0.45;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, tip.y - h / 2, CONFIG.WIDTH, h);
+            ctx.globalAlpha = 0.75;
+            ctx.textBaseline = 'middle';
+            tip.lines.forEach((line, k) => {
+                const ly = tip.y - (tip.lines.length - 1) * 11 + k * 22;
+                this.renderer.drawText(line, CONFIG.WIDTH / 2, ly, 'bold 15px Orbitron, "Courier New", monospace', '#00ffcc');
+            });
+            if (tip.edges) {
+                this.renderer.drawText('◀', 16, tip.y, 'bold 20px sans-serif', '#00ffcc');
+                this.renderer.drawText('▶', CONFIG.WIDTH - 16, tip.y, 'bold 20px sans-serif', '#00ffcc');
+            }
+            ctx.restore();
+        }
+    }
+
     // Moves the camera up by `diff` px: everything on screen shifts down,
     // anything that fell far below is culled, and new platforms are generated.
     scrollCamera(diff, perks = this.player.skin.ability || {}) {
@@ -2220,7 +2265,6 @@ class Game {
         this.state.runStartTime = performance.now();
         this.state.pausedMs = 0;
         this.pauseStartedAt = 0;
-        this.showControlsHint();
         this.updateTouchControls();
         this.startChallenge();
     }
@@ -2316,7 +2360,7 @@ class Game {
         }
         this.particles.spawn(event.x + 14, event.y + 14, "#ff3366", 20);
         sounds.play('powerup');
-        this.showAlert("EXTRA LIFE +1 ❤", 'success');
+        this.notify("EXTRA LIFE +1 ❤", 'success');
     }
 
     // ---------------------------------------------------- challenge links
@@ -2708,7 +2752,6 @@ class Game {
         }
         let finalScore = this.runScore();
         this.closePauseUI();
-        this.hideControlsHint();
         this.recordRunStats(Math.max(0, Math.floor(this.state.score / 10) - (this.state.startMeters || 0)));
 
         // Don't leave a half-retracted net hanging over the menu.
@@ -2739,6 +2782,7 @@ class Game {
 
         this.ui.hud.style.opacity = 0;
         this.ui.power.style.opacity = 0;
+        this.clearNotices();
         this.hideAlert();
 
         this.ui.menuLast.innerText = "LAST RUN: " + fmtNum(finalScore) + "m";
@@ -2813,7 +2857,10 @@ class Game {
                 localStorage.setItem('lp_achievements', JSON.stringify(this.achievements));
                 const label = g.skin ? "PIXEL UNLOCKED: " + g.name : g.name;
                 if (this.state.running && this.state.runUnlocks) this.state.runUnlocks.push((g.skin ? "🎨 " : "🏅 ") + label);
-                this.showAchievement(label, g.skin ? "🎨" : "🏅");
+                // New Pixels are announced like the game's other notices;
+                // everything else gets the achievement badge.
+                if (g.skin) this.notify(label, 'unlock');
+                else this.showAchievement(label, "🏅");
             }
         });
     }
@@ -2882,7 +2929,7 @@ class Game {
 
         if (this.renderer.currentBiome.name !== this.lastBiomeName) {
             if (this.lastBiomeName) { // skip the callout on the very first frame of a run
-                this.showAlert("ENTERING " + this.renderer.currentBiome.name.toUpperCase(), 'info');
+                this.notify("ENTERING " + this.renderer.currentBiome.name.toUpperCase(), 'info');
             }
             this.lastBiomeName = this.renderer.currentBiome.name;
         }
@@ -2976,11 +3023,6 @@ class Game {
         if (event === "jump") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#fff");
             sounds.play('jump');
-            // They've got the idea: let the first-run hint go shortly.
-            if (this.hintShowing) {
-                clearTimeout(this.hintTimer);
-                this.hintTimer = setTimeout(() => this.hideControlsHint(), 2000);
-            }
         } else if (event === "double_jump") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, POWERS.DOUBLE.color);
             sounds.play('jump');
@@ -3137,12 +3179,6 @@ class Game {
             localStorage.setItem('lp_best_height', heightMeters);
         }
 
-        // Story beats: a short SYSTEM line as each height is first passed.
-        if (this.storyIndex < STORY.length && heightMeters >= STORY[this.storyIndex].h) {
-            this.showAlert(STORY[this.storyIndex].t, 'info');
-            this.storyIndex++;
-        }
-
         // Dead and waiting to respawn while the rest of the party went quiet:
         // end the run rather than wait forever.
         if (this.state.multiplayer && this.player.isDead && !this.anyRemoteAlive()) {
@@ -3154,7 +3190,7 @@ class Game {
         if (displayScore > this.state.maxScore) this.state.maxScore = displayScore;
         if (!this.state.challengeBeaten && this.challengeActive() && displayScore >= this.challenge.meters) {
             this.state.challengeBeaten = true;
-            this.showAlert("TARGET BEATEN!", 'reward');
+            this.notify("TARGET BEATEN!", 'reward');
             if (this.ui.challengeHud) {
                 this.ui.challengeHud.innerText = 'TARGET ' + fmtNum(this.challenge.meters) + 'm ✓';
                 this.ui.challengeHud.classList.add('beaten');
@@ -3190,6 +3226,7 @@ class Game {
     draw() {
         this.renderer.clear(this.state.bgOffset);
         this.renderer.drawGrid(this.state.bgOffset);
+        if (this.state.running && this.settings.showTips) this.drawTips();
 
         this.platforms.forEach(p => {
             this.renderer.ctx.fillStyle = "#333";
