@@ -205,7 +205,15 @@ class Game {
                 jump: this.ui.touchControls.querySelector('.touch-pad--jump')
             }
             : {};
-        this.coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+        // Touch pads follow the current primary pointer (a 2-in-1 can switch).
+        const coarse = typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)') : null;
+        this.coarsePointer = !!(coarse && coarse.matches);
+        if (coarse && coarse.addEventListener) {
+            coarse.addEventListener('change', (e) => {
+                this.coarsePointer = e.matches;
+                this.updateTouchControls();
+            });
+        }
         this.challenge = parseChallenge(typeof location !== 'undefined' ? location.search : '', this.getDailySeed());
         // Everyone else in the run, keyed by peer ID (pid).
         this.remotePlayers = new Map();
@@ -1858,7 +1866,7 @@ class Game {
     // ---------------------------------------------------- challenge links
     startChallenge() {
         const ch = this.challenge;
-        const active = !!ch && !this.state.multiplayer && this.state.runSeed === this.getDailySeed();
+        const active = this.challengeActive();
         this.state.challengeBeaten = false;
         if (!this.ui.challengeHud) return;
         this.ui.challengeHud.hidden = !active;
@@ -1868,8 +1876,12 @@ class Game {
         }
     }
 
+    // Only a normal solo start on today's layout: a checkpoint start (The
+    // Void begins at 5000m) is a different climb and would pass most targets
+    // before the first jump.
     challengeActive() {
-        return !!this.challenge && !this.state.multiplayer && this.state.runSeed === this.getDailySeed();
+        return !!this.challenge && !this.state.multiplayer && this.state.runSeed === this.getDailySeed()
+            && !this.state.startMeters;
     }
 
     // A dashed gold line at the height where the displayed score reaches
@@ -1898,7 +1910,7 @@ class Game {
         const base = (typeof location !== 'undefined' && /^https?:$/.test(location.protocol || ''))
             ? location.origin + location.pathname
             : SITE_URL;
-        if (!run.multiplayer && run.seed === this.getDailySeed() && run.score > 0) {
+        if (!run.multiplayer && !run.start && run.seed === this.getDailySeed() && run.score > 0) {
             return base + '?beat=' + run.score + '&d=' + run.seed;
         }
         return base;
@@ -2063,6 +2075,7 @@ class Game {
         this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 40, "blast");
 
         this.state.running = false;
+        this.updateTouchControls(); // not over a revive prompt
 
         if (!this.state.revived) {
             this.ads.showRevivePrompt(
@@ -2281,6 +2294,7 @@ class Game {
             newBest: !!this.state.isNewBest,
             multiplayer: this.state.multiplayer,
             seed: this.state.runSeed,
+            start: this.state.startMeters || 0,
             biome: this.renderer.currentBiome.name,
             skinName: skin.name, color: skin.color, eye: skin.eye,
             date: /^\d{8}$/.test(seed) ? `${seed.slice(0, 4)}-${seed.slice(4, 6)}-${seed.slice(6)}` : new Date().toISOString().slice(0, 10)

@@ -65,6 +65,18 @@ try {
     mp.challenge = { meters: 50 };
     mp.startMultiplayerGame(99);
     assert(!mp.challengeActive(), "no challenge in co-op");
+    // A checkpoint start (The Void, 5000m) is a different climb: no target,
+    // and its share link isn't a challenge either.
+    localStorage.setItem('lp_best_height', '20000');
+    const v = new Game();
+    v.challenge = { meters: 50 };
+    v.equipSkin(skinIndexById('thevoid'));
+    v.startGame();
+    v.player.y = 400; v.player.vy = 0;
+    v.update(1);
+    assert(v.state.startMeters === 5000 && !v.challengeActive() && !v.state.challengeBeaten, "no instant win from a checkpoint start");
+    v.gameOver();
+    assert(!/beat=/.test(v.shareUrl(v.lastRun)), "a Void run shares a plain link");
     console.log("CHALLENGE SUCCESS");
 
     // ---- Share: today's solo run links to its challenge; clipboard fallback.
