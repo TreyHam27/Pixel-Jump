@@ -45,7 +45,7 @@ try {
         throw new Error("Skin should be unlocked at its threshold");
     }
     const popped = game.ui.achievement.innerText;
-    if (!popped.includes(first.name) || !popped.includes("SKIN UNLOCKED")) {
+    if (!popped.includes(first.name) || !popped.includes("PIXEL UNLOCKED")) {
         throw new Error("Popup should name the unlocked skin, got: " + popped);
     }
     const stored = JSON.parse(localStorage.getItem('lp_achievements'));

@@ -3,6 +3,20 @@
        instead of ad hoc per-element values. */
     --radius: 10px;
     --radius-pill: 999px;
+    /* Room for notches and home indicators (viewport-fit=cover). */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+}
+
+/* Buttons don't inherit the page font by default. */
+button {
+    font-family: inherit;
+}
+
+[hidden] {
+    display: none !important;
 }
 
 body {
@@ -20,6 +34,8 @@ body {
     position: relative;
     width: 100vw;
     height: 100vh;
+    /* Mobile browsers' vh includes the area behind their toolbars. */
+    height: 100dvh;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -61,11 +77,8 @@ canvas {
 
 #score-display {
     position: absolute;
-    top: 20px;
-    left: 20px;
-    max-width: 29%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    top: calc(20px + var(--safe-top));
+    left: calc(20px + var(--safe-left));
     white-space: nowrap;
     font-size: clamp(26px, 8vw, 50px);
     font-weight: 900;
@@ -76,12 +89,9 @@ canvas {
 
 #best-display-hud {
     position: absolute;
-    top: 20px;
+    top: calc(20px + var(--safe-top));
     left: 50%;
     transform: translateX(-50%);
-    max-width: 36%;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
     font-size: clamp(16px, 4.5vw, 28px);
     color: #ff3366;
@@ -92,11 +102,8 @@ canvas {
 
 #shard-display {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    max-width: 30%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    top: calc(8px + var(--safe-top));
+    right: calc(8px + var(--safe-right));
     white-space: nowrap;
     font-size: clamp(20px, 6.5vw, 40px);
     line-height: 1;
@@ -131,10 +138,30 @@ canvas {
     animation: gem-collect-pop 0.35s ease-out;
 }
 
+/* Narrow screens: three numbers don't fit on one row, so BEST tucks under
+   the score. */
+@media (max-width: 480px) {
+    #best-display-hud {
+        top: calc(62px + var(--safe-top));
+        left: calc(20px + var(--safe-left));
+        transform: none;
+        font-size: 14px;
+        text-align: left;
+    }
+
+    #score-display {
+        font-size: clamp(24px, 7.5vw, 34px);
+    }
+
+    #shard-display {
+        font-size: clamp(18px, 6vw, 28px);
+    }
+}
+
 /* POWER UP HUD */
 #power-hud {
     position: absolute;
-    top: 80px;
+    top: calc(80px + var(--safe-top));
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -275,10 +302,19 @@ canvas {
     left: 0;
     width: 100%;
     height: 100%;
+    box-sizing: border-box;
+    padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    /* Centred when the content fits, scrollable (from the top) when it
+       doesn't: the grow-able ::before/::after spacers do the centring and
+       shrink to nothing on overflow, where justify-content: center would
+       clip the top out of reach. */
+    justify-content: flex-start;
     align-items: center;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
     background: rgba(5, 5, 5, 0.95);
     transition: transform 0.4s ease-in-out, opacity 0.3s;
     pointer-events: auto;
@@ -286,6 +322,12 @@ canvas {
        page (e.g. .nav-btn / .mode-switch-arrow at 30) can never bleed on top
        of a sibling page regardless of that page's own z-index. */
     isolation: isolate;
+}
+
+.menu-page::before,
+.menu-page::after {
+    content: "";
+    flex: 1 0 0;
 }
 
 #mp-menu-layer {
@@ -302,22 +344,19 @@ canvas {
        any transparency here would let the menu underneath ghost through. */
     background: #0a0710;
     z-index: 25;
-    overflow-y: auto;
-    padding: 30px 20px;
-    box-sizing: border-box;
-    /* Override .menu-page's centered content: with the full skin-card list
-       this panel routinely overflows the viewport, and centered content
-       that overflows a scroll container clips its start with no way to
-       scroll back up to it. Top-aligning keeps the whole list reachable. */
-    justify-content: flex-start;
+    padding-top: calc(30px + var(--safe-top));
 }
 
 .mode-switch-arrow {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 6px;
     font-size: 40px;
-    color: #555;
+    line-height: 1;
+    color: #8a8a8a;
     cursor: pointer;
     text-align: center;
     transition: color 0.2s, transform 0.2s;
@@ -325,19 +364,36 @@ canvas {
     z-index: 30;
 }
 
-.mode-switch-arrow span {
+.mode-switch-label {
     font-size: 12px;
     display: block;
     margin-top: 5px;
     font-weight: bold;
 }
 
-.mode-switch-arrow.right { right: 20px; }
-.mode-switch-arrow.left { left: 20px; }
+.mode-switch-arrow.right { right: calc(20px + var(--safe-right)); }
+.mode-switch-arrow.left { left: calc(20px + var(--safe-left)); }
 
-.mode-switch-arrow:hover {
-    color: #00ffff;
-    transform: translateY(-50%) scale(1.1);
+@media (hover: hover) {
+    .mode-switch-arrow:hover {
+        color: #00ffff;
+        transform: translateY(-50%) scale(1.1);
+    }
+}
+
+/* Phones: the side arrows would sit on top of the cards, so they move down
+   to the bottom corners. */
+@media (max-width: 520px) {
+    .mode-switch-arrow {
+        top: auto;
+        bottom: calc(12px + var(--safe-bottom));
+        transform: none;
+        font-size: 26px;
+    }
+
+    .mode-switch-label {
+        font-size: 10px;
+    }
 }
 
 /* MP UI Styles — built from the same card / button / section-label pieces as
@@ -374,7 +430,8 @@ canvas {
     box-shadow: 0 0 22px rgba(var(--accent-rgb), 0.1);
 }
 
-.mp-box label {
+.mp-box label,
+.mp-box-title {
     display: block;
     color: #fff;
     font-size: 15px;
@@ -384,7 +441,7 @@ canvas {
 }
 
 .mp-box--join label,
-.mp-box--host label {
+.mp-box--host .mp-box-title {
     color: var(--accent);
     text-shadow: 0 0 12px rgba(var(--accent-rgb), 0.45);
 }
@@ -407,7 +464,7 @@ canvas {
 }
 
 .mp-box input[type="text"]::placeholder {
-    color: #555;
+    color: #7a7a7a;
 }
 
 .mp-box input[type="text"]:focus {
@@ -433,9 +490,11 @@ canvas {
     transition: 0.2s;
 }
 
-.mp-box button:hover:not(:disabled) {
-    filter: brightness(1.15);
-    box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.5);
+@media (hover: hover) {
+    .mp-box button:hover:not(:disabled) {
+        filter: brightness(1.15);
+        box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.5);
+    }
 }
 
 /* In flight (connecting / code already generated): ghosted like the shop's
@@ -515,7 +574,7 @@ canvas {
     box-shadow: 0 0 22px rgba(var(--accent-rgb), 0.1);
 }
 
-.mp-box--party label {
+.mp-box--party .mp-box-title {
     color: var(--accent);
     text-shadow: 0 0 12px rgba(var(--accent-rgb), 0.45);
 }
@@ -622,7 +681,7 @@ canvas {
 .mp-party-row.is-empty {
     border-style: dashed;
     background: transparent;
-    color: #555;
+    color: #8a8a8a;
     font-size: 12px;
 }
 
@@ -675,7 +734,8 @@ canvas {
         margin-bottom: 8px;
     }
 
-    .mp-box label {
+    .mp-box label,
+    .mp-box-title {
         font-size: 13px;
         margin-bottom: 6px;
     }
@@ -706,9 +766,9 @@ canvas {
 
 .page-title {
     font-family: 'Orbitron', 'Courier New', monospace;
-    font-size: max(36px, 4.2vw);
+    font-size: clamp(28px, 9vw, 56px);
     color: #fff;
-    letter-spacing: 4px;
+    letter-spacing: clamp(1px, 0.8vw, 4px);
     margin-bottom: 20px;
     text-shadow: 0 0 14px #a020f0, 0 0 28px #c04dff;
     font-weight: 900;
@@ -736,6 +796,8 @@ canvas {
     margin-bottom: 20px;
     background: rgba(255, 255, 255, 0.05);
     padding: 20px;
+    max-width: 100%;
+    box-sizing: border-box;
     border-radius: var(--radius);
     border: 1px solid #333;
     cursor: default;
@@ -755,9 +817,11 @@ canvas {
     user-select: none;
 }
 
-.nav-btn:hover {
-    background: #333;
-    border-color: #fff;
+@media (hover: hover) {
+    .nav-btn:hover {
+        background: #333;
+        border-color: #fff;
+    }
 }
 
 .nav-btn:active {
@@ -769,6 +833,23 @@ canvas {
     flex-direction: column;
     align-items: center;
     width: 200px;
+}
+
+/* Phones: the pickers (menu and shop) must fit inside the screen. */
+@media (max-width: 400px) {
+    #skin-container,
+    #gem-shop-carousel {
+        padding: 14px 10px;
+    }
+
+    .nav-btn {
+        padding: 10px 12px;
+    }
+
+    #skin-display,
+    #gem-skin-shop {
+        width: min(200px, calc(100vw - 150px));
+    }
 }
 
 #skin-preview-box {
@@ -839,7 +920,6 @@ canvas {
     outline: none;
 }
 
-.perk-tag:hover,
 .perk-tag:focus-visible,
 .perk-tag.open {
     background: color-mix(in srgb, var(--perk) 25%, transparent);
@@ -859,7 +939,9 @@ canvas {
     border: 1px solid var(--perk);
     color: #fff;
     font-size: 11px;
-    font-weight: normal;
+    /* Only Orbitron 700/900 are loaded; say so rather than ask for a weight
+       the browser would substitute anyway. */
+    font-weight: 700;
     letter-spacing: 0.3px;
     line-height: 1.35;
     text-align: center;
@@ -878,15 +960,27 @@ canvas {
     border-top-color: var(--perk);
 }
 
-.perk-tag:hover .perk-tip,
 .perk-tag:focus-visible .perk-tip,
 .perk-tag.open .perk-tip {
     display: block;
 }
 
+/* Touch has no hover, and a tapped element keeps a "sticky" :hover, so the
+   hover tooltip is for real pointers only (taps toggle .open instead). */
+@media (hover: hover) {
+    .perk-tag:hover {
+        background: color-mix(in srgb, var(--perk) 25%, transparent);
+        box-shadow: 0 0 10px color-mix(in srgb, var(--perk) 50%, transparent);
+    }
+
+    .perk-tag:hover .perk-tip {
+        display: block;
+    }
+}
+
 .perk-none {
     font-size: 10px;
-    color: #555;
+    color: #8a8a8a;
     letter-spacing: 1px;
 }
 
@@ -899,18 +993,18 @@ canvas {
     border: 1px solid #333;
     border-radius: var(--radius);
     color: #fff;
-    font-family: 'Orbitron', 'Courier New', Courier, monospace;
     font-weight: bold;
     padding: 10px 18px;
     margin-bottom: 15px;
     cursor: pointer;
-    pointer-events: auto;
     transition: 0.2s;
 }
 
-.shop-trigger-btn:hover {
-    border-color: #00ffaa;
-    background: rgba(0, 255, 170, 0.08);
+@media (hover: hover) {
+    .shop-trigger-btn:hover {
+        border-color: #00ffaa;
+        background: rgba(0, 255, 170, 0.08);
+    }
 }
 
 /* SHOP SCREEN */
@@ -922,18 +1016,28 @@ canvas {
     border: 1px solid #555;
     border-radius: var(--radius);
     color: #fff;
-    font-family: 'Orbitron', 'Courier New', Courier, monospace;
     font-weight: bold;
     font-size: 13px;
     padding: 8px 16px;
     cursor: pointer;
-    pointer-events: auto;
     transition: 0.2s;
+    z-index: 1;
 }
 
-.shop-back-btn:hover {
-    border-color: #00ffaa;
-    color: #00ffaa;
+@media (hover: hover) {
+    .shop-back-btn:hover {
+        border-color: #00ffaa;
+        color: #00ffaa;
+    }
+}
+
+/* Phones: BACK gets its own row instead of overlapping the SHOP title. */
+@media (max-width: 520px) {
+    .shop-back-btn {
+        position: static;
+        align-self: flex-start;
+        margin-bottom: 6px;
+    }
 }
 
 /* Section headers inside the shop — quiet rules that separate the
@@ -944,7 +1048,7 @@ canvas {
     align-items: center;
     gap: 10px;
     margin: 18px 0 10px;
-    color: #666;
+    color: #8c8c8c;
     font-size: 11px;
     font-weight: bold;
     letter-spacing: 3px;
@@ -1019,19 +1123,20 @@ canvas {
     border-radius: var(--radius);
     color: #12000a;
     padding: 12px 15px;
-    font-family: 'Orbitron', 'Courier New', Courier, monospace;
     font-weight: 900;
     font-size: 13px;
     letter-spacing: 1px;
     cursor: pointer;
-    pointer-events: auto;
     transition: 0.2s;
 }
 
-.shop-card-btn:hover:not(:disabled) {
-    background: #ff5c85;
-    border-color: #ff5c85;
-    box-shadow: 0 0 18px rgba(255, 51, 102, 0.55);
+/* Hover never dresses an unaffordable button up as buyable. */
+@media (hover: hover) {
+    .shop-card-btn:hover:not(:disabled):not(.unaffordable) {
+        background: #ff5c85;
+        border-color: #ff5c85;
+        box-shadow: 0 0 18px rgba(255, 51, 102, 0.55);
+    }
 }
 
 .shop-card-btn .btn-cost {
@@ -1164,13 +1269,11 @@ canvas {
     border-radius: var(--radius);
     color: #001416;
     padding: 9px 10px;
-    font-family: 'Orbitron', 'Courier New', Courier, monospace;
     font-size: 12px;
     font-weight: 900;
     letter-spacing: 1px;
     white-space: nowrap;
     cursor: pointer;
-    pointer-events: auto;
     transition: 0.2s;
 }
 
@@ -1181,10 +1284,12 @@ canvas {
     color: #003b3d;
 }
 
-.gem-skin-buy-btn:hover:not(:disabled) {
-    background: #66ffff;
-    border-color: #66ffff;
-    box-shadow: 0 0 18px rgba(0, 255, 255, 0.45);
+@media (hover: hover) {
+    .gem-skin-buy-btn:hover:not(:disabled):not(.unaffordable):not(.owned) {
+        background: #66ffff;
+        border-color: #66ffff;
+        box-shadow: 0 0 18px rgba(0, 255, 255, 0.45);
+    }
 }
 
 .gem-skin-buy-btn.unaffordable {
@@ -1206,10 +1311,12 @@ canvas {
     color: #00ffaa;
 }
 
-.gem-skin-buy-btn.owned:hover:not(:disabled) {
-    background: rgba(0, 255, 170, 0.12);
-    border-color: #00ffaa;
-    box-shadow: 0 0 14px rgba(0, 255, 170, 0.35);
+@media (hover: hover) {
+    .gem-skin-buy-btn.owned:hover:not(:disabled) {
+        background: rgba(0, 255, 170, 0.12);
+        border-color: #00ffaa;
+        box-shadow: 0 0 14px rgba(0, 255, 170, 0.35);
+    }
 }
 
 .gem-skin-buy-btn:disabled {
@@ -1222,7 +1329,7 @@ canvas {
 /* Carousel position markers — squares, not circles, to stay on-theme. */
 #gem-shop-dots {
     display: flex;
-    gap: 8px;
+    gap: 0;
     margin-top: 12px;
     /* See .page-title--shop: this auto margin is the other half of the
        "center when it fits, top-align when it overflows" pair. */
@@ -1230,22 +1337,35 @@ canvas {
     padding-bottom: 20px;
 }
 
+/* Each dot is a 24px button (a comfortable tap target) drawing an 8px
+   square marker. */
 .gem-dot {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.gem-dot::before {
+    content: "";
     width: 8px;
     height: 8px;
     background: #333;
-    border: 1px solid #444;
-    cursor: pointer;
-    pointer-events: auto;
+    border: 1px solid #555;
     transition: 0.2s;
 }
 
-.gem-dot.owned {
+.gem-dot.owned::before {
     background: #00ffaa;
     border-color: #00ffaa;
 }
 
-.gem-dot.active {
+.gem-dot.active::before {
     background: #fff;
     border-color: #fff;
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
@@ -1253,7 +1373,7 @@ canvas {
 
 /* The framed card may also be one you already own — keep the owned tint and
    mark "current" with the ring instead, so the two states stay distinct. */
-.gem-dot.owned.active {
+.gem-dot.owned.active::before {
     background: #00ffaa;
     border-color: #fff;
     box-shadow: 0 0 10px rgba(0, 255, 170, 0.8);
@@ -1284,7 +1404,6 @@ canvas {
     padding: 15px 40px;
     border: none;
     background: transparent;
-    cursor: pointer;
     pointer-events: none;
     /* Let clicks pass through to menu layer */
 }
@@ -1299,9 +1418,9 @@ canvas {
 
 /* No hover effect needed for start-prompt */
 
+/* "Can't do that" feedback on whatever was pressed (see Game.shakeUI). */
 .shake {
     animation: shake 0.4s ease-in-out;
-    color: #ff3366 !important;
 }
 
 @keyframes shake {
@@ -1386,7 +1505,7 @@ canvas {
 /* Below this width there's no meaningful room left beside the 600px canvas */
 @media (max-width: 1000px) {
     .ad-rail {
-        display: none !important;
+        display: none;
     }
 }
 
@@ -1425,7 +1544,7 @@ canvas {
 
 #revive-btn {
     background: #ff3366;
-    color: #fff;
+    color: #12000a;
     border: none;
     border-radius: var(--radius);
     padding: 15px 30px;
@@ -1440,21 +1559,25 @@ canvas {
     width: 100%;
 }
 
-#revive-btn:hover {
-    background: #ff5588;
-    transform: scale(1.05);
-}
-
 #revive-skip {
     margin-top: 15px;
-    color: #888;
-    font-size: 14px;
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 13px;
     cursor: pointer;
     text-decoration: underline;
 }
 
-#revive-skip:hover {
-    color: #fff;
+@media (hover: hover) {
+    #revive-btn:hover {
+        background: #ff5588;
+        transform: scale(1.05);
+    }
+
+    #revive-skip:hover {
+        color: #fff;
+    }
 }
 
 /* FAKE AD VIDEO UI */
@@ -1465,7 +1588,7 @@ canvas {
     width: 100%;
     height: 100%;
     background: #000;
-    z-index: 100;
+    z-index: 110;
     display: none;
     flex-direction: column;
     align-items: center;
@@ -1509,17 +1632,18 @@ canvas {
 
 #touch-hint {
     position: absolute;
-    bottom: 20px;
-    color: rgba(255, 255, 255, 0.3);
+    bottom: calc(20px + var(--safe-bottom));
+    color: rgba(255, 255, 255, 0.55);
     font-size: 12px;
     text-align: center;
     width: 100%;
     letter-spacing: 1px;
 }
 
+/* Below the HUD rows (score, BEST, power-up bar) instead of on top of them. */
 #achievement-pop {
     position: absolute;
-    top: 50px;
+    top: calc(128px + var(--safe-top));
     background: #ffd700;
     color: #000;
     padding: 10px 20px;
@@ -1618,7 +1742,7 @@ canvas {
 .fame-date {
     flex: none;
     font-size: 10px;
-    color: #666;
+    color: #8c8c8c;
 }
 
 .fame-score {
@@ -1655,7 +1779,7 @@ canvas {
 
 .fame-empty {
     font-size: 12px;
-    color: #666;
+    color: #8c8c8c;
     letter-spacing: 1px;
     padding: 6px 0;
 }
@@ -1730,5 +1854,15 @@ canvas {
 
     .fame-score {
         font-size: 13px;
+    }
+}
+/* Respect "reduce motion": no blinking, pulsing or sliding. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
 }

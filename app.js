@@ -14,6 +14,9 @@ function loadJSON(key, fallback, isValid = () => true) {
 
 const isStringArray = v => Array.isArray(v) && v.every(x => typeof x === 'string');
 
+// 12345 -> "12,345" for the HUD and menus.
+const fmtNum = n => Number(n).toLocaleString('en-US');
+
 class Game {
     constructor() {
         this.input = new InputHandler();
@@ -87,7 +90,6 @@ class Game {
             achievement: document.getElementById("achievement-pop"),
             menuScore: document.getElementById("menu-highscore"),
             menuLast: document.getElementById("menu-lastscore"),
-            skinDisplay: document.getElementById("skin-display"),
             skinName: document.getElementById("skin-name"),
             skinStatus: document.getElementById("skin-status"),
             preview: document.getElementById("skin-preview-box"),
@@ -110,7 +112,6 @@ class Game {
 
             // Multiplayer UI
             menusWrapper: document.getElementById("menus-wrapper"),
-            menuLayer1: document.getElementById("menu-layer"),
             menuLayer2: document.getElementById("mp-menu-layer"),
             toMpBtn: document.getElementById("to-mp-btn"),
             toSpBtn: document.getElementById("to-sp-btn"),
@@ -159,7 +160,11 @@ class Game {
         this.renderGemShop();
         this.updateExtraLifeUI();
 
-        this.ui.menuScore.innerText = "HIGH SCORE: " + this.state.highScore + "m";
+        this.ui.menuScore.innerText = "HIGH SCORE: " + fmtNum(this.state.highScore) + "m";
+        if (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) {
+            this.ui.startBtn.innerText = "TAP TO START";
+        }
+        this.setMenuPanel('sp');
 
         this.loop = this.loop.bind(this);
         requestAnimationFrame(this.loop);
@@ -189,13 +194,11 @@ class Game {
         if (this.ui.shopOpenBtn) {
             this.ui.shopOpenBtn.onclick = (e) => {
                 e.stopPropagation();
-                this.activeMenuPanel = 'shop';
-                this.ui.shopLayer.style.transform = 'translateY(0)';
+                this.setMenuPanel('shop');
             };
             this.ui.shopBackBtn.onclick = (e) => {
                 e.stopPropagation();
-                this.activeMenuPanel = 'sp';
-                this.ui.shopLayer.style.transform = 'translateY(100%)';
+                this.setMenuPanel('sp');
             };
         }
 
@@ -238,21 +241,23 @@ class Game {
 
         // Multiplayer UI Bindings
         if (this.ui.toMpBtn) {
-            this.ui.toMpBtn.onclick = () => {
-                this.activeMenuPanel = 'mp';
-                this.ui.menuLayer1.style.transform = 'translateX(-100%)';
-                this.ui.menuLayer2.style.transform = 'translateX(0)';
+            this.ui.toMpBtn.onclick = (e) => {
+                if (e && e.stopPropagation) e.stopPropagation();
+                this.setMenuPanel('mp');
                 let savedName = localStorage.getItem('lp_mp_name');
-                if (savedName) this.ui.mpNameInput.value = savedName;
+                if (savedName) this.ui.mpNameInput.value = savedName.toUpperCase();
             };
-            this.ui.toSpBtn.onclick = () => {
-                this.activeMenuPanel = 'sp';
-                this.ui.menuLayer1.style.transform = 'translateX(0)';
-                this.ui.menuLayer2.style.transform = 'translateX(100%)';
+            this.ui.toSpBtn.onclick = (e) => {
+                if (e && e.stopPropagation) e.stopPropagation();
+                this.setMenuPanel('sp');
             };
 
+            // Names show in capitals everywhere (party list, name tags), so
+            // store them that way too.
             this.ui.mpNameInput.addEventListener('input', (e) => {
-                localStorage.setItem('lp_mp_name', e.target.value.trim());
+                const upper = e.target.value.toUpperCase();
+                if (upper !== e.target.value) e.target.value = upper;
+                localStorage.setItem('lp_mp_name', upper.trim());
             });
 
             this.ui.mpHostBtn.onclick = async () => {
@@ -267,26 +272,28 @@ class Game {
                     this.enterPartyView(code);
                     this.setMpStatus("WAITING FOR PLAYERS...", 'success');
                 } catch (err) {
-                    this.setMpStatus("HOST FAILED — TRY AGAIN", 'danger');
-                    this.setMpSetupBusy(false);
+                    this.showSetupError(err, "HOST FAILED — TRY AGAIN");
                 }
             };
 
             this.ui.mpJoinBtn.onclick = async () => {
-                const code = this.ui.mpJoinInput.value.trim();
-                if (code.length === 6) {
-                    this.setMpSetupBusy(true);
-                    this.setMpStatus("CONNECTING...", 'pending');
-                    try {
-                        await window.network.join(code);
-                    } catch (err) {
-                        this.setMpStatus("CONNECTION FAILED — TRY AGAIN", 'danger');
-                        this.setMpSetupBusy(false);
-                    }
-                } else {
+                // Codes never contain 0/O, 1/I or L, so a typo is caught here
+                // instead of after a minute of connection attempts.
+                if (!normalizeRoomCode(this.ui.mpJoinInput.value)) {
                     this.setMpStatus("INVALID CODE", 'danger');
+                    return;
+                }
+                this.setMpSetupBusy(true);
+                this.setMpStatus("CONNECTING...", 'pending');
+                try {
+                    await window.network.join(this.ui.mpJoinInput.value);
+                } catch (err) {
+                    this.showSetupError(err, "CONNECTION FAILED — TRY AGAIN");
                 }
             };
+            this.ui.mpJoinInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') this.ui.mpJoinBtn.onclick();
+            });
 
             this.ui.mpStartBtn.onclick = () => {
                 if (this.state.isHost && this.party.length >= 2 && !this.state.running) {
@@ -305,10 +312,14 @@ class Game {
                 this.state.isHost = false;
                 this.setMpStatus("SYNCHRONIZING...", 'pending');
 
-                // Handshake Retry Loop for Guest
-                // Ensures the host DEFINITELY gets the name even if the first packet is lost
+                // Resend the introduction every second until the host acks it,
+                // giving up after 10 tries (the host drops silent joiners too).
+                let tries = 0;
                 const sendHandshake = () => {
-                    console.log("MP: Sending Handshake...");
+                    if (++tries > 10) {
+                        this.leaveParty("COULDN'T JOIN — TRY AGAIN", 'danger');
+                        return;
+                    }
                     window.network.send({ type: 'handshake', name: this.getMpName(), v: NET_PROTOCOL, build: GAME_VERSION });
                 };
                 if (this.handshakeInterval) clearInterval(this.handshakeInterval);
@@ -332,20 +343,10 @@ class Game {
                 this.leaveParty("LOST CONNECTION TO HOST", 'danger');
             };
 
+            // Errors in a live session (host/join failures come back through
+            // their own promises, see showSetupError).
             window.network.onError = (err) => {
-                let msg = "CONNECTION FAILED";
-                if (err.type === 'connection-timeout') {
-                    msg = "TIMED OUT — CODE MAY BE INVALID";
-                } else if (err.type === 'peer-unavailable') {
-                    msg = "CODE NOT FOUND — CHECK & RETRY";
-                } else if (err.type === 'signaling-timeout') {
-                    msg = "CAN'T REACH SERVER — CHECK CONNECTION";
-                } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
-                    msg = "NETWORK ERROR — CHECK CONNECTION";
-                }
-                this.setMpStatus(msg, 'danger');
-                // Only a failed host/join attempt should unlock the setup
-                // cards; errors inside a live party just update the status.
+                this.setMpStatus(this.netErrorMessage(err, "CONNECTION FAILED"), 'danger');
                 if (!this.inParty()) this.setMpSetupBusy(false);
             };
 
@@ -363,6 +364,8 @@ class Game {
                 }, { passive: true });
 
                 this.ui.menusWrapper.addEventListener('touchend', (e) => {
+                    // Not while the shop covers the menu, or mid-run.
+                    if (this.activeMenuPanel === 'shop' || this.state.running) { touchStartX = 0; return; }
                     if (e.changedTouches.length > 0 && touchStartX !== 0) {
                         let touchEndX = e.changedTouches[0].clientX;
                         let diffX = touchEndX - touchStartX;
@@ -403,12 +406,44 @@ class Game {
         this.startGame();
     }
 
+    // Shows one top-level menu panel ('sp' | 'mp' | 'shop'). The others are
+    // made inert, so Tab and screen readers can't wander into off-screen
+    // pages (focusing one also scrolled the clipped wrapper).
+    setMenuPanel(panel) {
+        this.activeMenuPanel = panel;
+        const sp = this.ui.menu, mp = this.ui.menuLayer2, shop = this.ui.shopLayer;
+        if (sp) sp.style.transform = panel === 'mp' ? 'translateX(-100%)' : 'translateX(0)';
+        if (mp) mp.style.transform = panel === 'mp' ? 'translateX(0)' : 'translateX(100%)';
+        if (shop) shop.style.transform = panel === 'shop' ? 'translateY(0)' : 'translateY(100%)';
+        if (sp) sp.inert = panel !== 'sp';
+        if (mp) mp.inert = panel !== 'mp';
+        if (shop) shop.inert = panel !== 'shop';
+    }
+
     // Co-op menu status pill. `state` is one of 'pending' | 'success' | 'danger'
     // (or omitted for idle); the colors live in style.css under #mp-status.
     setMpStatus(text, state) {
         this.ui.mpStatus.innerText = text;
         if (state) this.ui.mpStatus.dataset.state = state;
         else delete this.ui.mpStatus.dataset.state;
+    }
+
+    netErrorMessage(err, fallback) {
+        const type = err && err.type;
+        if (type === 'invalid-code') return "INVALID CODE";
+        if (type === 'connection-timeout') return "TIMED OUT — CODE MAY BE INVALID";
+        if (type === 'peer-unavailable') return "CODE NOT FOUND — CHECK & RETRY";
+        if (type === 'signaling-timeout') return "CAN'T REACH SERVER — CHECK CONNECTION";
+        if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(type)) return "NETWORK ERROR — CHECK CONNECTION";
+        return fallback;
+    }
+
+    // A host/join attempt failed. One that was cancelled (the player left or
+    // started another attempt) says nothing: the newer action owns the UI.
+    showSetupError(err, fallback) {
+        if (err && err.type === 'cancelled') return;
+        this.setMpStatus(this.netErrorMessage(err, fallback), 'danger');
+        if (!this.inParty()) this.setMpSetupBusy(false);
     }
 
     // Disables both setup actions while a host/join attempt is in flight.
@@ -418,7 +453,7 @@ class Game {
     }
 
     getMpName() {
-        return (this.ui.mpNameInput.value.trim() || 'Player').slice(0, 10);
+        return (this.ui.mpNameInput.value.trim() || 'PLAYER').toUpperCase().slice(0, 10);
     }
 
     inParty() {
@@ -531,19 +566,38 @@ class Game {
     }
 
     addRemotePlayer(member, skinIndex = 0) {
+        if (!SKINS[skinIndex]) skinIndex = 0;
         const rp = new Player(CONFIG.WIDTH / 2, CONFIG.HEIGHT - 150, skinIndex);
         rp.name = member.name;
         rp.slot = member.slot;
         rp.skinIndex = skinIndex;
+        rp.lastSeenT = this.state.time;
         this.remotePlayers.set(member.pid, rp);
         return rp;
+    }
+
+    // Remote input is untrusted: keep only known fields, as finite numbers
+    // in sane ranges. Returns null for a packet that's unusable.
+    sanitizeSync(d) {
+        const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v)) ? Math.max(lo, Math.min(hi, v)) : null;
+        const x = num(d.x, -100, CONFIG.WIDTH + 100);
+        const y = num(d.y, -1e8, 1e5);
+        if (x === null || y === null) return null;
+        const skinIndex = Number.isInteger(d.skinIndex) && SKINS[d.skinIndex] ? d.skinIndex : 0;
+        const power = Object.values(POWERS).find(p => p.id === d.activePowerId);
+        return {
+            type: 'sync', x, y,
+            vx: num(d.vx, -50, 50) || 0,
+            vy: num(d.vy, -50, 50) || 0,
+            skinIndex,
+            activePowerId: power ? power.id : null
+        };
     }
 
     // Host: a guest introduced themselves — seat them in the lowest free slot.
     handleHandshake(data, fromId) {
         if (!this.state.isHost) return;
         const net = window.network;
-        console.log("MP: Received Handshake from", data.name);
 
         // Different builds generate different levels (and may disagree on
         // the Pixel list), so they can't share a run.
@@ -583,11 +637,30 @@ class Game {
 
     handleNetworkData(data, fromId) {
         const net = window.network;
+        if (!data || typeof data.type !== 'string') return;
+
+        // Trust boundaries: a host only takes introductions and gameplay
+        // traffic from guests (never party control messages), and a guest
+        // only listens to its host.
+        if (this.state.isHost) {
+            if (!['handshake', 'sync', 'die', 'revive'].includes(data.type)) return;
+        } else if (net.friendId && fromId !== net.friendId) {
+            return;
+        }
+
+        if (data.type === 'sync') {
+            const clean = this.sanitizeSync(data);
+            if (!clean) return;
+            clean.pid = this.state.isHost ? fromId : String(data.pid);
+            data = clean;
+        } else if (data.type === 'die' || data.type === 'revive') {
+            data = { type: data.type, pid: this.state.isHost ? fromId : String(data.pid) };
+        }
 
         // The host is the hub: relay every guest's gameplay traffic to the
-        // rest of the party, stamped with the sender's ID so it can't be spoofed.
+        // rest of the party (a clean copy, stamped with the sender's ID so it
+        // can't be spoofed).
         if (this.state.isHost && (data.type === 'sync' || data.type === 'die' || data.type === 'revive')) {
-            data.pid = fromId;
             net.broadcastExcept(fromId, data);
         }
 
@@ -595,7 +668,6 @@ class Game {
             this.handleHandshake(data, fromId);
         } else if (data.type === 'handshake_ack') {
             if (this.state.isHost) return;
-            console.log("MP: Received Handshake ACK");
             if (this.handshakeInterval) clearInterval(this.handshakeInterval);
             this.handshakeInterval = null;
             if (data.v !== NET_PROTOCOL) {
@@ -603,7 +675,7 @@ class Game {
                 return;
             }
             this.applyParty(data.party);
-            this.enterPartyView(net.friendId);
+            this.enterPartyView(net.code || net.friendId);
             this.setMpStatus("WAITING FOR LEADER TO START...", 'success');
         } else if (data.type === 'party') {
             if (!this.state.isHost) this.applyParty(data.party);
@@ -629,7 +701,7 @@ class Game {
                 if (!member) return;
                 rp = this.addRemotePlayer(member, data.skinIndex);
             }
-            if (SKINS[data.skinIndex] && rp.skinIndex !== data.skinIndex) {
+            if (rp.skinIndex !== data.skinIndex) {
                 rp.setSkin(data.skinIndex);
                 rp.skinIndex = data.skinIndex;
             }
@@ -637,11 +709,8 @@ class Game {
             rp.y = data.y + this.state.score;
             rp.vx = data.vx;
             rp.vy = data.vy;
-            if (data.activePowerId) {
-                rp.activePower = Object.values(POWERS).find(p => p.id === data.activePowerId);
-            } else {
-                rp.activePower = null;
-            }
+            rp.lastSeenT = this.state.time;
+            rp.activePower = data.activePowerId ? Object.values(POWERS).find(p => p.id === data.activePowerId) : null;
         } else if (data.type === 'die') {
             const rp = this.remotePlayers.get(data.pid);
             if (rp) rp.isDead = true;
@@ -735,7 +804,7 @@ class Game {
         this.ui.prev.style.visibility = showArrows;
         this.ui.next.style.visibility = showArrows;
 
-        if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = this.state.shards + " 💎";
+        if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = fmtNum(this.state.shards) + " 💎";
         if (this.ui.skinAbility) this.ui.skinAbility.innerHTML = this.renderPerkTags(s.ability);
     }
 
@@ -819,7 +888,7 @@ class Game {
                 const cls = ['gem-dot'];
                 if (pos === this.gemShopIndex) cls.push('active');
                 if (this.ownedSkins.includes(row.id)) cls.push('owned');
-                return `<span class="${cls.join(' ')}" data-pos="${pos}"></span>`;
+                return `<button class="${cls.join(' ')}" data-pos="${pos}" aria-label="Tier ${pos + 1}: ${row.name}"></button>`;
             }).join('');
 
             this.ui.gemDots.querySelectorAll('.gem-dot').forEach(dot => {
@@ -839,7 +908,7 @@ class Game {
                     this.equipSkin(index);
                     this.renderGemShop();
                 } else {
-                    this.buyGemSkin(index);
+                    this.buyGemSkin(index, btn);
                 }
             };
         });
@@ -865,7 +934,7 @@ class Game {
 
     buyExtraLife() {
         if (this.state.extraLives >= MAX_EXTRA_LIVES || this.state.shards < EXTRA_LIFE_COST) {
-            this.shakeUI();
+            this.shakeUI(this.ui.shopLifeBtn);
             return false;
         }
         this.state.shards -= EXTRA_LIFE_COST;
@@ -889,11 +958,11 @@ class Game {
     }
 
     // Buying a Pixel also equips it — that's why you bought it.
-    buyGemSkin(index) {
+    buyGemSkin(index, button) {
         const s = SKINS[index];
         if (!s || this.ownedSkins.includes(s.id)) return false;
         if (s.cost === undefined || this.state.shards < s.cost) {
-            this.shakeUI();
+            this.shakeUI(button);
             return false;
         }
         this.state.shards -= s.cost;
@@ -906,10 +975,13 @@ class Game {
         return true;
     }
 
-    shakeUI() {
-        this.ui.startBtn.classList.remove('shake');
-        void this.ui.startBtn.offsetWidth;
-        this.ui.startBtn.classList.add('shake');
+    // "Can't do that" feedback on the control that was pressed.
+    shakeUI(el) {
+        if (!el || !el.classList) return;
+        el.classList.remove('shake');
+        void el.offsetWidth; // restart the animation
+        el.classList.add('shake');
+        if (el.addEventListener) el.addEventListener('animationend', () => el.classList.remove('shake'), { once: true });
     }
 
     // Centralized system alert popup (run status, revive countdowns, loop rewards, etc).
@@ -1074,7 +1146,7 @@ class Game {
         this.state.shards += n;
         localStorage.setItem('lp_shards', this.state.shards);
         if (this.ui.shardDisplay) {
-            this.ui.shardDisplay.innerText = this.state.shards + " 💎";
+            this.ui.shardDisplay.innerText = fmtNum(this.state.shards) + " 💎";
             this.ui.shardDisplay.classList.remove('gem-pop');
             void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
             this.ui.shardDisplay.classList.add('gem-pop');
@@ -1441,9 +1513,31 @@ class Game {
         }
     }
 
+    // A teammate whose updates stopped (tab in the background, frozen
+    // browser) is "away": after REMOTE_AWAY_FRAMES they no longer steer the
+    // camera or the invisible ceiling, and after REMOTE_GONE_FRAMES they count
+    // as down, so a frozen avatar can't hold everyone else in place or keep a
+    // finished run alive forever.
+    remoteAway(rp) {
+        return this.state.time - (rp.lastSeenT || 0) > REMOTE_AWAY_FRAMES;
+    }
+
+    remoteDown(rp) {
+        return rp.isDead || this.state.time - (rp.lastSeenT || 0) > REMOTE_GONE_FRAMES;
+    }
+
+    // Anyone else still in the run (alive, and not gone quiet).
     anyRemoteAlive() {
         for (const rp of this.remotePlayers.values()) {
-            if (!rp.isDead) return true;
+            if (!this.remoteDown(rp)) return true;
+        }
+        return false;
+    }
+
+    // Anyone else actively playing right now (for the camera and ceiling).
+    anyRemoteActive() {
+        for (const rp of this.remotePlayers.values()) {
+            if (!rp.isDead && !this.remoteAway(rp)) return true;
         }
         return false;
     }
@@ -1538,7 +1632,7 @@ class Game {
         this.platforms.push({ x: 0, y: CONFIG.HEIGHT - 20, w: CONFIG.WIDTH, h: 20 });
 
         const boost = this.phoenixBoost();
-        this.showAlert("Life Systems Restored." + (boost ? " + " + boost : ""), 'success');
+        this.showAlert("LIFE RESTORED" + (boost ? " + " + boost : ""), 'success');
     }
 
     gameOver() {
@@ -1581,8 +1675,9 @@ class Game {
         this.ui.power.style.opacity = 0;
         this.hideAlert();
 
-        this.ui.menuLast.innerText = "LAST RUN: " + finalScore + "m";
-        this.ui.menuScore.innerText = "HIGH SCORE: " + this.state.highScore + "m";
+        this.ui.menuLast.innerText = "LAST RUN: " + fmtNum(finalScore) + "m";
+        this.ui.menuLast.hidden = false;
+        this.ui.menuScore.innerText = "HIGH SCORE: " + fmtNum(this.state.highScore) + "m";
         this.updateFameUI();
         this.updateSkinUI();
         this.renderGemShop();
@@ -1622,7 +1717,7 @@ class Game {
                 <div class="fame-swatch"${swatch}></div>
                 <div class="fame-skin">${this.escapeHtml(name)}</div>
                 <div class="fame-date">${this.escapeHtml(f.date || '')}</div>
-                <div class="fame-score">${Math.floor(f.score)}m</div>
+                <div class="fame-score">${fmtNum(Math.floor(f.score))}m</div>
             </div>`;
         }).join('');
     }
@@ -1632,7 +1727,7 @@ class Game {
             if (g.condition(this.state, this.player) && !this.achievements.includes(g.id)) {
                 this.achievements.push(g.id);
                 localStorage.setItem('lp_achievements', JSON.stringify(this.achievements));
-                this.showAchievement(g.skin ? "SKIN UNLOCKED: " + g.name : g.name, g.skin ? "🎨" : "🏅");
+                this.showAchievement(g.skin ? "PIXEL UNLOCKED: " + g.name : g.name, g.skin ? "🎨" : "🏅");
             }
         });
     }
@@ -1752,7 +1847,7 @@ class Game {
         }
 
         // Invisible ceiling in multiplayer so the fast player doesn't go off screen
-        if (this.state.multiplayer && !this.player.isDead && this.anyRemoteAlive()) {
+        if (this.state.multiplayer && !this.player.isDead && this.anyRemoteActive()) {
             if (this.player.y < 0) {
                 this.player.y = 0;
                 if (this.player.vy < 0) this.player.vy = 0; // head bump
@@ -1910,7 +2005,7 @@ class Game {
         if (this.state.multiplayer) {
             const aliveYs = [];
             if (!this.player.isDead) aliveYs.push(this.player.y);
-            this.remotePlayers.forEach(rp => { if (!rp.isDead) aliveYs.push(rp.y); });
+            this.remotePlayers.forEach(rp => { if (!rp.isDead && !this.remoteAway(rp)) aliveYs.push(rp.y); });
             targetY = aliveYs.length ? Math.max(...aliveYs) : threshold + 1; // everyone dead: no scroll
         }
 
@@ -1926,6 +2021,13 @@ class Game {
             localStorage.setItem('lp_best_height', heightMeters);
         }
 
+        // Dead and waiting to respawn while the rest of the party went quiet:
+        // end the run rather than wait forever.
+        if (this.state.multiplayer && this.player.isDead && !this.anyRemoteAlive()) {
+            this.checkAllDead();
+            if (!this.state.running) return;
+        }
+
         let displayScore = this.runScore();
         if (displayScore > this.state.maxScore) this.state.maxScore = displayScore;
         if (displayScore > this.state.highScore) {
@@ -1934,8 +2036,8 @@ class Game {
             this.state.isNewBest = true;
         }
 
-        this.ui.score.innerText = displayScore + "m";
-        this.ui.best.innerText = "BEST: " + this.state.highScore + "m";
+        this.ui.score.innerText = fmtNum(displayScore) + "m";
+        this.ui.best.innerText = "BEST: " + fmtNum(this.state.highScore) + "m";
 
         if (this.player.activePower) {
             this.ui.power.style.opacity = 1;
@@ -1999,8 +2101,11 @@ class Game {
             // Name tags in each player's party-slot colour.
             this.remotePlayers.forEach(rp => {
                 if (rp.isDead) return;
+                const away = this.remoteAway(rp);
+                if (away) this.renderer.ctx.globalAlpha = 0.35;
                 rp.draw(this.renderer.ctx);
-                this.renderer.drawText(rp.name || 'PLAYER', rp.x + 13, rp.y - 10, "10px Courier New", PARTY_COLORS[rp.slot] || "#00ffcc");
+                this.renderer.drawText((rp.name || 'PLAYER') + (away ? ' (AWAY)' : ''), rp.x + 13, rp.y - 10, "10px Courier New", PARTY_COLORS[rp.slot] || "#00ffcc");
+                this.renderer.ctx.globalAlpha = 1;
             });
             if (!this.player.isDead) {
                 const me = this.party.find(m => m.pid === window.network.myId);

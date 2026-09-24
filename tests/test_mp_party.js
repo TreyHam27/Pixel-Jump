@@ -1,79 +1,10 @@
-const { setupMocks, loadGameSource } = require('./test_helpers');
+const { setupMocks, loadGameSource, failIfUnfinished } = require('./test_helpers');
 
-setupMocks();
+setupMocks({ realTimers: true });
+failIfUnfinished();
 
-// Minimal PeerJS stand-in for exercising NetworkManager's host-side
-// connection bookkeeping without any real WebRTC.
-class FakeEmitter {
-    constructor() { this.handlers = {}; }
-    on(evt, cb) { (this.handlers[evt] = this.handlers[evt] || []).push(cb); }
-    emit(evt, ...args) { (this.handlers[evt] || []).forEach(cb => cb(...args)); }
-}
-class FakeDataConn extends FakeEmitter {
-    constructor(peer) { super(); this.peer = peer; this.open = false; this.sent = []; this.closed = false; }
-    openNow() { this.open = true; this.emit('open'); }
-    send(d) { this.sent.push(d); }
-    close() { if (this.closed) return; this.closed = true; this.open = false; this.emit('close'); }
-}
-global.Peer = class extends FakeEmitter {
-    constructor(id) { super(); this.id = id; this.destroyed = false; global.lastPeer = this; }
-    destroy() { this.destroyed = true; }
-    reconnect() {}
-};
-global.FakeDataConn = FakeDataConn;
-
-// In-process message bus standing in for the host-relay network, so several
-// Game instances can play one multiplayer session in a single process. Each
-// Game talks to its own FakeNet through window.network, which the bus swaps
-// in before delivering anything to that Game.
-class Bus {
-    constructor() { this.nets = new Map(); this.q = []; }
-    pump() {
-        let guard = 0;
-        while (this.q.length) {
-            if (++guard > 10000) throw new Error("Message storm");
-            const m = this.q.shift();
-            const net = this.nets.get(m.to);
-            if (!net || !net.links.has(m.from)) continue;
-            window.network = net;
-            if (m.close) {
-                net.links.delete(m.from);
-                if (net.isHost) { if (net.onPeerLeft) net.onPeerLeft(m.from); }
-                else if (net.onDisconnected) net.onDisconnected();
-            } else if (net.onData) {
-                net.onData(JSON.parse(JSON.stringify(m.data)), m.from);
-            }
-        }
-    }
-}
-class FakeNet {
-    constructor(bus, id) {
-        this.bus = bus; this.myId = id; this.isHost = false; this.friendId = null;
-        this.links = new Set();
-        bus.nets.set(id, this);
-    }
-    async host() { this.isHost = true; return this.myId; }
-    push(to, data) { this.bus.q.push({ to, from: this.myId, data }); }
-    send(d) { for (const to of this.links) this.push(to, d); }
-    sendTo(to, d) { if (this.links.has(to)) this.push(to, d); }
-    broadcastExcept(ex, d) { for (const to of this.links) if (to !== ex) this.push(to, d); }
-    closePeer(id) {
-        if (!this.links.has(id)) return;
-        this.links.delete(id);
-        this.bus.q.push({ to: id, from: this.myId, close: true });
-        if (this.onPeerLeft) this.onPeerLeft(id);
-    }
-    leave() {
-        if (this.isHost) this.send({ type: 'party_closed' });
-        for (const to of [...this.links]) {
-            this.links.delete(to);
-            this.bus.q.push({ to, from: this.myId, close: true });
-        }
-        this.isHost = false;
-    }
-}
-global.Bus = Bus;
-global.FakeNet = FakeNet;
+const { installMpFakes } = require('./mp_fakes');
+installMpFakes();
 
 eval(loadGameSource() + `
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
@@ -150,7 +81,7 @@ try {
 
     G3.ui.mpNameInput.value = '<b>x</b>';
     connect('g1'); connect('g2'); connect('g3');
-    assert(H.ui.mpPartyList.innerHTML.includes('&lt;b&gt;x&lt;/b&gt;') && !H.ui.mpPartyList.innerHTML.includes('<b>'),
+    assert(H.ui.mpPartyList.innerHTML.includes('&lt;B&gt;X&lt;/B&gt;') && !/<b>/i.test(H.ui.mpPartyList.innerHTML),
         "Player names must be HTML-escaped in the party list");
     assert(H.party.length === 4, "Party should have 4 members, has " + H.party.length);
     for (const g of [G1, G2, G3]) {

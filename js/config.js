@@ -96,6 +96,17 @@ const MAX_EXTRA_LIVES = 3;
 // Slot 0 is always the party leader; each slot's colour is used for that
 // player's in-game name tag and their row in the party panel.
 const MAX_PARTY_SIZE = 4;
+// Extra WebRTC ICE servers for co-op, appended to Google's public STUN
+// servers. Players behind strict NATs (some mobile carriers, corporate
+// networks) can only connect through a TURN relay; add one here with your
+// own credentials, e.g.
+//   { urls: 'turn:turn.example.com:443?transport=tcp', username: '...', credential: '...' }
+const EXTRA_ICE_SERVERS = [];
+// A teammate with no position update for this many frames (60fps game time)
+// is shown as away and stops steering the shared camera; after the second
+// threshold they count as down when deciding whether the run is over.
+const REMOTE_AWAY_FRAMES = 150;
+const REMOTE_GONE_FRAMES = 600;
 const PARTY_COLORS = ['#00ffff', '#ff3cf0', '#ffe600', '#ff8a00'];
 
 // Every Pixel carries a stable `id`. Saves (lp_owned_skins, lp_skin) store
@@ -153,7 +164,7 @@ const PERKS = [
     { key: 'powerDurationMult', label: 'POWER', color: '#ffaa00', active: v => !!v && v !== 1,
       describe: v => Number.isInteger(v) ? 'Power-ups last ' + v + 'x as long' : '+' + perkPct(v) + ' power-up duration' },
     { key: 'shardMagnetRadius', label: 'MAGNET', color: '#ffff00', active: v => !!v,
-      describe: () => 'Always pulls in nearby shards' },
+      describe: () => 'Always pulls in nearby gems' },
     { key: 'extraRevive', label: 'REVIVE', color: '#00ffaa', active: v => !!v,
       describe: v => v + ' free revive every run' },
     { key: 'startAtScore', label: 'RIFT', color: '#9933ff', active: v => !!v,
@@ -163,7 +174,7 @@ const PERKS = [
     { key: 'dronePulseSec', label: 'EMP', color: '#00ff99', active: v => !!v,
       describe: v => 'Every ' + v + 's, destroys all drones on screen (solo only)' },
     { key: 'shardMult', label: 'GEMS x2', color: '#33e0ff', active: v => !!v && v !== 1,
-      describe: v => 'Shard pickups are worth ' + v + 'x' },
+      describe: v => 'Gem pickups are worth ' + v + 'x' },
     { key: 'biomeImmune', label: 'SHIELDED', color: '#3399ff', active: v => !!v,
       describe: () => 'Immune to wind, gravity pulses and glitches' },
     { key: 'scoreMult', label: 'SCORE x2', color: '#ff3333', active: v => !!v && v !== 1,
