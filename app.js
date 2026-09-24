@@ -977,6 +977,88 @@ class Game {
         if (hits) sounds.play('powerup');
     }
 
+    // The player the boss hovers over: the lowest one still alive (the one the
+    // camera follows), so in co-op it never parks over someone's corpse.
+    bossFocus() {
+        let focus = this.player.isDead ? null : this.player;
+        this.remotePlayers.forEach(rp => {
+            if (!rp.isDead && (!focus || rp.y > focus.y)) focus = rp;
+        });
+        return focus || this.player;
+    }
+
+    // Touching the boss. Landing on top of it (falling, feet near its top edge,
+    // or feet above it last frame so a fast fall can't tunnel through) deals a
+    // hit and bounces you high. Otherwise a jetpack or HARD SHIELD absorbs the
+    // crash (the boss survives: it can't be rammed to death), and while it's
+    // exposed at your level a side bump only knocks you back. Anything else
+    // is fatal.
+    resolveBossContact(boss) {
+        const p = this.player;
+        const feet = p.y + p.h;
+        const onTop = p.vy > 0 && (feet < boss.y + 40 || (p.prevBottom !== undefined && p.prevBottom <= boss.y + 12));
+        if (onTop) {
+            p.y = boss.y - p.h;
+            if (boss.takeDamage(this.particles)) {
+                p.vy = CONFIG.BOUNCE_FORCE;
+                sounds.play('jump');
+            } else {
+                p.vy = CONFIG.JUMP_FORCE; // still flashing: a harmless hop
+            }
+            return;
+        }
+        if (p.activePower === POWERS.ROCKET || p.activePower === POWERS.SHIELD) {
+            const color = p.activePower.color;
+            p.activePower = null;
+            p.powerTimer = 0;
+            p.invuln = 45;
+            this.knockBackFrom(boss);
+            this.particles.spawn(p.x, p.y, color, 20, "blast");
+            sounds.play('powerup');
+            return;
+        }
+        if (boss.isExposed()) {
+            p.invuln = 30;
+            this.knockBackFrom(boss);
+            sounds.play('hit');
+            return;
+        }
+        this.die(true);
+    }
+
+    knockBackFrom(boss) {
+        const p = this.player;
+        p.vx = (p.x + p.w / 2 < boss.x + boss.w / 2) ? -9 : 9;
+        p.vy = -6;
+    }
+
+    // Boss down: bonus distance on the scoreboard (not the camera, so
+    // biomes don't skip and co-op stays aligned), a gem bounty, and the next
+    // boss a full loop further on.
+    onBossDefeated() {
+        this.state.bossActive = false;
+        this.state.runLoops = (this.state.runLoops || 0) + 1;
+        this.state.loops = (this.state.loops || 0) + 1;
+        localStorage.setItem('lp_loops', this.state.loops);
+        this.state.bonusScore += BOSS_BONUS_METERS * 10;
+        this.addShards(BOSS_GEM_BOUNTY);
+        this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
+        this.showAlert(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎`, 'reward');
+        sounds.play('powerup');
+    }
+
+    // Banks gems and pops the counter.
+    addShards(n) {
+        this.state.shards += n;
+        localStorage.setItem('lp_shards', this.state.shards);
+        if (this.ui.shardDisplay) {
+            this.ui.shardDisplay.innerText = this.state.shards + " 💎";
+            this.ui.shardDisplay.classList.remove('gem-pop');
+            void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
+            this.ui.shardDisplay.classList.add('gem-pop');
+        }
+    }
+
     // PHOENIX perk: coming back from a fall also hands out a random power-up.
     // Returns the power's name for the revive alert, or '' without the perk.
     phoenixBoost() {
@@ -1022,6 +1104,11 @@ class Game {
         // what identify the layout (for the ghost).
         this.state.runSeed = this.state.seed;
         this.state.startMeters = Math.floor(this.state.score / 10);
+        // Bosses beaten this run (drives drone difficulty) and where the next
+        // one appears. Measured from the start height, so a checkpoint start
+        // (The Void, 5000m) doesn't open straight into a boss.
+        this.state.runLoops = 0;
+        this.state.nextBossAt = this.state.startMeters + CONFIG.BOSS_LOOP_DISTANCE;
         this.state.powersCollected = 0;
         this.state.isNewBest = false;
         // Solo runs race (and record) a ghost of the day's best run on this
@@ -1246,6 +1333,9 @@ class Game {
     }
 
     die(forceDie = false) {
+        // Two hits in the same frame after the last life is spent must not
+        // end the run twice (double Hall of Fame entry, two interstitials).
+        if (!this.state.running) return;
         if (this.state.multiplayer) {
             this.handleMultiplayerDeath(forceDie);
             return;
@@ -1587,20 +1677,16 @@ class Game {
 
         this.recordGhost();
 
-        // Boss Fights & Loop Management
-        if (this.state.score > 0) {
-            let targetLoop = Math.floor(scoreMeters / CONFIG.BOSS_LOOP_DISTANCE);
-            if (targetLoop > (this.state.loops || 0)) {
-                if (!this.state.bossActive) {
-                    this.state.bossActive = true;
-                    this.enemies.push(new BossDrone(this.player.y - 600));
-                }
-            }
+        // Boss fights: one every BOSS_LOOP_DISTANCE metres of this run. It
+        // drops in from above the screen.
+        if (!this.state.bossActive && scoreMeters >= this.state.nextBossAt) {
+            this.state.bossActive = true;
+            this.enemies.push(new BossDrone(-120));
         }
 
         // Spawn Enemies (only if Boss isn't active)
         if (!this.state.bossActive && scoreMeters > 60 && this.tick('drone', dt, Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))))) {
-            const difficulty = 1 + (scoreMeters / 2000) + (this.state.loops || 0);
+            const difficulty = 1 + (scoreMeters / 2000) + (this.state.runLoops || 0);
 
             if (scoreMeters > 300 && Math.random() < Math.min(0.5, (scoreMeters - 300) / 2400)) {
                 this.enemies.push(new ShooterDrone(this.player.y - 500, difficulty));
@@ -1609,7 +1695,7 @@ class Game {
             }
         }
 
-        if (hazards.includes('laser') && this.tick('laser', dt, 240)) {
+        if (!this.state.bossActive && hazards.includes('laser') && this.tick('laser', dt, 240)) {
             this.enemies.push(new LaserDrone(this.player.y - 500));
         }
 
@@ -1622,6 +1708,7 @@ class Game {
             this.input.keys.right = tmp;
         }
 
+        this.player.prevBottom = this.player.y + this.player.h;
         // A dead co-op player's body is gone until they respawn: no physics,
         // no landing on platforms, no pickups.
         let event = this.player.isDead ? null : this.player.update(dt, this.input, this.platforms, this.powerups);
@@ -1678,14 +1765,7 @@ class Game {
         } else if (event === "thrust") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#ff3300", 2, "blast");
         } else if (event && event.event === "shard") {
-            this.state.shards += (event.value || 1) * (perks.shardMult || 1);
-            localStorage.setItem('lp_shards', this.state.shards);
-            if (this.ui.shardDisplay) {
-                this.ui.shardDisplay.innerText = this.state.shards + " 💎";
-                this.ui.shardDisplay.classList.remove('gem-pop');
-                void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
-                this.ui.shardDisplay.classList.add('gem-pop');
-            }
+            this.addShards((event.value || 1) * (perks.shardMult || 1));
             this.particles.spawn(event.x + 8, event.y + 8, "#00ffff", 10);
             sounds.play('powerup');
         } else if (event && event.event === "powerup") {
@@ -1705,38 +1785,28 @@ class Game {
 
             if (e instanceof ShooterDrone) {
                 e.update(enemyDt, this.player, this.projectiles);
-            } else if (e.constructor.name === "BossDrone") {
-                e.update(enemyDt, this.player, this.projectiles);
+            } else if (e instanceof BossDrone) {
+                e.update(enemyDt, this.bossFocus(), this.projectiles);
             } else {
                 e.update(enemyDt);
             }
 
             if (e.markedForDeletion) {
-                if (e.constructor.name === "BossDrone") {
-                    this.state.bossActive = false;
-                    this.state.loops = (this.state.loops || 0) + 1;
-                    localStorage.setItem('lp_loops', this.state.loops);
-                    this.showAlert(`LOOP ${this.state.loops} SECURED`, 'reward');
-                    this.state.score += 50000; // 5000m bonus
-                }
+                if (e instanceof BossDrone) this.onBossDefeated();
                 this.enemies.splice(i, 1);
                 continue;
             }
-            if (e.hidden || this.player.invuln > 0) continue;
+            if (e.hidden || this.player.invuln > 0 || this.player.isDead) continue;
             if (rectsIntersect(this.player, e)) {
-                if (e.constructor.name === "BossDrone" && this.player.vy > 0 && this.player.y + this.player.h < e.y + 40) {
-                    e.takeDamage(this.particles);
-                    this.player.vy = CONFIG.BOUNCE_FORCE;
-                    sounds.play('jump');
+                if (e instanceof BossDrone) {
+                    this.resolveBossContact(e);
                     continue;
                 }
-                // Crashing with the jetpack just burns it out; the boss can't be
-                // rammed to death, so it grants a moment of immunity instead.
+                // Crashing with the jetpack just burns it out (and the drone).
                 if (this.player.activePower === POWERS.ROCKET) {
                     this.player.activePower = null;
                     this.player.powerTimer = 0;
-                    if (e.constructor.name === "BossDrone") this.player.invuln = 45;
-                    else e.markedForDeletion = true;
+                    e.markedForDeletion = true;
                     this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
                     sounds.play('powerup');
                     continue;

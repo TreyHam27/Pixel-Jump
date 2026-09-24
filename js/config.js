@@ -39,6 +39,30 @@ const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
 const GHOST_STEP = 6;
 const GHOST_MAX_POINTS = 20000;
 
+// Boss fight tuning, in 60fps frames of game time. The boss hovers above the
+// player firing volleys, then telegraphs a dive (a warning column shows the
+// lane), swoops down to the player's level and sits there exposed: land on
+// top of it to deal damage. Below half health it rages (shorter windows,
+// wider volleys).
+const BOSS = {
+    HOVER_OFFSET: 380,   // hover this far above the player it's tracking
+    HOVER_MIN_Y: 30,     // ...but never higher than this on screen
+    HOVER: 150, HOVER_RAGE: 90,           // time between dives
+    VOLLEY: 80, VOLLEY_RAGE: 55,          // time between volleys while hovering
+    TELEGRAPH: 50, TELEGRAPH_RAGE: 38,    // warning before the dive
+    WINDUP: 30,          // how far it rears back while telegraphing
+    DIVE_SPEED: 16,      // px per frame
+    EXPOSED: 90,         // how long it sits at the player's level
+    RECOVER: 45,         // time to climb back to hover height
+    HIT_INVULN: 40,      // invulnerability after each hit
+    ABOVE_FEET: 50       // exposed: its top sits this far above the target's feet
+};
+// Beating the boss: bonus distance (score only, the camera doesn't move) and
+// a gem bounty (not doubled by GEMS x2). The next boss is BOSS_LOOP_DISTANCE
+// metres further on.
+const BOSS_BONUS_METERS = 500;
+const BOSS_GEM_BOUNTY = 150;
+
 // Each biome's `hazards` list is cumulative: once a hazard is introduced by a
 // biome, it stays active in every later biome too (by The Void, everything is
 // stacked at once — that's the intended "hardest tier" feel).
