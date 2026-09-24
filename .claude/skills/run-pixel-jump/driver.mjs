@@ -11,6 +11,9 @@
 //   jump             tap Space (one jump; only fires while grounded/coyote)
 //   wait <ms>        sleep
 //   click <sel>      force-click a CSS selector (e.g. '#to-mp-btn', '#shop-open-btn')
+//   tap <sel>        touch-tap a selector (needs PJ_TOUCH=1); goes through real
+//                    touch events, so it catches taps the game swallows
+//   key <key>        press a key by Playwright name (e.g. Escape, Enter, KeyP)
 //   ss <name>        screenshot -> $PJ_OUT/<name>.png
 //   score            print #score-display text
 //   text <sel>       print textContent of a selector
@@ -19,7 +22,9 @@
 //                    (e.g. '__game.state.score', '__game.player.y')
 //
 // Env: PJ_OUT (screenshot dir, default ./pj-shots), PJ_PORT (default 8765),
-//      PJ_W / PJ_H (viewport, default 1200x800).
+//      PJ_W / PJ_H (viewport, default 1200x800, or 390x844 with PJ_TOUCH=1),
+//      PJ_TOUCH=1 (emulate a phone: touch events, mobile viewport; `start`
+//      then taps instead of clicking).
 // Exits 1 if the page threw any error or logged console.error.
 import { createRequire } from 'module';
 import { spawn } from 'child_process';
@@ -55,8 +60,13 @@ let browser;
 try {
     await waitForServer();
     browser = await chromium.launch();
+    const touch = process.env.PJ_TOUCH === '1';
     const page = await browser.newPage({
-        viewport: { width: Number(process.env.PJ_W || 1200), height: Number(process.env.PJ_H || 800) }
+        viewport: {
+            width: Number(process.env.PJ_W || (touch ? 390 : 1200)),
+            height: Number(process.env.PJ_H || (touch ? 844 : 800))
+        },
+        ...(touch ? { hasTouch: true, isMobile: true } : {})
     });
     page.on('pageerror', e => errs.push('pageerror: ' + e.message));
     page.on('console', m => { if (m.type() === 'error') errs.push('console.error: ' + m.text()); });
@@ -75,12 +85,17 @@ try {
         const cmd = steps[i];
         const arg = () => steps[++i];
         switch (cmd) {
-            case 'start': await page.click('#start-prompt', { force: true }); break;
+            case 'start':
+                if (touch) await page.tap('#start-prompt', { force: true });
+                else await page.click('#start-prompt', { force: true });
+                break;
             case 'left': await hold('ArrowLeft', Number(arg())); break;
             case 'right': await hold('ArrowRight', Number(arg())); break;
             case 'jump': await page.keyboard.press('Space'); break;
             case 'wait': await page.waitForTimeout(Number(arg())); break;
             case 'click': await page.click(arg(), { force: true }); break;
+            case 'tap': await page.tap(arg(), { force: true }); break;
+            case 'key': await page.keyboard.press(arg()); break;
             case 'ss': { const f = path.join(out, arg() + '.png'); await page.screenshot({ path: f }); console.log('screenshot:', f); break; }
             case 'score': console.log('score:', await page.textContent('#score-display')); break;
             case 'text': { const s = arg(); console.log(`${s}:`, await page.textContent(s)); break; }

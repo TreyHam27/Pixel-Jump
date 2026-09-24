@@ -1,0 +1,9 @@
+{
+  "name": "pixel-jump",
+  "private": true,
+  "description": "Pixel Jump: an HTML5 canvas endless vertical jumper (no build step).",
+  "scripts": {
+    "test": "node tests/run_all.js",
+    "serve": "python3 -m http.server 8765"
+  }
+}
