@@ -45,8 +45,11 @@ function unrefTimers() {
     }
 }
 
-function setupMocks() {
-    unrefTimers();
+// Async tests (ones that await timers) pass { realTimers: true }: with
+// unref'd timers node could run out of work mid-test and exit 0 silently.
+// They should also call failIfUnfinished() and end with process.exit().
+function setupMocks(opts = {}) {
+    if (!opts.realTimers) unrefTimers();
     const store = {};
     global.localStorage = {
         getItem: (k) => Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null,
@@ -95,4 +98,14 @@ function loadGameSource() {
         .replace(/window\.onload[\s\S]*$/, '');
 }
 
-module.exports = { setupMocks, loadGameSource, sleep };
+// For async tests that finish with process.exit(): if node instead runs out
+// of work first (a promise that never settled), fail loudly rather than
+// exiting 0 as if everything passed.
+function failIfUnfinished() {
+    process.on('beforeExit', () => {
+        console.error("FAILED: the test exited before finishing (a promise never settled)");
+        process.exit(1);
+    });
+}
+
+module.exports = { setupMocks, loadGameSource, sleep, failIfUnfinished };

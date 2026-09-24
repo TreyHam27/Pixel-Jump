@@ -22,11 +22,8 @@ class Entity {
 class Player extends Entity {
     constructor(x, y, skinIndex = 0) {
         super(x, y, 26, 26, "#fff");
-        this.skin = SKINS[skinIndex];
+        this.skin = SKINS[skinIndex] || SKINS[0];
         this.color = this.skin.color;
-        this.w = 26;
-        this.h = 26;
-        this.color = SKINS[skinIndex] ? SKINS[skinIndex].color : "#00ffcc";
         this.isDead = false;
         this.grounded = false;
         this.coyote = 0;
@@ -47,7 +44,7 @@ class Player extends Entity {
     }
 
     setSkin(index) {
-        this.skin = SKINS[index];
+        this.skin = SKINS[index] || SKINS[0];
         this.color = this.skin.color;
     }
 

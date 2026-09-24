@@ -267,26 +267,28 @@ class Game {
                     this.enterPartyView(code);
                     this.setMpStatus("WAITING FOR PLAYERS...", 'success');
                 } catch (err) {
-                    this.setMpStatus("HOST FAILED — TRY AGAIN", 'danger');
-                    this.setMpSetupBusy(false);
+                    this.showSetupError(err, "HOST FAILED — TRY AGAIN");
                 }
             };
 
             this.ui.mpJoinBtn.onclick = async () => {
-                const code = this.ui.mpJoinInput.value.trim();
-                if (code.length === 6) {
-                    this.setMpSetupBusy(true);
-                    this.setMpStatus("CONNECTING...", 'pending');
-                    try {
-                        await window.network.join(code);
-                    } catch (err) {
-                        this.setMpStatus("CONNECTION FAILED — TRY AGAIN", 'danger');
-                        this.setMpSetupBusy(false);
-                    }
-                } else {
+                // Codes never contain 0/O, 1/I or L, so a typo is caught here
+                // instead of after a minute of connection attempts.
+                if (!normalizeRoomCode(this.ui.mpJoinInput.value)) {
                     this.setMpStatus("INVALID CODE", 'danger');
+                    return;
+                }
+                this.setMpSetupBusy(true);
+                this.setMpStatus("CONNECTING...", 'pending');
+                try {
+                    await window.network.join(this.ui.mpJoinInput.value);
+                } catch (err) {
+                    this.showSetupError(err, "CONNECTION FAILED — TRY AGAIN");
                 }
             };
+            this.ui.mpJoinInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') this.ui.mpJoinBtn.onclick();
+            });
 
             this.ui.mpStartBtn.onclick = () => {
                 if (this.state.isHost && this.party.length >= 2 && !this.state.running) {
@@ -305,10 +307,14 @@ class Game {
                 this.state.isHost = false;
                 this.setMpStatus("SYNCHRONIZING...", 'pending');
 
-                // Handshake Retry Loop for Guest
-                // Ensures the host DEFINITELY gets the name even if the first packet is lost
+                // Resend the introduction every second until the host acks it,
+                // giving up after 10 tries (the host drops silent joiners too).
+                let tries = 0;
                 const sendHandshake = () => {
-                    console.log("MP: Sending Handshake...");
+                    if (++tries > 10) {
+                        this.leaveParty("COULDN'T JOIN — TRY AGAIN", 'danger');
+                        return;
+                    }
                     window.network.send({ type: 'handshake', name: this.getMpName(), v: NET_PROTOCOL, build: GAME_VERSION });
                 };
                 if (this.handshakeInterval) clearInterval(this.handshakeInterval);
@@ -332,20 +338,10 @@ class Game {
                 this.leaveParty("LOST CONNECTION TO HOST", 'danger');
             };
 
+            // Errors in a live session (host/join failures come back through
+            // their own promises, see showSetupError).
             window.network.onError = (err) => {
-                let msg = "CONNECTION FAILED";
-                if (err.type === 'connection-timeout') {
-                    msg = "TIMED OUT — CODE MAY BE INVALID";
-                } else if (err.type === 'peer-unavailable') {
-                    msg = "CODE NOT FOUND — CHECK & RETRY";
-                } else if (err.type === 'signaling-timeout') {
-                    msg = "CAN'T REACH SERVER — CHECK CONNECTION";
-                } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
-                    msg = "NETWORK ERROR — CHECK CONNECTION";
-                }
-                this.setMpStatus(msg, 'danger');
-                // Only a failed host/join attempt should unlock the setup
-                // cards; errors inside a live party just update the status.
+                this.setMpStatus(this.netErrorMessage(err, "CONNECTION FAILED"), 'danger');
                 if (!this.inParty()) this.setMpSetupBusy(false);
             };
 
@@ -409,6 +405,24 @@ class Game {
         this.ui.mpStatus.innerText = text;
         if (state) this.ui.mpStatus.dataset.state = state;
         else delete this.ui.mpStatus.dataset.state;
+    }
+
+    netErrorMessage(err, fallback) {
+        const type = err && err.type;
+        if (type === 'invalid-code') return "INVALID CODE";
+        if (type === 'connection-timeout') return "TIMED OUT — CODE MAY BE INVALID";
+        if (type === 'peer-unavailable') return "CODE NOT FOUND — CHECK & RETRY";
+        if (type === 'signaling-timeout') return "CAN'T REACH SERVER — CHECK CONNECTION";
+        if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(type)) return "NETWORK ERROR — CHECK CONNECTION";
+        return fallback;
+    }
+
+    // A host/join attempt failed. One that was cancelled (the player left or
+    // started another attempt) says nothing: the newer action owns the UI.
+    showSetupError(err, fallback) {
+        if (err && err.type === 'cancelled') return;
+        this.setMpStatus(this.netErrorMessage(err, fallback), 'danger');
+        if (!this.inParty()) this.setMpSetupBusy(false);
     }
 
     // Disables both setup actions while a host/join attempt is in flight.
@@ -531,19 +545,38 @@ class Game {
     }
 
     addRemotePlayer(member, skinIndex = 0) {
+        if (!SKINS[skinIndex]) skinIndex = 0;
         const rp = new Player(CONFIG.WIDTH / 2, CONFIG.HEIGHT - 150, skinIndex);
         rp.name = member.name;
         rp.slot = member.slot;
         rp.skinIndex = skinIndex;
+        rp.lastSeenT = this.state.time;
         this.remotePlayers.set(member.pid, rp);
         return rp;
+    }
+
+    // Remote input is untrusted: keep only known fields, as finite numbers
+    // in sane ranges. Returns null for a packet that's unusable.
+    sanitizeSync(d) {
+        const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v)) ? Math.max(lo, Math.min(hi, v)) : null;
+        const x = num(d.x, -100, CONFIG.WIDTH + 100);
+        const y = num(d.y, -1e8, 1e5);
+        if (x === null || y === null) return null;
+        const skinIndex = Number.isInteger(d.skinIndex) && SKINS[d.skinIndex] ? d.skinIndex : 0;
+        const power = Object.values(POWERS).find(p => p.id === d.activePowerId);
+        return {
+            type: 'sync', x, y,
+            vx: num(d.vx, -50, 50) || 0,
+            vy: num(d.vy, -50, 50) || 0,
+            skinIndex,
+            activePowerId: power ? power.id : null
+        };
     }
 
     // Host: a guest introduced themselves — seat them in the lowest free slot.
     handleHandshake(data, fromId) {
         if (!this.state.isHost) return;
         const net = window.network;
-        console.log("MP: Received Handshake from", data.name);
 
         // Different builds generate different levels (and may disagree on
         // the Pixel list), so they can't share a run.
@@ -583,11 +616,30 @@ class Game {
 
     handleNetworkData(data, fromId) {
         const net = window.network;
+        if (!data || typeof data.type !== 'string') return;
+
+        // Trust boundaries: a host only takes introductions and gameplay
+        // traffic from guests (never party control messages), and a guest
+        // only listens to its host.
+        if (this.state.isHost) {
+            if (!['handshake', 'sync', 'die', 'revive'].includes(data.type)) return;
+        } else if (net.friendId && fromId !== net.friendId) {
+            return;
+        }
+
+        if (data.type === 'sync') {
+            const clean = this.sanitizeSync(data);
+            if (!clean) return;
+            clean.pid = this.state.isHost ? fromId : String(data.pid);
+            data = clean;
+        } else if (data.type === 'die' || data.type === 'revive') {
+            data = { type: data.type, pid: this.state.isHost ? fromId : String(data.pid) };
+        }
 
         // The host is the hub: relay every guest's gameplay traffic to the
-        // rest of the party, stamped with the sender's ID so it can't be spoofed.
+        // rest of the party (a clean copy, stamped with the sender's ID so it
+        // can't be spoofed).
         if (this.state.isHost && (data.type === 'sync' || data.type === 'die' || data.type === 'revive')) {
-            data.pid = fromId;
             net.broadcastExcept(fromId, data);
         }
 
@@ -595,7 +647,6 @@ class Game {
             this.handleHandshake(data, fromId);
         } else if (data.type === 'handshake_ack') {
             if (this.state.isHost) return;
-            console.log("MP: Received Handshake ACK");
             if (this.handshakeInterval) clearInterval(this.handshakeInterval);
             this.handshakeInterval = null;
             if (data.v !== NET_PROTOCOL) {
@@ -603,7 +654,7 @@ class Game {
                 return;
             }
             this.applyParty(data.party);
-            this.enterPartyView(net.friendId);
+            this.enterPartyView(net.code || net.friendId);
             this.setMpStatus("WAITING FOR LEADER TO START...", 'success');
         } else if (data.type === 'party') {
             if (!this.state.isHost) this.applyParty(data.party);
@@ -629,7 +680,7 @@ class Game {
                 if (!member) return;
                 rp = this.addRemotePlayer(member, data.skinIndex);
             }
-            if (SKINS[data.skinIndex] && rp.skinIndex !== data.skinIndex) {
+            if (rp.skinIndex !== data.skinIndex) {
                 rp.setSkin(data.skinIndex);
                 rp.skinIndex = data.skinIndex;
             }
@@ -637,11 +688,8 @@ class Game {
             rp.y = data.y + this.state.score;
             rp.vx = data.vx;
             rp.vy = data.vy;
-            if (data.activePowerId) {
-                rp.activePower = Object.values(POWERS).find(p => p.id === data.activePowerId);
-            } else {
-                rp.activePower = null;
-            }
+            rp.lastSeenT = this.state.time;
+            rp.activePower = data.activePowerId ? Object.values(POWERS).find(p => p.id === data.activePowerId) : null;
         } else if (data.type === 'die') {
             const rp = this.remotePlayers.get(data.pid);
             if (rp) rp.isDead = true;
@@ -1441,9 +1489,31 @@ class Game {
         }
     }
 
+    // A teammate whose updates stopped (tab in the background, frozen
+    // browser) is "away": after REMOTE_AWAY_FRAMES they no longer steer the
+    // camera or the invisible ceiling, and after REMOTE_GONE_FRAMES they count
+    // as down, so a frozen avatar can't hold everyone else in place or keep a
+    // finished run alive forever.
+    remoteAway(rp) {
+        return this.state.time - (rp.lastSeenT || 0) > REMOTE_AWAY_FRAMES;
+    }
+
+    remoteDown(rp) {
+        return rp.isDead || this.state.time - (rp.lastSeenT || 0) > REMOTE_GONE_FRAMES;
+    }
+
+    // Anyone else still in the run (alive, and not gone quiet).
     anyRemoteAlive() {
         for (const rp of this.remotePlayers.values()) {
-            if (!rp.isDead) return true;
+            if (!this.remoteDown(rp)) return true;
+        }
+        return false;
+    }
+
+    // Anyone else actively playing right now (for the camera and ceiling).
+    anyRemoteActive() {
+        for (const rp of this.remotePlayers.values()) {
+            if (!rp.isDead && !this.remoteAway(rp)) return true;
         }
         return false;
     }
@@ -1752,7 +1822,7 @@ class Game {
         }
 
         // Invisible ceiling in multiplayer so the fast player doesn't go off screen
-        if (this.state.multiplayer && !this.player.isDead && this.anyRemoteAlive()) {
+        if (this.state.multiplayer && !this.player.isDead && this.anyRemoteActive()) {
             if (this.player.y < 0) {
                 this.player.y = 0;
                 if (this.player.vy < 0) this.player.vy = 0; // head bump
@@ -1910,7 +1980,7 @@ class Game {
         if (this.state.multiplayer) {
             const aliveYs = [];
             if (!this.player.isDead) aliveYs.push(this.player.y);
-            this.remotePlayers.forEach(rp => { if (!rp.isDead) aliveYs.push(rp.y); });
+            this.remotePlayers.forEach(rp => { if (!rp.isDead && !this.remoteAway(rp)) aliveYs.push(rp.y); });
             targetY = aliveYs.length ? Math.max(...aliveYs) : threshold + 1; // everyone dead: no scroll
         }
 
@@ -1924,6 +1994,13 @@ class Game {
         if (heightMeters > this.state.bestHeight) {
             this.state.bestHeight = heightMeters;
             localStorage.setItem('lp_best_height', heightMeters);
+        }
+
+        // Dead and waiting to respawn while the rest of the party went quiet:
+        // end the run rather than wait forever.
+        if (this.state.multiplayer && this.player.isDead && !this.anyRemoteAlive()) {
+            this.checkAllDead();
+            if (!this.state.running) return;
         }
 
         let displayScore = this.runScore();
@@ -1999,8 +2076,11 @@ class Game {
             // Name tags in each player's party-slot colour.
             this.remotePlayers.forEach(rp => {
                 if (rp.isDead) return;
+                const away = this.remoteAway(rp);
+                if (away) this.renderer.ctx.globalAlpha = 0.35;
                 rp.draw(this.renderer.ctx);
-                this.renderer.drawText(rp.name || 'PLAYER', rp.x + 13, rp.y - 10, "10px Courier New", PARTY_COLORS[rp.slot] || "#00ffcc");
+                this.renderer.drawText((rp.name || 'PLAYER') + (away ? ' (AWAY)' : ''), rp.x + 13, rp.y - 10, "10px Courier New", PARTY_COLORS[rp.slot] || "#00ffcc");
+                this.renderer.ctx.globalAlpha = 1;
             });
             if (!this.player.isDead) {
                 const me = this.party.find(m => m.pid === window.network.myId);
