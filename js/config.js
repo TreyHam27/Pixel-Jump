@@ -8,8 +8,8 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.5.0';
-const NET_PROTOCOL = 2;
+const GAME_VERSION = '1.6.0';
+const NET_PROTOCOL = 3;
 
 const CONFIG = {
     WIDTH: 600,
@@ -107,6 +107,12 @@ const EXTRA_ICE_SERVERS = [];
 // threshold they count as down when deciding whether the run is over.
 const REMOTE_AWAY_FRAMES = 150;
 const REMOTE_GONE_FRAMES = 600;
+// Co-op enemies are run by the host and mirrored by guests: snapshots every
+// NET_SNAPSHOT_FRAMES (15/s); a guest's own kill is hidden for
+// NET_TOMBSTONE_FRAMES so a snapshot sent before the host heard about it
+// can't bring the enemy back.
+const NET_SNAPSHOT_FRAMES = 4;
+const NET_TOMBSTONE_FRAMES = 60;
 const PARTY_COLORS = ['#00ffff', '#ff3cf0', '#ffe600', '#ff8a00'];
 
 // Every Pixel carries a stable `id`. Saves (lp_owned_skins, lp_skin) store

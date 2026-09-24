@@ -196,7 +196,9 @@ class Game {
             setTouch: document.getElementById("set-touch"),
             challengeHud: document.getElementById("challenge-hud"),
             runShareBtn: document.getElementById("run-share-btn"),
-            shareToast: document.getElementById("share-toast")
+            shareToast: document.getElementById("share-toast"),
+            spectateHud: document.getElementById("spectate-hud"),
+            mpCodeCopyBtn: document.getElementById("mp-code-copy-btn")
         };
         this.touchPads = this.ui.touchControls && this.ui.touchControls.querySelectorAll
             ? {
@@ -407,6 +409,13 @@ class Game {
             this.ui.mpLeaveBtn.onclick = () => {
                 this.leaveParty("LEFT THE PARTY");
             };
+
+            if (this.ui.mpCodeCopyBtn) {
+                this.ui.mpCodeCopyBtn.onclick = (e) => {
+                    if (e && e.stopPropagation) e.stopPropagation();
+                    this.shareRoomCode();
+                };
+            }
 
             // Guest: data channel to the host is open — introduce ourselves.
             window.network.onConnected = () => {
@@ -829,6 +838,26 @@ class Game {
         if (!this.inParty()) this.setMpSetupBusy(false);
     }
 
+    // COPY CODE: the share sheet on phones, the clipboard elsewhere.
+    async shareRoomCode() {
+        const code = (window.network && window.network.code) || this.ui.mpPartyCode.innerText;
+        const nav = typeof navigator !== 'undefined' ? navigator : {};
+        try {
+            if (this.coarsePointer && nav.share) {
+                await nav.share({ title: 'Pixel Jump', text: `Join my Pixel Jump party! Room code: ${code}`, url: SITE_URL });
+                return;
+            }
+            if (nav.clipboard && nav.clipboard.writeText) {
+                await nav.clipboard.writeText(code);
+                this.setMpStatus("CODE COPIED — SEND IT TO A FRIEND", 'success');
+                return;
+            }
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;
+        }
+        this.setMpStatus("ROOM CODE: " + code, 'success');
+    }
+
     // Disables both setup actions while a host/join attempt is in flight.
     setMpSetupBusy(busy) {
         this.ui.mpHostBtn.disabled = busy;
@@ -996,7 +1025,13 @@ class Game {
             return;
         }
 
-        const name = String(data.name || 'Player').slice(0, 10);
+        let name = String(data.name || 'PLAYER').toUpperCase().slice(0, 10);
+        // Two players called PLAYER become PLAYER and PLAYER 2.
+        const taken = new Set(this.party.filter(m => m.pid !== fromId).map(m => m.name));
+        for (let n = 2; taken.has(name); n++) {
+            const suffix = ' ' + n;
+            name = String(data.name || 'PLAYER').toUpperCase().slice(0, 10 - suffix.length) + suffix;
+        }
         let member = this.party.find(m => m.pid === fromId);
         if (!member) {
             if (this.party.length >= MAX_PARTY_SIZE) {
@@ -1026,7 +1061,7 @@ class Game {
         // traffic from guests (never party control messages), and a guest
         // only listens to its host.
         if (this.state.isHost) {
-            if (!['handshake', 'sync', 'die', 'revive'].includes(data.type)) return;
+            if (!['handshake', 'sync', 'die', 'revive', 'hit', 'stomp'].includes(data.type)) return;
         } else if (net.friendId && fromId !== net.friendId) {
             return;
         }
@@ -1054,7 +1089,7 @@ class Game {
             if (this.handshakeInterval) clearInterval(this.handshakeInterval);
             this.handshakeInterval = null;
             if (data.v !== NET_PROTOCOL) {
-                this.leaveParty("HOST IS ON AN OLDER VERSION — BOTH REFRESH", 'danger');
+                this.leaveParty(`HOST IS ON AN OLDER VERSION (${data.build || 'OLD'}, YOU ${GAME_VERSION}) — BOTH REFRESH`, 'danger');
                 return;
             }
             this.applyParty(data.party);
@@ -1065,7 +1100,7 @@ class Game {
         } else if (data.type === 'party_full') {
             this.leaveParty(`PARTY IS FULL (${MAX_PARTY_SIZE}/${MAX_PARTY_SIZE})`, 'danger');
         } else if (data.type === 'version_mismatch') {
-            if (!this.state.isHost) this.leaveParty("VERSION MISMATCH — REFRESH THE PAGE", 'danger');
+            if (!this.state.isHost) this.leaveParty(`VERSION MISMATCH (HOST ${data.build || '?'}, YOU ${GAME_VERSION}) — REFRESH THE PAGE`, 'danger');
         } else if (data.type === 'party_busy') {
             this.leaveParty("RUN IN PROGRESS — TRY AGAIN SOON", 'danger');
         } else if (data.type === 'party_closed') {
@@ -1088,8 +1123,15 @@ class Game {
                 rp.setSkin(data.skinIndex);
                 rp.skinIndex = data.skinIndex;
             }
-            rp.x = data.x;
-            rp.y = data.y + this.state.score;
+            // Remote players glide toward their latest reported position
+            // (see followRemote) instead of jumping 30 times a second; the
+            // first update after spawning or reviving places them at once.
+            rp.net = { x: data.x, wy: data.y, vx: data.vx, vy: data.vy, t: this.state.time };
+            if (rp.snapNext !== false) {
+                rp.x = data.x;
+                rp.y = data.y + this.state.score;
+                rp.snapNext = false;
+            }
             rp.vx = data.vx;
             rp.vy = data.vy;
             rp.lastSeenT = this.state.time;
@@ -1103,9 +1145,254 @@ class Game {
             if (rp) {
                 rp.isDead = false;
                 rp.y = this.player.y - 100; // spawn above
+                rp.snapNext = true;
                 this.particles.spawn(rp.x, rp.y, PARTY_COLORS[rp.slot] || "#00ffcc", 40, "blast");
             }
+        } else if (data.type === 'snap') {
+            if (!this.state.isHost) this.applySnapshot(data);
+        } else if (data.type === 'ps') {
+            if (!this.state.isHost) this.applyProjectileSpawn(data);
+        } else if (data.type === 'hit') {
+            if (this.state.isHost) this.applyHitRequest(data);
+        } else if (data.type === 'stomp') {
+            if (this.state.isHost) this.applyStompRequest(data);
+        } else if (data.type === 'boss_down') {
+            if (!this.state.isHost && this.state.running && this.state.multiplayer) this.onBossDefeated();
         }
+    }
+
+    // ------------------------------------------------------ co-op enemies
+    // Solo, or the co-op host: this client runs the enemies. Guests mirror
+    // the host's (drawn and collided with locally, but spawned, moved and
+    // killed only by the host), so the whole party faces the same drones.
+    isAuthority() {
+        return !this.state.multiplayer || this.state.isHost;
+    }
+
+    // Every living player (this one and the others), for enemy targeting.
+    livingPlayers() {
+        const list = [];
+        if (!this.player.isDead) list.push({ p: this.player, slot: this.mySlot() });
+        this.remotePlayers.forEach(rp => {
+            if (!rp.isDead && !this.remoteAway(rp)) list.push({ p: rp, slot: rp.slot || 0 });
+        });
+        return list;
+    }
+
+    mySlot() {
+        const me = this.party.find(m => window.network && m.pid === window.network.myId);
+        return me ? me.slot : 0;
+    }
+
+    // Shooter drones aim at the closest living player.
+    nearestPlayer(e) {
+        let best = this.player, bestD = Infinity;
+        for (const { p } of this.livingPlayers()) {
+            const d = Math.hypot(p.x - e.x, p.y - e.y);
+            if (d < bestD) { bestD = d; best = p; }
+        }
+        return best;
+    }
+
+    // The boss takes turns diving at each living player, by party slot.
+    nextDiveTarget() {
+        const list = this.livingPlayers().sort((a, b) => a.slot - b.slot);
+        if (!list.length) return this.player;
+        const pick = list[this.state.diveTurn % list.length].p;
+        this.state.diveTurn++;
+        return pick;
+    }
+
+    // TIME WARP slows every enemy for the whole party while anyone has it.
+    partyTimeWarp() {
+        const warped = p => p && !p.isDead && p.activePower === POWERS.TIME_WARP;
+        if (warped(this.player)) return true;
+        if (!this.state.multiplayer) return false;
+        for (const rp of this.remotePlayers.values()) if (warped(rp)) return true;
+        return false;
+    }
+
+    // Host: number anything new, announce new projectiles (guests fly them
+    // on their own), and send an enemy snapshot 15 times a second.
+    broadcastEnemies(dt) {
+        const net = window.network;
+        const r1 = v => Math.round(v * 10) / 10;
+        for (const e of this.enemies) if (e.nid === undefined) e.nid = ++this.nextNid;
+        for (const q of this.projectiles) {
+            if (q.nid !== undefined) continue;
+            q.nid = ++this.nextNid;
+            net.send({ type: 'ps', nid: q.nid, k: q instanceof Meteor ? 1 : 0, x: r1(q.x), wy: r1(q.y - this.state.score), vx: r1(q.vx), vy: r1(q.vy) });
+        }
+        if (this.tick('snap', dt, NET_SNAPSHOT_FRAMES)) net.send(this.buildSnapshot());
+    }
+
+    // Enemy rows are positional arrays to keep packets small:
+    //   drone/shooter [nid, 0|1, x, wy, v, hidden, warning]
+    //   laser         [nid, 2, x, wy, phase, w, h]
+    //   boss          [nid, 3, x, wy, state, hp, invuln, laneX, anchorWy]
+    // plus the ids of every live projectile (anything missing is gone).
+    buildSnapshot() {
+        const score = this.state.score;
+        const r1 = v => Math.round(v * 10) / 10;
+        const e = [];
+        for (const en of this.enemies) {
+            if (en.markedForDeletion || en.nid === undefined) continue;
+            const wy = Math.round(en.y - score);
+            if (en instanceof BossDrone) {
+                e.push([en.nid, 3, r1(en.x), wy, BOSS_STATES.indexOf(en.state), en.hp, en.invuln > 0 ? 1 : 0, r1(en.laneX), Math.round(en.anchorY - score)]);
+            } else if (en instanceof LaserDrone) {
+                e.push([en.nid, 2, r1(en.x), wy, LASER_PHASES.indexOf(en.phase), en.w, en.h]);
+            } else {
+                e.push([en.nid, en instanceof ShooterDrone ? 1 : 0, r1(en.x), wy, r1(en.v), en.hidden ? 1 : 0,
+                    en.shootTimer !== undefined && en.shootTimer < 20 ? 1 : 0]);
+            }
+        }
+        const p = this.projectiles.filter(q => q.nid !== undefined && !q.markedForDeletion).map(q => q.nid);
+        return { type: 'snap', e, p };
+    }
+
+    // Guest: bring the mirrored enemies in line with a host snapshot.
+    applySnapshot(d) {
+        if (!this.state.running || !this.state.multiplayer || !Array.isArray(d.e) || !Array.isArray(d.p)) return;
+        const now = this.state.time;
+        for (const [nid, until] of this.tombstones) if (until < now) this.tombstones.delete(nid);
+
+        const seen = new Set();
+        for (const row of d.e) {
+            if (!Array.isArray(row) || !Number.isInteger(row[0]) || !row.slice(2, 4).every(Number.isFinite)) continue;
+            const [nid, kind] = row;
+            if (this.tombstones.has(nid)) continue;
+            seen.add(nid);
+            let en = this.netEnemies.get(nid);
+            if (!en) {
+                en = kind === 3 ? new BossDrone(row[3] + this.state.score)
+                    : kind === 2 ? new LaserDrone(row[3] + this.state.score)
+                    : kind === 1 ? new ShooterDrone(row[3] + this.state.score)
+                    : new Drone(row[3] + this.state.score);
+                en.nid = nid;
+                en.x = row[2];
+                this.netEnemies.set(nid, en);
+                this.enemies.push(en);
+                if (en instanceof BossDrone) this.state.bossActive = true;
+            }
+            en.net = { x: row[2], wy: row[3], v: 0, t: now };
+            if (en instanceof BossDrone) {
+                en.state = BOSS_STATES[row[4]] || 'hover';
+                en.hp = Number.isFinite(row[5]) ? row[5] : en.hp;
+                en.invuln = row[6] ? Math.max(en.invuln, 1) : 0;
+                en.laneX = Number.isFinite(row[7]) ? row[7] : en.laneX;
+                en.anchorY = (Number.isFinite(row[8]) ? row[8] : row[3]) + this.state.score;
+            } else if (en instanceof LaserDrone) {
+                en.phase = LASER_PHASES[row[4]] || 'cooldown';
+                en.w = Number.isFinite(row[5]) ? row[5] : en.bodyW;
+                en.h = Number.isFinite(row[6]) ? row[6] : en.bodyH;
+            } else {
+                en.net.v = Number.isFinite(row[4]) ? row[4] : 0;
+                en.v = en.net.v || en.v;
+                en.hidden = !!row[5];
+                if (en instanceof ShooterDrone) en.shootTimer = row[6] ? 10 : 60;
+            }
+        }
+        for (const [nid, en] of this.netEnemies) {
+            if (!seen.has(nid)) { en.markedForDeletion = true; this.netEnemies.delete(nid); }
+        }
+        const live = new Set(d.p);
+        for (const q of this.projectiles) if (q.nid !== undefined && !live.has(q.nid)) q.markedForDeletion = true;
+    }
+
+    // Guest: a bullet or meteor the host just fired; it flies straight, so
+    // the guest simulates it from here.
+    applyProjectileSpawn(d) {
+        if (!this.state.running || !this.state.multiplayer) return;
+        if (!Number.isInteger(d.nid) || this.tombstones.has(d.nid)) return;
+        if (![d.x, d.wy, d.vx, d.vy].every(Number.isFinite)) return;
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const Kind = d.k === 1 ? Meteor : Projectile;
+        const q = new Kind(clamp(d.x, -100, CONFIG.WIDTH + 100), d.wy + this.state.score, clamp(d.vx, -20, 20), clamp(d.vy, -20, 20));
+        q.nid = d.nid;
+        this.projectiles.push(q);
+    }
+
+    // Guest: ease a mirrored enemy toward where the host last had it (drones
+    // are carried forward along their flight line between snapshots).
+    followNetEnemy(e, dt) {
+        const n = e.net;
+        if (e.t !== undefined) e.t += dt;
+        if (e.localInvuln > 0) e.localInvuln -= dt;
+        if (!n) return;
+        const ahead = Math.min(this.state.time - n.t, 8);
+        const tx = n.x + (n.v || 0) * ahead;
+        const ty = n.wy + this.state.score;
+        if (Math.abs(tx - e.x) > 80 || Math.abs(ty - e.y) > 80) {
+            e.x = tx;
+            e.y = ty;
+        } else {
+            const k = 1 - Math.pow(0.7, dt);
+            e.x += (tx - e.x) * k;
+            e.y += (ty - e.y) * k;
+        }
+    }
+
+    // Guest: ease a teammate toward their last reported position, carried a
+    // few frames forward by their velocity.
+    followRemote(rp, dt) {
+        const n = rp.net;
+        if (!n || rp.isDead) return;
+        const ahead = Math.min(this.state.time - n.t, 6);
+        const tx = n.x + n.vx * ahead;
+        const ty = n.wy + this.state.score + n.vy * ahead;
+        if (Math.abs(tx - rp.x) > 120 || Math.abs(ty - rp.y) > 120) {
+            rp.x = tx; // screen wraps and big corrections snap
+            rp.y = ty;
+        } else {
+            const k = 1 - Math.pow(0.6, dt);
+            rp.x += (tx - rp.x) * k;
+            rp.y += (ty - rp.y) * k;
+        }
+    }
+
+    // A jetpack or shield took something out. On a guest the host decides:
+    // hide it now (with a tombstone) and ask the host to remove it.
+    destroyHostile(obj) {
+        obj.markedForDeletion = true;
+        if (this.isAuthority() || obj.nid === undefined) return;
+        this.tombstones.set(obj.nid, this.state.time + NET_TOMBSTONE_FRAMES);
+        this.netEnemies.delete(obj.nid);
+        window.network.send({ type: 'hit', nid: obj.nid });
+    }
+
+    // Host: a guest's jetpack/shield kill (never the boss).
+    applyHitRequest(d) {
+        if (!this.state.running || !Number.isInteger(d.nid)) return;
+        const target = this.enemies.find(e => e.nid === d.nid && !(e instanceof BossDrone))
+            || this.projectiles.find(q => q.nid === d.nid);
+        if (target) target.markedForDeletion = true;
+    }
+
+    // Host: a guest landed on the boss. Its own invulnerability window
+    // de-duplicates stomps from several players at once.
+    applyStompRequest(d) {
+        if (!this.state.running || !Number.isInteger(d.nid)) return;
+        const boss = this.enemies.find(e => e instanceof BossDrone && e.nid === d.nid);
+        if (boss) boss.takeDamage(this.particles);
+    }
+
+    // Dead in co-op: the camera follows whoever is lowest; say who.
+    updateSpectateHud() {
+        const hud = this.ui.spectateHud;
+        if (!hud) return;
+        let name = null;
+        if (this.state.multiplayer && this.player.isDead) {
+            let lowest = null;
+            this.remotePlayers.forEach(rp => {
+                if (!rp.isDead && !this.remoteAway(rp) && (!lowest || rp.y > lowest.y)) lowest = rp;
+            });
+            if (lowest) name = lowest.name || 'PLAYER';
+        }
+        if (name === this.spectating) return;
+        this.spectating = name;
+        hud.hidden = !name;
+        if (name) hud.innerText = 'SPECTATING ' + name;
     }
 
     startMultiplayerGame(seed) {
@@ -1476,6 +1763,20 @@ class Game {
         const onTop = p.vy > 0 && (feet < boss.y + 40 || (p.prevBottom !== undefined && p.prevBottom <= boss.y + 12));
         if (onTop) {
             p.y = boss.y - p.h;
+            if (!this.isAuthority()) {
+                // Co-op guest: the host owns the boss's health. Bounce now,
+                // report the stomp, and don't re-report during its flash.
+                if (boss.invuln > 0 || boss.localInvuln > 0) {
+                    p.vy = CONFIG.JUMP_FORCE;
+                    return;
+                }
+                boss.localInvuln = BOSS.HIT_INVULN;
+                window.network.send({ type: 'stomp', nid: boss.nid });
+                this.particles.spawn(boss.x + boss.w / 2, boss.y + boss.h / 2, "#fff", 30, "blast");
+                p.vy = CONFIG.BOUNCE_FORCE;
+                sounds.play('jump');
+                return;
+            }
             if (boss.takeDamage(this.particles)) {
                 p.vy = CONFIG.BOUNCE_FORCE;
                 sounds.play('jump');
@@ -1573,7 +1874,7 @@ class Game {
         this.state.time = 0;
         // Spawn/animation clocks in 60fps-frame units of game time (see
         // tick()), so pacing is the same at 60, 120 or 144Hz.
-        this.state.timers = { drone: 0, laser: 0, meteor: 0, trail: 0, sync: 0 };
+        this.state.timers = { drone: 0, laser: 0, meteor: 0, trail: 0, sync: 0, snap: 0 };
         this.state.revived = false;
         // Multiplayer passes an explicit shared seed so host/guest generate
         // identical platform layouts; single-player falls back to the daily seed.
@@ -1629,6 +1930,13 @@ class Game {
         this.particles.scale = this.settings.reducedMotion ? 0.35 : 1;
         this.safetyNet = this.makeSafetyNetState();
         this.remotePlayers = new Map();
+        // Co-op enemies: the host numbers everything it spawns; guests keep
+        // mirrored copies by that number, plus tombstones for their own kills.
+        this.nextNid = 0;
+        this.netEnemies = new Map();
+        this.tombstones = new Map();
+        this.state.diveTurn = 0;
+        this.spectating = null;
 
         this.ui.power.style.opacity = 0;
         this.hideAlert();
@@ -2322,6 +2630,8 @@ class Game {
         if (this.ui.shareToast) this.ui.shareToast.hidden = true;
         this.updateTouchControls();
         if (this.ui.challengeHud) this.ui.challengeHud.hidden = true;
+        if (this.ui.spectateHud) this.ui.spectateHud.hidden = true;
+        this.spectating = null;
         this.showRunCard(finalScore);
     }
 
@@ -2449,24 +2759,28 @@ class Game {
 
         // Boss fights: one every BOSS_LOOP_DISTANCE metres of this run. It
         // drops in from above the screen.
-        if (!this.state.bossActive && scoreMeters >= this.state.nextBossAt) {
+        const authority = this.isAuthority();
+        if (authority && !this.state.bossActive && scoreMeters >= this.state.nextBossAt) {
             this.state.bossActive = true;
             this.enemies.push(new BossDrone(-120));
         }
 
         // Spawn Enemies (only if Boss isn't active)
-        if (!this.state.bossActive && scoreMeters > 60 && this.tick('drone', dt, Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))))) {
+        if (authority && !this.state.bossActive && scoreMeters > 60 && this.tick('drone', dt, Math.max(60, Math.floor(droneSpawnRate - (scoreMeters / 100))))) {
             const difficulty = 1 + (scoreMeters / 2000) + (this.state.runLoops || 0);
 
+            // Spawned relative to the camera's player (the lowest living one
+            // in co-op), so everyone sees them arrive.
+            const spawnY = this.bossFocus().y - 500;
             if (scoreMeters > 300 && Math.random() < Math.min(0.5, (scoreMeters - 300) / 2400)) {
-                this.enemies.push(new ShooterDrone(this.player.y - 500, difficulty));
+                this.enemies.push(new ShooterDrone(spawnY, difficulty));
             } else {
-                this.enemies.push(new Drone(this.player.y - 500, difficulty));
+                this.enemies.push(new Drone(spawnY, difficulty));
             }
         }
 
-        if (!this.state.bossActive && hazards.includes('laser') && this.tick('laser', dt, 240)) {
-            this.enemies.push(new LaserDrone(this.player.y - 500));
+        if (authority && !this.state.bossActive && hazards.includes('laser') && this.tick('laser', dt, 240)) {
+            this.enemies.push(new LaserDrone(this.bossFocus().y - 500));
         }
 
         // Glitch hazard: briefly invert left/right for this frame's input read only
@@ -2507,11 +2821,11 @@ class Game {
             let pulse = Math.sin(this.state.time * 0.05) * 0.3;
             this.player.vy += pulse * dt;
         }
-        if (hazards.includes('meteor') && this.tick('meteor', dt, 90)) {
+        if (authority && hazards.includes('meteor') && this.tick('meteor', dt, 90)) {
             let startX = Math.random() * CONFIG.WIDTH;
             let vx = (Math.random() - 0.5) * 4;
             let vy = 4 + Math.random() * 5;
-            this.projectiles.push(new Meteor(startX, this.player.y - 800, vx, vy));
+            this.projectiles.push(new Meteor(startX, this.bossFocus().y - 800, vx, vy));
         }
 
         // Platform Update
@@ -2552,22 +2866,33 @@ class Game {
         this.updateDronePulse(dt, perks);
 
         let enemyDt = dt;
-        if (this.player.activePower && this.player.activePower.name === "TIME WARP") enemyDt *= 0.3;
+        if (this.partyTimeWarp()) enemyDt *= 0.3;
+
+        if (this.state.multiplayer) this.remotePlayers.forEach(rp => this.followRemote(rp, dt));
 
         // Enemy Update
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             let e = this.enemies[i];
 
-            if (e instanceof ShooterDrone) {
-                e.update(enemyDt, this.player, this.projectiles);
+            if (!authority) {
+                this.followNetEnemy(e, enemyDt);
+            } else if (e instanceof ShooterDrone) {
+                e.update(enemyDt, this.nearestPlayer(e), this.projectiles);
             } else if (e instanceof BossDrone) {
-                e.update(enemyDt, this.bossFocus(), this.projectiles);
+                e.update(enemyDt, this.bossFocus(), this.projectiles, this.state.multiplayer ? () => this.nextDiveTarget() : undefined);
             } else {
                 e.update(enemyDt);
             }
 
             if (e.markedForDeletion) {
-                if (e instanceof BossDrone) this.onBossDefeated();
+                if (e instanceof BossDrone) {
+                    if (authority) {
+                        this.onBossDefeated();
+                        if (this.state.multiplayer) window.network.send({ type: 'boss_down' });
+                    } else {
+                        this.state.bossActive = false;
+                    }
+                }
                 this.enemies.splice(i, 1);
                 continue;
             }
@@ -2581,14 +2906,14 @@ class Game {
                 if (this.player.activePower === POWERS.ROCKET) {
                     this.player.activePower = null;
                     this.player.powerTimer = 0;
-                    e.markedForDeletion = true;
+                    this.destroyHostile(e);
                     this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
                     sounds.play('powerup');
                     continue;
                 }
                 if (this.player.activePower && this.player.activePower.name === "HARD SHIELD") {
                     this.player.activePower = null;
-                    e.markedForDeletion = true;
+                    this.destroyHostile(e);
                     this.particles.spawn(this.player.x, this.player.y, "#00ffaa", 20, "blast");
                     sounds.play('powerup');
                     continue;
@@ -2605,19 +2930,19 @@ class Game {
                 this.projectiles.splice(i, 1);
                 continue;
             }
-            if (this.player.invuln > 0) continue;
+            if (this.player.invuln > 0 || this.player.isDead) continue;
             if (rectsIntersect(this.player, p)) {
                 if (this.player.activePower === POWERS.ROCKET) {
                     this.player.activePower = null;
                     this.player.powerTimer = 0;
-                    p.markedForDeletion = true;
+                    this.destroyHostile(p);
                     this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
                     sounds.play('powerup');
                     continue;
                 }
                 if (this.player.activePower && this.player.activePower.name === "HARD SHIELD") {
                     this.player.activePower = null;
-                    p.markedForDeletion = true;
+                    this.destroyHostile(p);
                     this.particles.spawn(this.player.x, this.player.y, "#00ffaa", 20, "blast");
                     sounds.play('powerup');
                     continue;
@@ -2628,6 +2953,10 @@ class Game {
 
         this.particles.update(dt);
         this.updateSafetyNet(dt);
+        if (this.state.multiplayer) {
+            if (authority) this.broadcastEnemies(dt);
+            this.updateSpectateHud();
+        }
 
         // Position sync at 30Hz of game time (not per rendered frame, which
         // would be 2.4x the traffic on a 144Hz screen).
