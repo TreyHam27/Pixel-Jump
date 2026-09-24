@@ -50,7 +50,7 @@ try {
     g.update(1);
     assert(g.state.extraLives === 1, "a heart at 0 lives gives a life");
     assert(localStorage.getItem('lp_extraLives') === '1', "the new life is saved");
-    assert(g.ui.lifeDisplay.innerText === '❤ 1', "the hearts counter updates");
+    assert(g.ui.lifeDisplay.innerText === '1 ❤️', "the hearts counter updates");
     assert(g.powerups.length === 0, "the heart is used up");
     console.log("HEART PICKUP SUCCESS");
 
