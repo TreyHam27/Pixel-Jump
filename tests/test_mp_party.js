@@ -81,7 +81,7 @@ try {
 
     G3.ui.mpNameInput.value = '<b>x</b>';
     connect('g1'); connect('g2'); connect('g3');
-    assert(H.ui.mpPartyList.innerHTML.includes('&lt;b&gt;x&lt;/b&gt;') && !H.ui.mpPartyList.innerHTML.includes('<b>'),
+    assert(H.ui.mpPartyList.innerHTML.includes('&lt;B&gt;X&lt;/B&gt;') && !/<b>/i.test(H.ui.mpPartyList.innerHTML),
         "Player names must be HTML-escaped in the party list");
     assert(H.party.length === 4, "Party should have 4 members, has " + H.party.length);
     for (const g of [G1, G2, G3]) {

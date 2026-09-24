@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pixel Jump</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +19,7 @@
         <div id="ad-rail-left" class="ad-rail"></div>
         <div id="ad-rail-right" class="ad-rail"></div>
 
-        <canvas id="gameCanvas"></canvas>
+        <canvas id="gameCanvas" aria-label="Pixel Jump game">Pixel Jump needs a browser with canvas support.</canvas>
 
         <div id="ui-layer">
             <div id="hud">
@@ -36,9 +36,9 @@
                 </div>
             </div>
 
-            <div id="system-alert">
-                <span id="system-alert-icon">⚙</span>
-                <span id="system-alert-text">Infinite Mode loaded.</span>
+            <div id="system-alert" role="status" aria-live="polite">
+                <span id="system-alert-icon" aria-hidden="true"></span>
+                <span id="system-alert-text"></span>
             </div>
 
             <div id="touch-hint">LEFT SIDE: MOVE | RIGHT SIDE: JUMP</div>
@@ -48,9 +48,9 @@
                 <div id="revive-box">
                     <div id="revive-title">CONTINUE?</div>
                     <button id="revive-btn">
-                        <span>▶️</span> WATCH AD
+                        <span aria-hidden="true">▶️</span> WATCH AD
                     </button>
-                    <div id="revive-skip">No thanks, I'll die.</div>
+                    <button id="revive-skip">NO THANKS, I'LL DIE</button>
                 </div>
             </div>
 
@@ -60,13 +60,13 @@
                 <div id="ad-content">ADVERTISEMENT PLAYING...</div>
             </div>
             <!-- ACHIEVEMENT POP UP -->
-            <div id="achievement-pop"> badge unlocked </div>
+            <div id="achievement-pop" role="status" aria-live="polite"></div>
         </div>
 
         <div id="menus-wrapper">
             <!-- SINGLE PLAYER MENU (Main) -->
             <div id="menu-layer" class="menu-page">
-                <div class="mode-switch-arrow right" id="to-mp-btn">▶<br><span>MULTI<br>PLAYER</span></div>
+                <button class="mode-switch-arrow right" id="to-mp-btn" aria-label="Multiplayer"><span aria-hidden="true">▶</span><span class="mode-switch-label">MULTI<br>PLAYER</span></button>
 
                 <div class="page-title">PIXEL JUMP</div>
 
@@ -76,7 +76,7 @@
                 </div>
 
                 <div id="skin-container">
-                    <button class="nav-btn" id="prev-btn">&lt;</button>
+                    <button class="nav-btn" id="prev-btn" aria-label="Previous Pixel">&lt;</button>
                     <div id="skin-display">
                         <div id="skin-preview-box">
                             <div id="skin-eyes-l"></div>
@@ -86,14 +86,14 @@
                         <div id="skin-status">UNLOCKED</div>
                         <div id="skin-ability"></div>
                     </div>
-                    <button class="nav-btn" id="next-btn">&gt;</button>
+                    <button class="nav-btn" id="next-btn" aria-label="Next Pixel">&gt;</button>
                 </div>
 
                 <button id="shop-open-btn" class="shop-trigger-btn">
                     <span class="shop-trigger-label">🛒 SHOP</span>
                 </button>
 
-                <div id="menu-lastscore">LAST RUN: 0m</div>
+                <div id="menu-lastscore" hidden>LAST RUN: 0m</div>
                 <div id="menu-highscore">HIGH SCORE: 0m</div>
                 <button id="start-prompt">CLICK TO START</button>
             </div>
@@ -121,9 +121,9 @@
                 <div class="shop-section-label">PIXELS</div>
 
                 <div id="gem-shop-carousel">
-                    <button class="nav-btn" id="gem-prev-btn">&lt;</button>
+                    <button class="nav-btn" id="gem-prev-btn" aria-label="Previous tier">&lt;</button>
                     <div id="gem-skin-shop"></div>
-                    <button class="nav-btn" id="gem-next-btn">&gt;</button>
+                    <button class="nav-btn" id="gem-next-btn" aria-label="Next tier">&gt;</button>
                 </div>
 
                 <div id="gem-shop-dots"></div>
@@ -131,25 +131,27 @@
 
             <!-- MULTIPLAYER MENU -->
             <div id="mp-menu-layer" class="menu-page">
-                <div class="mode-switch-arrow left" id="to-sp-btn">◀<br><span>SOLO</span></div>
+                <button class="mode-switch-arrow left" id="to-sp-btn" aria-label="Solo"><span aria-hidden="true">◀</span><span class="mode-switch-label">SOLO</span></button>
 
                 <div class="page-title page-title--mp">MULTIPLAYER</div>
 
                 <!-- Lobby setup: evaporates once you host or join a party -->
                 <div id="mp-setup" class="mp-setup">
                     <div class="mp-box">
-                        <label>DISPLAY NAME</label>
-                        <input type="text" id="mp-name-input" maxlength="10" placeholder="P1">
+                        <label for="mp-name-input">DISPLAY NAME</label>
+                        <input type="text" id="mp-name-input" maxlength="10" placeholder="PLAYER"
+                            autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done">
                     </div>
 
                     <div class="mp-box mp-box--join">
-                        <label>JOIN A FRIEND</label>
-                        <input type="text" id="mp-join-input" maxlength="6" placeholder="6-CHAR CODE">
+                        <label for="mp-join-input">JOIN A FRIEND</label>
+                        <input type="text" id="mp-join-input" maxlength="6" placeholder="6-CHAR CODE"
+                            autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go">
                         <button id="mp-join-btn">CONNECT</button>
                     </div>
 
                     <div class="mp-box mp-box--host">
-                        <label>HOST A GAME</label>
+                        <div class="mp-box-title">HOST A GAME</div>
                         <button id="mp-host-btn">GENERATE CODE</button>
                     </div>
                 </div>
@@ -158,7 +160,7 @@
                      rendered by Game.renderParty(). -->
                 <div id="mp-party-view" class="mp-party-view">
                     <div class="mp-box mp-box--party">
-                        <label>PARTY <span id="mp-party-count">1/4</span></label>
+                        <div class="mp-box-title">PARTY <span id="mp-party-count">1/4</span></div>
                         <div id="mp-party-code" class="mp-party-code">------</div>
                         <ul id="mp-party-list" class="mp-party-list"></ul>
                     </div>
@@ -168,7 +170,7 @@
                     </div>
                 </div>
 
-                <div id="mp-status">READY</div>
+                <div id="mp-status" role="status" aria-live="polite">READY</div>
                 <button id="mp-start-prompt">START RUN</button>
             </div>
         </div>

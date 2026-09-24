@@ -11,7 +11,7 @@
 //   jump             tap Space (one jump; only fires while grounded/coyote)
 //   wait <ms>        sleep
 //   click <sel>      force-click a CSS selector (e.g. '#to-mp-btn', '#shop-open-btn')
-//   tap <sel>        touch-tap a selector (needs PJ_TOUCH=1); goes through real
+//   tap <sel>        touch-tap a selector (a click without PJ_TOUCH=1); goes through real
 //                    touch events, so it catches taps the game swallows
 //   key <key>        press a key by Playwright name (e.g. Escape, Enter, KeyP)
 //   ss <name>        screenshot -> $PJ_OUT/<name>.png
@@ -98,7 +98,7 @@ try {
             case 'jump': await page.keyboard.press('Space'); break;
             case 'wait': await page.waitForTimeout(Number(arg())); break;
             case 'click': await page.click(arg(), { force: true }); break;
-            case 'tap': await page.tap(arg(), { force: true }); break;
+            case 'tap': { const s = arg(); if (touch) await page.tap(s, { force: true }); else await page.click(s, { force: true }); break; }
             case 'key': await page.keyboard.press(arg()); break;
             case 'ss': { const f = path.join(out, arg() + '.png'); await page.screenshot({ path: f }); console.log('screenshot:', f); break; }
             case 'score': console.log('score:', await page.textContent('#score-display')); break;
