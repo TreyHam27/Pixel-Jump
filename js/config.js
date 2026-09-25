@@ -134,7 +134,7 @@ const MAX_PARTY_SIZE = 4;
 // 20 GB/month with no charge, and co-op then falls back to direct-only.
 // WebRTC still prefers a direct link, so only games that need it use the
 // relay. Empty = no relay.
-const TURN_CREDENTIALS_URL = '';
+const TURN_CREDENTIALS_URL = 'https://pixeljump.metered.live/api/v1/turn/credentials?apiKey=f430cd6be005e6cd08915b58d886132f11ba';
 const TURN_FETCH_TIMEOUT_MS = 4000;       // host/join never wait longer
 const TURN_CACHE_MS = 30 * 60 * 1000;     // reuse fetched logins this long
 // Extra hand-configured WebRTC ICE servers, appended after Google's public
