@@ -65,6 +65,11 @@ sounds.play('death');
 const deathEnd = Math.max(...nodes.filter(n => n.stop).map(n => n.stopped)) - 1;
 assert(deathEnd > 0.8 && deathEnd < 1.5, 'death lasts about a second, got ' + deathEnd);
 
+nodes.length = 0;
+sounds.play('hit');
+const hitEnd = Math.max(...nodes.filter(n => n.stop).map(n => n.stopped)) - 1;
+assert(hitEnd < 0.3, 'boss bump stays short, got ' + hitEnd);
+
 // Muted means silent.
 sounds.setMuted(true);
 nodes.length = 0;

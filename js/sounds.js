@@ -50,6 +50,7 @@ class SoundManager {
 
         if (type === 'jump') return this.playJump();
         if (type === 'death') return this.playDeath();
+        if (type === 'hit') return this.playHit();
 
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
@@ -91,14 +92,6 @@ class SoundManager {
                 osc.start(now);
                 osc.stop(now + 0.32);
                 break;
-            case 'hit':
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(100, now);
-                gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-                osc.start(now);
-                osc.stop(now + 0.05);
-                break;
         }
     }
 
@@ -118,6 +111,14 @@ class SoundManager {
                      freq: [[0, 520], [0.07, 780, 'exp'], ...this.steps(780, 98, 0.1, 0.8, 16)],
                      vibrato: { rate: 14, cents: 45, at: 0.1 } });
         this.voice({ wave: 'triangle', start: 0.78, dur: 0.32, peak: 0.24, attack: 0.005, freq: [[0, 110], [0.25, 40, 'exp']] });
+    }
+
+    // "Bonk": bumping the exposed boss knocks you back unhurt, so a springy
+    // falling boing with an impact click rather than a pained sound.
+    playHit() {
+        this.voice({ noise: true, dur: 0.04, peak: 0.18, attack: 0.001, bandpass: 2500, q: 1.2 });
+        this.voice({ wave: 'triangle', dur: 0.16, peak: 0.2, attack: 0.002, freq: [[0, 520], [0.12, 170, 'exp']] });
+        this.voice({ duty: 0.5, dur: 0.07, peak: 0.07, lowpass: 900, freq: [[0, 110], [0.06, 70, 'exp']] });
     }
 
     // One enveloped voice routed to master. Options: wave | duty | noise,
