@@ -116,7 +116,7 @@ try {
     assert(!alerts.some(t => /SYSTEM/.test(t)), "no story messages, got " + JSON.stringify(alerts));
     g.state.score = 6100; // 610m: Ionosphere
     g.update(1);
-    const announced = alerts.concat(g.noticeQueue.map(([t]) => t));
+    const announced = alerts.concat(g.noticeQueue.map(n => n.text));
     assert(announced.includes("ENTERING IONOSPHERE"), "biome changes still announced, got " + JSON.stringify(announced));
     g.clearNotices();
     console.log("NO STORY SUCCESS");

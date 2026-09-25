@@ -274,28 +274,36 @@ canvas {
     flex-shrink: 0;
 }
 
-/* A tiny Pixel in place of the icon (unlock notices) */
+/* Two eyes on a DOM-drawn Pixel (skin picker, gem shop, unlock notices),
+   placed like drawPixel() places them on the canvas. */
+.pixel-eye {
+    position: absolute;
+    top: 30%;
+    width: 20%;
+    height: 20%;
+    background: white;
+}
+
+.pixel-eye-l {
+    left: 20%;
+}
+
+.pixel-eye-r {
+    right: 20%;
+}
+
+/* A tiny Pixel in place of the icon (unlock notices). The faint outline keeps
+   near-black Pixels (The Void, The End) visible on the dark alert. */
 .alert-pixel {
     display: block;
     position: relative;
     width: 18px;
     height: 18px;
+    outline: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+#system-alert.alert-unlock .alert-pixel {
     box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
-}
-
-.alert-pixel-eye {
-    position: absolute;
-    top: 30%;
-    width: 20%;
-    height: 20%;
-}
-
-.alert-pixel-eye-l {
-    left: 20%;
-}
-
-.alert-pixel-eye-r {
-    right: 20%;
 }
 
 /* Type variants */
@@ -941,23 +949,6 @@ canvas {
     transition: transform 0.2s;
 }
 
-#skin-eyes-l,
-#skin-eyes-r {
-    position: absolute;
-    top: 30%;
-    width: 20%;
-    height: 20%;
-    background: white;
-}
-
-#skin-eyes-l {
-    left: 20%;
-}
-
-#skin-eyes-r {
-    right: 20%;
-}
-
 #skin-name {
     font-size: 18px;
     color: #fff;
@@ -1280,22 +1271,6 @@ canvas {
     position: relative;
     margin-bottom: 4px;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-}
-
-.gem-skin-eye {
-    position: absolute;
-    top: 30%;
-    width: 20%;
-    height: 20%;
-    background: white;
-}
-
-.gem-skin-eye-l {
-    left: 20%;
-}
-
-.gem-skin-eye-r {
-    right: 20%;
 }
 
 .gem-skin-name {
