@@ -1550,10 +1550,7 @@ class Game {
 
         this.ui.gemShop.innerHTML = `<div class="gem-skin-card${premium ? ' premium' : ''}" style="--skin:${s.color}; --tier:${tier / rows.length};">
             <div class="gem-skin-tier">TIER ${tier} / ${rows.length}</div>
-            <div class="gem-skin-preview" style="background-color:${s.color}; opacity:${owned ? 1 : 0.35};">
-                <div class="gem-skin-eye gem-skin-eye-l" style="background-color:${s.eye};"></div>
-                <div class="gem-skin-eye gem-skin-eye-r" style="background-color:${s.eye};"></div>
-            </div>
+            ${this.pixelPreviewHTML(s, 'gem-skin-preview', `opacity:${owned ? 1 : 0.35};`)}
             <div class="gem-skin-name" style="color:${s.color};">${s.name}</div>
             <div class="gem-skin-perks">${this.renderPerkTags(s.ability)}</div>
             <button class="${btnCls.join(' ')}" data-index="${i}" ${equipped ? 'disabled' : ''}>
@@ -1697,17 +1694,14 @@ class Game {
     // information rather than stale text left on screen — a countdown that
     // calls this every second just keeps resetting the timer, so it stays up
     // continuously and disappears 4s after the final update.
-    // `skin` (a SKINS entry) swaps the icon for a tiny drawing of that Pixel.
-    showAlert(text, type = 'info', skin = null) {
+    // `icon` (markup, e.g. from pixelPreviewHTML) replaces the type's emoji.
+    showAlert(text, type = 'info', { icon = null } = {}) {
         const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', unlock: '🎨', life: '💔', heart: '❤️' };
         const el = this.ui.alert;
         el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-unlock', 'alert-life', 'alert-heart');
         el.classList.add('alert-' + type, 'alert-visible');
-        if (skin) {
-            this.ui.alertIcon.innerHTML = `<span class="alert-pixel" style="background-color:${skin.color};">
-                <span class="alert-pixel-eye alert-pixel-eye-l" style="background-color:${skin.eye};"></span>
-                <span class="alert-pixel-eye alert-pixel-eye-r" style="background-color:${skin.eye};"></span>
-            </span>`;
+        if (icon) {
+            this.ui.alertIcon.innerHTML = icon;
         } else {
             this.ui.alertIcon.innerText = icons[type] || icons.info;
         }
@@ -1720,16 +1714,25 @@ class Game {
     // One-shot notices (biome changes, unlocks, rewards) take turns in the
     // alert box instead of overwriting each other: a secret Pixel unlocks on
     // the very frame its biome is entered.
-    notify(text, type = 'info', skin = null) {
-        this.noticeQueue.push([text, type, skin]);
+    notify(text, type = 'info', opts = {}) {
+        this.noticeQueue.push({ text, type, opts });
         if (!this.noticeTimer) this.showNextNotice();
     }
 
     showNextNotice() {
         const next = this.noticeQueue.shift();
         if (!next) { this.noticeTimer = null; return; }
-        this.showAlert(next[0], next[1], next[2]);
+        this.showAlert(next.text, next.type, next.opts);
         this.noticeTimer = setTimeout(() => this.showNextNotice(), 2200);
+    }
+
+    // A Pixel drawn in DOM squares, its colour plus two eyes, for the gem
+    // shop and unlock notices. `cls` sizes it; `style` adds inline CSS.
+    pixelPreviewHTML(skin, cls, style = '') {
+        return `<span class="${cls}" style="background-color:${skin.color};${style}">
+            <span class="pixel-eye pixel-eye-l" style="background-color:${skin.eye};"></span>
+            <span class="pixel-eye pixel-eye-r" style="background-color:${skin.eye};"></span>
+        </span>`;
     }
 
     clearNotices() {
@@ -2921,7 +2924,7 @@ class Game {
                 if (this.state.running && this.state.runUnlocks) this.state.runUnlocks.push((g.skin ? "🎨 " : "🏅 ") + label);
                 // New Pixels are announced like the game's other notices;
                 // everything else gets the achievement badge.
-                if (g.skin) this.notify(label, 'unlock', SKINS.find(s => s.id === g.skinId));
+                if (g.skin) this.notify(label, 'unlock', { icon: this.pixelPreviewHTML(g.skin, 'alert-pixel') });
                 else this.showAchievement(label, "🏅");
             }
         });

@@ -81,23 +81,35 @@ try {
     if (!game.ui.alertText.innerText.includes(second.name)) {
         throw new Error("First of the batch should be on screen, got: " + game.ui.alertText.innerText);
     }
-    if (!game.noticeQueue.some(([t]) => t.includes(third.name))) {
+    if (!game.noticeQueue.some(n => n.text.includes(third.name))) {
         throw new Error("Simultaneous unlock was dropped instead of queued");
     }
     // The notice shows the unlocked Pixel itself, not a generic icon.
-    const queued = game.noticeQueue.find(([t]) => t.includes(third.name));
-    if (!queued[2] || queued[2].id !== third.id) {
-        throw new Error("Unlock notice should carry its Pixel, got: " + (queued[2] && queued[2].id));
+    // Its body and both eyes use that Pixel's colours.
+    const queued = game.noticeQueue.find(n => n.text.includes(third.name));
+    const queuedIcon = String(queued.opts.icon || '');
+    if (!queuedIcon.includes('background-color:' + third.color + ';') ||
+        queuedIcon.split('style="background-color:' + third.eye + ';"').length - 1 !== 2) {
+        throw new Error("Queued unlock notice should draw " + third.name + " with its body and eye colours, got: " + queuedIcon);
     }
-    if (!String(game.ui.alertIcon.innerHTML).includes(second.color)) {
-        throw new Error("Unlock notice icon should draw the Pixel in its colour");
+    const shownIcon = String(game.ui.alertIcon.innerHTML);
+    if (!shownIcon.includes('class="alert-pixel"') ||
+        !shownIcon.includes('background-color:' + second.color + ';') ||
+        !shownIcon.includes('background-color:' + second.eye + ';')) {
+        throw new Error("Unlock notice icon should draw the Pixel in its colours, got: " + shownIcon);
     }
+    // Every distance-unlock achievement points at the Pixel it unlocks.
+    ACHIEVEMENTS.filter(a => a.skin).forEach(a => {
+        if (!SKINS.includes(a.skin) || a.skin.name !== a.name) {
+            throw new Error("Skin achievement " + a.id + " should reference its SKINS entry");
+        }
+    });
 
     // A heart pickup gets the red heart notice.
     game.clearNotices();
     let shownType = null;
     const realShowAlert = game.showAlert;
-    game.showAlert = (text, type, skin) => { shownType = type; return realShowAlert.call(game, text, type, skin); };
+    game.showAlert = (text, type, opts) => { shownType = type; return realShowAlert.call(game, text, type, opts); };
     game.collectHeart({ x: 100, y: 100 });
     game.showAlert = realShowAlert;
     if (shownType !== 'heart') {
