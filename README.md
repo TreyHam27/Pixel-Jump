@@ -29,7 +29,7 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 - **Settings:** volume, mute, the daily ghost, reduced motion, and on-screen touch buttons. Solo runs pause when you switch tabs.
 - **Phones and PWA:**
   - On-screen touch pads and a sharp high-DPI canvas.
-  - Installable from the browser menu ("Add to Home Screen"), and playable offline once it's been loaded. On iPhone, browser tabs show Add to Home Screen steps instead of the game, which only runs as the installed app.
+  - Installable from the browser menu ("Add to Home Screen"), and playable offline once it's been loaded. On phones and tablets (iPhone, iPad and Android), browser tabs show install steps instead of the game, which only runs as the installed app. Android gets a one-tap INSTALL button where the browser supports it.
 - **Share and challenge:**
   - The end-of-run card's SHARE RUN sends a score card image with a link, or copies the link where sharing isn't available.
   - A solo run's link (`?beat=1234&d=YYYYMMDD`) puts a TARGET line on that day's layout for whoever opens it the same day.

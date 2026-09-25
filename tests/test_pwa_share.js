@@ -126,35 +126,82 @@ try {
     assert(r.canvas.width === CONFIG.WIDTH && r.dpr === 1, "1x on a normal screen");
     console.log("HIDPI SUCCESS");
 
-    // ---- iPhone: browser tabs get Add to Home Screen steps, not the game.
+    // ---- Phones and tablets: browser tabs get install steps, not the game.
     const SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
     const CHROME_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/129.0 Mobile/15E148 Safari/604.1';
     const INSTAGRAM = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0';
     const IPAD = 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+    const IPADOS_DESKTOP = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
     const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+    const ANDROID_TABLET = 'Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36';
+    const ANDROID_FIREFOX = 'Mozilla/5.0 (Android 14; Mobile; rv:130.0) Gecko/130.0 Firefox/130.0';
+    const ANDROID_INSTAGRAM = 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0 Mobile Safari/537.36 Instagram 350.0';
+    const DESKTOP_CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36';
     const tab = { matchMedia: () => ({ matches: false }) };
     const app = { matchMedia: (q) => ({ matches: q === '(display-mode: standalone)' }) };
+    const fullscreenApp = { matchMedia: (q) => ({ matches: q === '(display-mode: fullscreen)' }) };
     assert(needsHomeScreenInstall({ userAgent: SAFARI }, tab), "iPhone Safari tab is gated");
     assert(needsHomeScreenInstall({ userAgent: INSTAGRAM }, tab), "iPhone in-app browser is gated");
     assert(!needsHomeScreenInstall({ userAgent: SAFARI, standalone: true }, tab), "the Home Screen app plays");
     assert(!needsHomeScreenInstall({ userAgent: SAFARI }, app), "display-mode standalone plays");
-    assert(!needsHomeScreenInstall({ userAgent: IPAD }, tab), "iPad isn't gated");
-    assert(!needsHomeScreenInstall({ userAgent: ANDROID }, tab), "Android isn't gated");
+    assert(!needsHomeScreenInstall({ userAgent: ANDROID }, fullscreenApp), "display-mode fullscreen plays");
+    assert(needsHomeScreenInstall({ userAgent: IPAD }, tab), "iPad is gated");
+    assert(needsHomeScreenInstall({ userAgent: IPADOS_DESKTOP, maxTouchPoints: 5 }, tab), "iPadOS posing as a Mac is gated");
+    assert(!needsHomeScreenInstall({ userAgent: IPADOS_DESKTOP, maxTouchPoints: 0 }, tab), "a real Mac isn't gated");
+    assert(needsHomeScreenInstall({ userAgent: ANDROID }, tab), "Android phone is gated");
+    assert(needsHomeScreenInstall({ userAgent: ANDROID_TABLET }, tab), "Android tablet is gated");
+    assert(needsHomeScreenInstall({ userAgent: ANDROID_FIREFOX }, tab), "Firefox on Android is gated");
+    assert(!needsHomeScreenInstall({ userAgent: ANDROID }, app), "the installed Android app plays");
+    assert(!needsHomeScreenInstall({ userAgent: DESKTOP_CHROME }, tab), "desktop isn't gated");
     assert(!needsHomeScreenInstall(null, null), "no navigator: not gated");
-    assert(!isIOSNonSafari(SAFARI) && isIOSNonSafari(CHROME_IOS) && isIOSNonSafari(INSTAGRAM), "non-Safari browsers are told to open Safari");
+    assert(installPlatform({ userAgent: IPAD }) === 'ios' && installPlatform({ userAgent: ANDROID_TABLET }) === 'android', "platform picks the steps");
+    assert(!isIOSNonSafari(SAFARI) && !isIOSNonSafari(IPADOS_DESKTOP) && isIOSNonSafari(CHROME_IOS) && isIOSNonSafari(INSTAGRAM), "non-Safari browsers are told to open Safari");
+    assert(isAndroidInAppBrowser(ANDROID_INSTAGRAM) && !isAndroidInAppBrowser(ANDROID) && !isAndroidInAppBrowser(ANDROID_FIREFOX), "Android in-app browsers are told to open Chrome");
 
     const realNav = globalThis.navigator;
     __setNav({ userAgent: CHROME_IOS });
     const gated = new Game();
     assert(gated.installGated && gated.ui.installGate.hidden === false, "the gate shows on an iPhone tab");
+    assert(gated.ui.installGateIOS.hidden === false && gated.ui.installGateAndroid.hidden === true, "with the iPhone steps");
     assert(gated.ui.installGateSafari.hidden === false, "with the open-in-Safari step for Chrome");
     gated.startGame();
     assert(!gated.state.running, "no run can start behind the gate");
     __setNav({ userAgent: SAFARI, standalone: true });
     const installed = new Game();
     assert(!installed.installGated, "the installed app isn't gated");
+
+    // Android: menu steps always, plus a one-tap button once Chrome offers it.
+    __setNav({ userAgent: ANDROID });
+    installPrompt.event = null;
+    const droid = new Game();
+    assert(droid.installGated && droid.ui.installGateAndroid.hidden === false && droid.ui.installGateIOS.hidden === true, "Android steps show");
+    assert(droid.ui.installGateChrome.hidden === true && droid.ui.installGateSafari.hidden === true, "Chrome needs no open-in-browser step");
+    assert(droid.ui.installGateBtn.hidden === true, "no install button until the browser offers one");
+    droid.startGame();
+    assert(!droid.state.running, "no run can start behind the Android gate");
+    let prompted = 0;
+    let outcome = 'dismissed';
+    const offer = () => ({ prompt() { prompted++; }, get userChoice() { return Promise.resolve({ outcome }); } });
+    installPrompt.event = offer();
+    installPrompt.onReady();
+    assert(droid.ui.installGateBtn.hidden === false, "the install button appears when Chrome offers it");
+    await droid.ui.installGateBtn.onclick();
+    assert(prompted === 1 && droid.ui.installGateBtn.hidden === true && droid.ui.installGateDone.hidden !== false, "dismissing uses up that offer");
+    installPrompt.event = offer();
+    installPrompt.onReady();
+    outcome = 'accepted';
+    await droid.ui.installGateBtn.onclick();
+    assert(prompted === 2 && droid.ui.installGateBtn.hidden === true && droid.ui.installGateDone.hidden === false, "accepting shows the open-it note");
+
+    __setNav({ userAgent: ANDROID_INSTAGRAM });
+    const inApp = new Game();
+    assert(inApp.ui.installGateChrome.hidden === false, "in-app browsers are told to open Chrome");
+    __setNav({ userAgent: IPADOS_DESKTOP, maxTouchPoints: 5 });
+    const ipad = new Game();
+    assert(ipad.installGated && ipad.ui.installGateIOS.hidden === false && ipad.ui.installGateSafari.hidden === true, "iPad Safari gets the Safari steps");
+    installPrompt.onReady = installPrompt.onInstalled = null;
     __setNav(realNav);
-    console.log("IPHONE GATE SUCCESS");
+    console.log("INSTALL GATE SUCCESS");
 
     process.exit(0);
 } catch (e) {
