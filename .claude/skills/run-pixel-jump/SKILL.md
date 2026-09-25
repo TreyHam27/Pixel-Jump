@@ -73,7 +73,8 @@ High-DPI phone and URL options: `PJ_DPR=3` sets the device pixel ratio (the
 canvas backing store should then be 1200x1600). `PJ_PATH` is appended to the
 URL, e.g. `PJ_PATH='?beat=120&d=20260923'` (a same-day challenge link) or
 `PJ_PATH='?sw'` (registers the service worker, which is otherwise
-production-only).
+production-only). `PJ_UA` overrides the user agent, e.g. an iPhone Safari UA with
+`PJ_TOUCH=1` shows the Add to Home Screen gate.
 
 Other useful selectors: `#prev-btn` / `#next-btn` (skin picker), `#to-sp-btn`,
 `#mp-host-btn`, `#mp-join-btn`, `#shop-life-btn`, `#gem-prev-btn` / `#gem-next-btn`,

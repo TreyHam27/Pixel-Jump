@@ -8,8 +8,8 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.7.5';
-const NET_PROTOCOL = 4;
+const GAME_VERSION = '1.8.0';
+const NET_PROTOCOL = 5;
 
 const CONFIG = {
     WIDTH: 600,
@@ -45,7 +45,7 @@ const PLATFORM_GEN_VERSION = 3;
 // Pickups rolled per platform. The power-up chance climbs from MIN at 0m to
 // MAX at POWERUP_RAMP_METERS; hearts are rarer, and only exist for a player
 // with no extra lives left (see Game.visiblePickups()); otherwise 40% of
-// platforms carry a gem worth SHARD_VALUE.
+// platforms carry a gem, worth its biome's `gem.value` (see BIOMES).
 const POWERUP_CHANCE_MIN = 0.06;
 const POWERUP_CHANCE_MAX = 0.12;
 const POWERUP_RAMP_METERS = 8000;
@@ -57,7 +57,6 @@ const HEART_CHANCE_END = 0.01;
 const HEART_RAMP_METERS = 8000;
 const HEART_MIN_GAP = 1000; // px of world height between hearts (> CONFIG.HEIGHT)
 const SHARD_CHANCE = 0.4;
-const SHARD_VALUE = 10;
 // How far above the top of the screen platforms are generated in advance.
 const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
 // Ghost recording: one sample every GHOST_STEP frames of game time, capped
@@ -92,15 +91,17 @@ const BOSS_GEM_BOUNTY = 150;
 // Each biome's `hazards` list is cumulative: once a hazard is introduced by a
 // biome, it stays active in every later biome too (by The Void, everything is
 // stacked at once — that's the intended "hardest tier" feel).
+// `gem` is what a gem found in that biome is worth, and its colour: higher
+// biomes pay more, from 5 at the start up to 100 in The Void.
 const BIOMES = [
-    { threshold: 0, name: "Atmosphere", bg: "#050505", grid: "#1a1a1a", platform: "#00ffcc", hazards: [] },
-    { threshold: 600, name: "Ionosphere", bg: "#0a001a", grid: "#330066", platform: "#ff00ff", hazards: ["wind"] },
-    { threshold: 1800, name: "Low Orbit", bg: "#000a1a", grid: "#003366", platform: "#00ccff", hazards: ["wind", "moving"] },
-    { threshold: 3200, name: "Deep Space", bg: "#0a0a0a", grid: "#222", platform: "#ffd700", hazards: ["wind", "moving", "meteor"] },
-    { threshold: 5000, name: "The Rift", bg: "#1a0022", grid: "#4d0066", platform: "#cc00ff", hazards: ["wind", "moving", "meteor", "gravityPulse"] },
-    { threshold: 8000, name: "Neon Grid", bg: "#001010", grid: "#00ffaa", platform: "#00ff99", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser"] },
-    { threshold: 12000, name: "Static Field", bg: "#0a0a0a", grid: "#555555", platform: "#ffffff", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"] },
-    { threshold: 17000, name: "The Void", bg: "#000000", grid: "#220022", platform: "#ff0055", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"] }
+    { threshold: 0, name: "Atmosphere", bg: "#050505", grid: "#1a1a1a", platform: "#00ffcc", hazards: [], gem: { value: 5, color: "#00ffff" } },
+    { threshold: 600, name: "Ionosphere", bg: "#0a001a", grid: "#330066", platform: "#ff00ff", hazards: ["wind"], gem: { value: 10, color: "#33ff66" } },
+    { threshold: 1800, name: "Low Orbit", bg: "#000a1a", grid: "#003366", platform: "#00ccff", hazards: ["wind", "moving"], gem: { value: 15, color: "#3399ff" } },
+    { threshold: 3200, name: "Deep Space", bg: "#0a0a0a", grid: "#222", platform: "#ffd700", hazards: ["wind", "moving", "meteor"], gem: { value: 25, color: "#b266ff" } },
+    { threshold: 5000, name: "The Rift", bg: "#1a0022", grid: "#4d0066", platform: "#cc00ff", hazards: ["wind", "moving", "meteor", "gravityPulse"], gem: { value: 35, color: "#ff66cc" } },
+    { threshold: 8000, name: "Neon Grid", bg: "#001010", grid: "#00ffaa", platform: "#00ff99", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser"], gem: { value: 50, color: "#ff9900" } },
+    { threshold: 12000, name: "Static Field", bg: "#0a0a0a", grid: "#555555", platform: "#ffffff", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"], gem: { value: 75, color: "#ff3344" } },
+    { threshold: 17000, name: "The Void", bg: "#000000", grid: "#220022", platform: "#ff0055", hazards: ["wind", "moving", "meteor", "gravityPulse", "laser", "glitch"], gem: { value: 100, color: "#ffffff" } }
 ];
 
 // The biome at a given height in meters (the single source of truth for both
@@ -110,6 +111,11 @@ function biomeAt(meters) {
         if (meters >= BIOMES[i].threshold) return BIOMES[i];
     }
     return BIOMES[0];
+}
+
+// Index into BIOMES of the biome at `meters` (a gem's tier).
+function biomeIndexAt(meters) {
+    return BIOMES.indexOf(biomeAt(meters));
 }
 
 // Shop consumables. Extra lives are bought with shards and carried between
@@ -170,9 +176,10 @@ const SKINS = [
     // Gem-shop Pixels, cheapest first. Each one beats every free Pixel: the
     // bottom two carry one big stat (+30% jump already means 1.7x the jump
     // height), and every tier above adds a wildcard
-    // perk on top of a stat boost. At roughly 320-360 gems per 1000m climbed
-    // (plus 150 per boss) the lower tiers come quickly; the top tier at 50,000
-    // stays a grind for serious players. See Game.renderGemShop().
+    // perk on top of a stat boost. Gems pay more in higher biomes (about 170
+    // per 1000m in the Atmosphere, 1,700+ in Neon Grid, plus 150 per boss),
+    // so the lower tiers come quickly and the top tier at 50,000 rewards
+    // climbing high rather than grinding the first screens. See Game.renderGemShop().
     { id: 'nebula', name: "Nebula Drifter", color: "#6633ff", eye: "#ccccff", cost: 75, ability: { speedMult: 1.5 } },
     { id: 'chrome', name: "Chrome Unit", color: "#cccccc", eye: "#333333", cost: 200, ability: { jumpMult: 1.3 } },
     { id: 'solarflare', name: "Solar Flare", color: "#ff6600", eye: "#ffffff", cost: 500, ability: { speedMult: 1.25, gravityMult: 0.7 } },
@@ -180,14 +187,14 @@ const SKINS = [
     { id: 'prism', name: "Prism", color: "#ff00ff", eye: "#ffffff", cost: 2500, ability: { speedMult: 1.25, airJump: true } },
     { id: 'pulsewarden', name: "Pulse Warden", color: "#00ff99", eye: "#003322", cost: 5000, ability: { jumpMult: 1.25, dronePulseSec: 5 } },
     { id: 'hoarder', name: "Crystal Hoarder", color: "#33e0ff", eye: "#002233", cost: 9000, ability: { speedMult: 1.25, shardMagnetRadius: 150, shardMult: 2 } },
-    { id: 'aegis', name: "Aegis", color: "#3366ff", eye: "#ffffff", cost: 15000, ability: { jumpMult: 1.25, extraRevive: 1, biomeImmune: true } },
+    { id: 'aegis', name: "Aegis", color: "#3366ff", eye: "#ffffff", cost: 15000, ability: { jumpMult: 1.25, startShield: true, biomeImmune: true } },
     { id: 'overclock', name: "Overclock", color: "#ff2222", eye: "#ffe600", cost: 50000, ability: { speedMult: 1.3, jumpMult: 1.3, powerDurationMult: 2, scoreMult: 2 } },
 
     // Secret skins: never shown in the menu picker until their distance is
     // reached (see Game.unlockedSkinIndexes()), one per new biome.
     { id: 'riftdiver', name: "Rift Diver", color: "#6600cc", eye: "#00ffff", unlock: 5000, secret: true, ability: { powerDurationMult: 1.5 } },
     { id: 'neonghost', name: "Neon Ghost", color: "#ff0099", eye: "#00ffff", unlock: 8000, secret: true, ability: { shardMagnetRadius: 150 } },
-    { id: 'staticking', name: "Static King", color: "#ffffff", eye: "#ff0000", unlock: 12000, secret: true, ability: { extraRevive: 1 } },
+    { id: 'staticking', name: "Static King", color: "#ffffff", eye: "#ff0000", unlock: 12000, secret: true, ability: { speedMult: 1.25, biomeImmune: true } },
     { id: 'thevoid', name: "The Void", color: "#000000", eye: "#ff0000", unlock: 17000, secret: true, ability: { startAtScore: 50000, jumpMult: 1.1 } }
 ];
 
@@ -213,8 +220,8 @@ const PERKS = [
       describe: v => Number.isInteger(v) ? 'Power-ups last ' + v + 'x as long' : '+' + perkPct(v) + ' power-up duration' },
     { key: 'shardMagnetRadius', label: 'MAGNET', color: '#ffff00', active: v => !!v, covers: 'MAGNET',
       describe: () => 'Always pulls in nearby gems' },
-    { key: 'extraRevive', label: 'REVIVE', color: '#00ffaa', active: v => !!v,
-      describe: v => v + ' free revive every run' },
+    { key: 'startShield', label: 'SHIELD START', color: '#3366ff', active: v => !!v,
+      describe: () => 'Every run starts with a HARD SHIELD' },
     { key: 'startAtScore', label: 'RIFT', color: '#9933ff', active: v => !!v,
       describe: v => 'Solo runs start at ' + Math.floor(v / 10) + 'm (The Rift)' },
     { key: 'airJump', label: 'AIR JUMP', color: '#ff66ff', active: v => !!v, covers: 'DOUBLE',

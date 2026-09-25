@@ -1,6 +1,10 @@
 const { setupMocks, loadGameSource } = require('./test_helpers');
+const fs = require('fs');
+const path = require('path');
 
 setupMocks();
+global.__sounds = fs.readFileSync(path.join(__dirname, '..', 'js', 'sounds.js'), 'utf8');
+global.__app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
 // Heart pickups (only for a player with no extra lives), spare lives in
 // co-op, the drone cap and the power-up ramp.
@@ -54,22 +58,35 @@ try {
     assert(g.powerups.length === 0, "the heart is used up");
     console.log("HEART PICKUP SUCCESS");
 
-    // ---- Co-op: the Pixel's free revive, then banked lives, save you
-    // instantly, behind a HARD SHIELD, without ever telling the party you died.
+    // ---- Killing a boss refills the hearts (solo; co-op is in
+    // test_mp_enemies.js).
+    g = new Game();
+    g.startGame();
+    g.state.extraLives = 0;
+    g.onBossDefeated();
+    assert(g.state.extraLives === MAX_EXTRA_LIVES, "a boss kill refills the hearts");
+    assert(localStorage.getItem('lp_extraLives') === String(MAX_EXTRA_LIVES), "and saves them");
+    assert(g.ui.lifeDisplay.innerText === MAX_EXTRA_LIVES + ' ❤️', "the meter shows them");
+    console.log("BOSS REFILL SUCCESS");
+
+    // ---- Hearts and power-ups each have their own sound.
+    assert(/case 'heart':/.test(__sounds) && /case 'power':/.test(__sounds), "heart and power sounds exist");
+    assert(__app.includes("sounds.play('heart')") && __app.includes("sounds.play('power')"), "and are played");
+    console.log("SOUNDS SUCCESS");
+
+    // ---- Co-op: banked hearts save you instantly, behind a HARD SHIELD,
+    // without ever telling the party you died.
     const sent = [];
     window.network = { myId: 'me', send(m) { sent.push(m); } };
-    localStorage.setItem('lp_extraLives', '1');
+    localStorage.setItem('lp_extraLives', '2');
     g = new Game();
-    g.viewParams.skinIndex = skinIndexById('staticking');
-    g.state.bestHeight = 99999;
     g.startMultiplayerGame(77);
     g.die(true);
-    assert(!g.player.isDead && g.state.usedExtraRevive, "the free revive is spent first");
-    assert(g.state.extraLives === 1, "...before any banked life");
+    assert(!g.player.isDead && g.state.extraLives === 1, "a banked heart saves you");
     assert(g.player.activePower === POWERS.SHIELD, "a co-op rescue grants HARD SHIELD");
     g.player.activePower = null;
     g.die(true);
-    assert(!g.player.isDead && g.state.extraLives === 0, "then a banked life saves you");
+    assert(!g.player.isDead && g.state.extraLives === 0, "then the next one");
     assert(g.player.activePower === POWERS.SHIELD, "with a HARD SHIELD again");
     assert(!sent.some(m => m.type === 'die'), "a saved player never reports a death");
     g.die(true);

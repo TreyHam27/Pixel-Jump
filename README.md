@@ -17,18 +17,19 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 
 - **Biomes:** eight of them. Hazards stack as you climb: wind, moving platforms, meteors, gravity pulses, laser drones and control glitches.
 - **Boss fights:** every 3000m. The boss hovers and fires volleys, then telegraphs a dive to your level. Land on it while it's exposed. Each kill is worth +500m and 150 💎.
-- **Pixels (skins):** you unlock them by height, by buying them in the gem shop, or by finding the secret ones. Each has a perk, such as JUMP, EMP, GEMS x2 or SCORE x2.
+- **Pixels (skins):** you unlock them by height, by buying them in the gem shop, or by finding the secret ones. Each has a perk, such as JUMP, EMP, GEMS x2, SHIELD START or SCORE x2.
+- **Gems (💎):** worth more in each higher biome, from 5 in the Atmosphere up to 100 in The Void, and coloured by biome.
 - **Daily layout:** solo runs use the day's seed, and your best run of the day replays as a ghost.
 - **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC; COPY CODE shares it).
   - Levels are generated identically on every client.
   - The host runs every drone, bullet, meteor and the boss. Everyone faces the same enemies, stomps count toward one shared boss health bar, and a boss kill pays everyone.
-  - Teammates move smoothly between updates, and a player who is down sees whom they're spectating. On strict networks (school and office WiFi, some mobile carriers) where a direct link can't form, co-op falls back to a TURN relay (Metered Open Relay, set by `TURN_CREDENTIALS_URL` in `js/config.js`; free up to 20 GB/month). Without one, or once the quota runs out, those joins fail with "THIS NETWORK MAY BLOCK CO-OP". Add `?relay` to the URL to force every connection through the relay when testing.
-- **Extra lives (❤):** buy them in the shop, or pick up a heart. Hearts only appear while you have no extra lives left. A spent life (solo or co-op) throws you back up with a HARD SHIELD. Ads are off (`ADS_ENABLED` in `js/config.js`).
+  - Teammates move smoothly between updates, and a player who is down sees whom they're spectating, along with that teammate's power-up. On strict networks (school and office WiFi, some mobile carriers) where a direct link can't form, co-op falls back to a TURN relay (Metered Open Relay, set by `TURN_CREDENTIALS_URL` in `js/config.js`; free up to 20 GB/month). Without one, or once the quota runs out, those joins fail with "THIS NETWORK MAY BLOCK CO-OP". Add `?relay` to the URL to force every connection through the relay when testing.
+- **Hearts (❤):** your extra lives, up to 3. Every run starts with at least one. Buy more in the shop, pick one up (they only appear while you have none left), or beat a boss to refill all three. A spent heart (solo or co-op) throws you back up with a HARD SHIELD. With ads off (`ADS_ENABLED` in `js/config.js`) there is no revive offer: out of hearts ends the run.
 - **Run summary and Records:** every run ends with a summary card. RECORDS shows lifetime stats and every achievement (secret Pixels stay hidden until earned).
 - **Settings:** volume, mute, the daily ghost, reduced motion, and on-screen touch buttons. Solo runs pause when you switch tabs.
 - **Phones and PWA:**
   - On-screen touch pads and a sharp high-DPI canvas.
-  - Installable from the browser menu ("Add to Home Screen"), and playable offline once it's been loaded.
+  - Installable from the browser menu ("Add to Home Screen"), and playable offline once it's been loaded. On iPhone, browser tabs show Add to Home Screen steps instead of the game, which only runs as the installed app.
 - **Share and challenge:**
   - The end-of-run card's SHARE RUN sends a score card image with a link, or copies the link where sharing isn't available.
   - A solo run's link (`?beat=1234&d=YYYYMMDD`) puts a TARGET line on that day's layout for whoever opens it the same day.

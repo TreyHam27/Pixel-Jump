@@ -4,11 +4,8 @@ setupMocks();
 
 // Regression test for the shop's purchasable EXTRA LIFE consumable: shards are
 // deducted, stock caps at MAX_EXTRA_LIVES, it persists across a reload, and a
-// banked life is spent on a death that would otherwise end the run.
-//
-// Note: with ADS_ENABLED false (current default) AdManager.showRevivePrompt()
-// grants one free continue of its own, so the run only truly ends one death
-// after the banked lives run out — same caveat as test_extra_revive.js.
+// banked life is spent on a death that would otherwise end the run, every
+// run starts with at least one, and with ads off nothing else revives you.
 eval(loadGameSource() + `
 try {
     const game = new Game();
@@ -44,8 +41,7 @@ try {
     }
     console.log("PERSISTENCE ACROSS RELOAD SUCCESS");
 
-    // Spending: default skin (index 0) has no extraRevive ability, so the
-    // banked lives are what keeps the run alive here.
+    // Spending: the banked lives are what keeps the run alive.
     game2.viewParams.skinIndex = 0;
     game2.startGame();
     const before = game2.state.extraLives;
@@ -62,16 +58,26 @@ try {
     if (game2.state.extraLives !== before - 1) throw new Error("Banked lives should carry into the next run");
     console.log("STOCK CARRIES ACROSS RUNS SUCCESS");
 
-    // Drain the bank, then the ads-disabled fallback, then the run must end.
+    // Drain the bank: with ads off there's no revive offer, so the next
+    // death ends the run.
     while (game2.state.extraLives > 0) {
         game2.die(true);
         if (!game2.state.running) throw new Error("Run ended while banked lives remained");
     }
     game2.die(true);
-    if (!game2.state.running) throw new Error("Empty bank should fall through to the ads-fallback revive");
-    game2.die(true);
-    if (game2.state.running) throw new Error("Run should end once bank and ad-revive are both spent");
+    if (game2.state.running) throw new Error("Run should end once the hearts are spent");
+    if (game2.state.revived) throw new Error("No hidden revive with ads off");
     console.log("EXHAUSTION ENDS RUN SUCCESS");
+
+    // The free life each run is a visible heart: a run never starts on 0.
+    game2.startGame();
+    if (game2.state.extraLives !== 1) throw new Error("A run should start with 1 heart when the bank is empty");
+    if (localStorage.getItem('lp_extraLives') !== '1') throw new Error("The run-start heart should be saved");
+    if (game2.ui.lifeDisplay.innerText !== '1 ❤️') throw new Error("The run-start heart should show in the meter");
+    game2.setExtraLives(2);
+    game2.startGame();
+    if (game2.state.extraLives !== 2) throw new Error("The top-up must not add to a bank that isn't empty");
+    console.log("RUN-START HEART SUCCESS");
 } catch (e) {
     console.error("CRASH:", e.stack);
     process.exitCode = 1;

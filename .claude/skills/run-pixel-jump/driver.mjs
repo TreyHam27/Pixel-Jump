@@ -72,7 +72,8 @@ try {
             height: Number(process.env.PJ_H || (touch ? 844 : 800))
         },
         ...(touch ? { hasTouch: true, isMobile: true } : {}),
-        deviceScaleFactor: Number(process.env.PJ_DPR || 1)
+        deviceScaleFactor: Number(process.env.PJ_DPR || 1),
+        ...(process.env.PJ_UA ? { userAgent: process.env.PJ_UA } : {})
     });
     page.on('pageerror', e => errs.push('pageerror: ' + e.message));
     page.on('console', m => { if (m.type() === 'error') errs.push('console.error: ' + m.text()); });

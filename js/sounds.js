@@ -76,6 +76,27 @@ class SoundManager {
                 osc.start(now);
                 osc.stop(now + 0.2);
                 break;
+            case 'heart':
+                // Two soft notes up a fifth: a warm "ding-ding".
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(660, now);
+                osc.frequency.setValueAtTime(990, now + 0.12);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.setValueAtTime(0.18, now + 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+                break;
+            case 'power':
+                // A quick rising arpeggio, distinct from the gem blip.
+                osc.type = 'square';
+                [330, 440, 554, 660, 880].forEach((f, i) => osc.frequency.setValueAtTime(f, now + i * 0.055));
+                gain.gain.setValueAtTime(0.07, now);
+                gain.gain.setValueAtTime(0.07, now + 0.22);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+                osc.start(now);
+                osc.stop(now + 0.32);
+                break;
             case 'death':
                 osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(300, now);
