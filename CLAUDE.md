@@ -80,6 +80,7 @@ GitHub Pages serves `main` as-is, so a merge is live immediately. CI (`.github/w
   - `boss_down` pays everyone.
 - **Adding a new enemy or message type** means updating `buildSnapshot`/`applySnapshot` and the trust list, then bumping `NET_PROTOCOL`.
 - **Away and gone teammates:** a teammate silent for `REMOTE_AWAY_FRAMES` drops out of the camera and ceiling calculations. After `REMOTE_GONE_FRAMES` they count as down.
+- **TURN relay:** `host()`/`join()` fetch relay logins from `TURN_CREDENTIALS_URL` (Metered) before creating the Peer, cached for 30 minutes and warmed when the co-op menu opens. A slow or failed fetch falls back to STUN only. `?relay` forces relay-only connections for testing. Tests stub `fetch` to `undefined`; `tests/test_turn_relay.js` installs fakes.
 - **EMP is solo-only.**
 
 **Ads:** `js/ads.js` is a seam that is off (`ADS_ENABLED = false`).

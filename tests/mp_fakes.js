@@ -23,9 +23,10 @@ class FakeDataConn extends FakeEmitter {
 }
 
 class FakePeer extends FakeEmitter {
-    constructor(id) {
+    constructor(id, opts) {
         super();
         this.id = id;
+        this.opts = opts;
         this.destroyed = false;
         this.reconnects = 0;
         this.outgoing = [];
