@@ -95,13 +95,12 @@ class SoundManager {
         }
     }
 
-    // "Bubble": a round sine bloop with a quiet triangle octave on top. It
-    // plays on every bounce, so the pitch wanders a few percent to keep
-    // repeats from grating.
+    // "Spring": a 25% pulse sweep over a triangle for body. It plays on every
+    // bounce, so the pitch wanders a few percent to keep repeats from grating.
     playJump() {
         const p = 1 + (Math.random() - 0.5) * 0.06;
-        this.voice({ wave: 'sine', dur: 0.12, peak: 0.17, attack: 0.003, freq: [[0, 330 * p], [0.06, 990 * p, 'exp']] });
-        this.voice({ wave: 'triangle', dur: 0.08, peak: 0.05, freq: [[0, 660 * p], [0.06, 1980 * p, 'exp']] });
+        this.voice({ duty: 0.25, dur: 0.13, peak: 0.12, freq: [[0, 240 * p], [0.085, 720 * p, 'exp']], lowpass: 4200 });
+        this.voice({ wave: 'triangle', dur: 0.1, peak: 0.11, freq: [[0, 120 * p], [0.085, 360 * p, 'exp']] });
     }
 
     // "Tumble": a noise hit, a yelp up, a wobbling 8-bit staircase down, then
