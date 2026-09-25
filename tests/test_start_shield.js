@@ -34,7 +34,7 @@ try {
     game.viewParams.skinIndex = skinIndexById('staticking');
     game.startGame();
     assert(game.player.activePower === null, "Static King starts without a power-up");
-    game.state.extraLives = 0;
+    game.state.hearts = 0;
     game.die(true);
     assert(!game.state.running, "Static King has no free revive: out of hearts ends the run");
     console.log("STATIC KING NO REVIVE SUCCESS");

@@ -71,28 +71,28 @@ try {
     // no floor platform, and a red notice.
     game = new Game();
     game.startGame();
-    game.state.extraLives = 2;
+    game.state.hearts = 2;
     const alerts = [];
     const realAlert = game.showAlert.bind(game);
     game.showAlert = (text, type) => { alerts.push([text, type]); realAlert(text, type); };
     const platformsBefore = game.platforms.length;
     game.player.y = CONFIG.HEIGHT + 10;
     game.die();
-    assert(game.state.running && game.state.extraLives === 1, "a life was spent");
+    assert(game.state.running && game.state.hearts === 1, "a life was spent");
     assert(game.safetyNet.rescue && game.safetyNet.deploy === 1, "red rescue net is up");
     assert(game.player.y === CONFIG.HEIGHT - 60 && game.player.vy === CONFIG.BOUNCE_FORCE, "bounced back in from the net");
     assert(game.platforms.length === platformsBefore, "no floor platform");
-    assert(alerts.some(([t, type]) => /EXTRA LIFE SPENT/.test(t) && type === 'life'), "red life notice");
+    assert(alerts.some(([t, type]) => /HEART SPENT/.test(t) && type === 'life'), "red life notice");
     // Falling again inside the second bounces instead of costing a life.
     game.update(1);
     game.player.y = CONFIG.HEIGHT + 10;
     game.die();
-    assert(game.state.extraLives === 1, "caught by the rescue net, no second life spent");
+    assert(game.state.hearts === 1, "caught by the rescue net, no second life spent");
     for (let i = 0; i < RESCUE_NET_FRAMES + 40; i++) { game.player.y = 300; game.player.vy = 0; game.update(1); }
     assert(game.state.rescueNetT === 0 && game.safetyNet.deploy === 0, "the net is gone after a second");
     game.player.y = CONFIG.HEIGHT + 10;
     game.die();
-    assert(game.state.extraLives === 0, "after that, a fall spends a life again");
+    assert(game.state.hearts === 0, "after that, a fall spends a life again");
     console.log("RESCUE NET SUCCESS");
 
     // The free revive uses the same net.

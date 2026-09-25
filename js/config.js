@@ -8,7 +8,7 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.8.1';
+const GAME_VERSION = '1.8.2';
 const NET_PROTOCOL = 5;
 
 const CONFIG = {
@@ -44,7 +44,7 @@ const CONFIG = {
 const PLATFORM_GEN_VERSION = 3;
 // Pickups rolled per platform. The power-up chance climbs from MIN at 0m to
 // MAX at POWERUP_RAMP_METERS; hearts are rarer, and only exist for a player
-// with no extra lives left (see Game.visiblePickups()); otherwise 40% of
+// with no hearts left (see Game.visiblePickups()); otherwise 40% of
 // platforms carry a gem, worth its biome's `gem.value` (see BIOMES).
 const POWERUP_CHANCE_MIN = 0.06;
 const POWERUP_CHANCE_MAX = 0.12;
@@ -118,15 +118,15 @@ function biomeIndexAt(meters) {
     return BIOMES.indexOf(biomeAt(meters));
 }
 
-// Shop consumables. Extra lives are bought with shards and carried between
+// Shop consumables. Hearts are bought with shards and carried between
 // runs as stock — each one is spent automatically on a death that would
 // otherwise end the run (see Game.die()).
-const EXTRA_LIFE_COST = 50;
+const HEART_COST = 50;
 // A spent life (or revive) springs up a red safety net for a second that
 // bounces the player back in.
 const RESCUE_NET_FRAMES = 60;
 const RESCUE_NET_COLOR = '#ff3366';
-const MAX_EXTRA_LIVES = 3;
+const MAX_HEARTS = 3;
 
 // Multiplayer: host + up to 3 guests (NetworkManager.maxGuests must match).
 // Slot 0 is always the party leader; each slot's colour is used for that
