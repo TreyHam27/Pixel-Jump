@@ -36,7 +36,7 @@ const CONFIG = {
     DRONE_CAP_STEP: 1500,
     LASER_CAP: 2,
     PROJECTILE_SPEED: 6,
-    BOSS_LOOP_DISTANCE: 4000
+    BOSS_LOOP_DISTANCE: 3000
 };
 
 // Level generation version: bump when spawnPlatform() would build a different

@@ -3,7 +3,7 @@ const { setupMocks, loadGameSource } = require('./test_helpers');
 setupMocks();
 
 // The boss used to snap to 450px above the player every frame, before the
-// collision check, so it could never be stomped: from 4000m every run had an
+// collision check, so it could never be stomped: from the first boss every run had an
 // unkillable boss that also stopped drone spawns. It now telegraphs a dive to
 // the player's level and sits there exposed. This test has a simple bot play
 // the fight at several frame rates and checks the reward bookkeeping.
@@ -25,7 +25,7 @@ function fight(dt) {
     localStorage.removeItem('lp_loops');
     const g = new Game();
     g.startGame();
-    g.state.score = 40000; // 4000m: the first boss is due
+    g.state.score = CONFIG.BOSS_LOOP_DISTANCE * 10; // the first boss is due
     const keys = g.input.keys;
     let boss = null, killedAt = null, scoreAtKill = null;
     const shardsBefore = g.state.shards;
@@ -70,7 +70,7 @@ function fight(dt) {
 try {
     for (const dt of [1, 0.5, 2]) {
         const r = fight(dt);
-        assert(r.boss, "a boss should spawn at 4000m (dt " + dt + ")");
+        assert(r.boss, "a boss should spawn at " + CONFIG.BOSS_LOOP_DISTANCE + "m (dt " + dt + ")");
         assert(r.killedAt !== null, "the bot should beat the boss (dt " + dt + "), boss hp " + r.boss.hp + ", state " + r.boss.state);
         assert(r.g.state.running, "the bot should survive the fight (dt " + dt + ")");
         assert(r.g.state.runLoops === 1, "one boss beaten this run");
@@ -132,7 +132,7 @@ try {
         g.startGame();
         assert(g.state.startMeters === 5000, "The Void starts at 5000m");
         for (let i = 0; i < 60; i++) { g.player.y = 400; g.player.vy = 0; g.update(1); }
-        assert(!g.state.bossActive && g.state.nextBossAt === 9000, "first boss at 9000m, not immediately");
+        assert(!g.state.bossActive && g.state.nextBossAt === 5000 + CONFIG.BOSS_LOOP_DISTANCE, "first boss one loop above the checkpoint, not immediately");
         console.log("VOID START SUCCESS");
     }
 } catch (e) {
