@@ -1030,6 +1030,9 @@ class Game {
         rp.slot = member.slot;
         rp.skinIndex = skinIndex;
         rp.lastSeenT = this.state.time;
+        // World heights (wy) of the pickups they've taken, so a spectator
+        // sees the level the way they do.
+        rp.picked = new Set();
         this.remotePlayers.set(member.pid, rp);
         return rp;
     }
@@ -1050,7 +1053,9 @@ class Game {
             skinIndex,
             activePowerId: power ? power.id : null,
             // Share of the power-up's time left (0-1), for the spectate HUD.
-            pf: power ? (num(d.pf, 0, 1) || 0) : 0
+            pf: power ? (num(d.pf, 0, 1) || 0) : 0,
+            // Hearts banked (decides whether hearts show in their view).
+            hl: Number.isInteger(d.hl) ? Math.max(0, Math.min(MAX_EXTRA_LIVES, d.hl)) : 0
         };
     }
 
@@ -1109,7 +1114,7 @@ class Game {
         // traffic from guests (never party control messages), and a guest
         // only listens to its host.
         if (this.state.isHost) {
-            if (!['handshake', 'sync', 'die', 'revive', 'hit', 'stomp'].includes(data.type)) return;
+            if (!['handshake', 'sync', 'die', 'revive', 'hit', 'stomp', 'pick'].includes(data.type)) return;
         } else if (net.friendId && fromId !== net.friendId) {
             return;
         }
@@ -1121,12 +1126,15 @@ class Game {
             data = clean;
         } else if (data.type === 'die' || data.type === 'revive') {
             data = { type: data.type, pid: this.state.isHost ? fromId : String(data.pid) };
+        } else if (data.type === 'pick') {
+            if (!Number.isInteger(data.wy) || Math.abs(data.wy) > 1e8) return;
+            data = { type: 'pick', pid: this.state.isHost ? fromId : String(data.pid), wy: data.wy };
         }
 
         // The host is the hub: relay every guest's gameplay traffic to the
         // rest of the party (a clean copy, stamped with the sender's ID so it
         // can't be spoofed).
-        if (this.state.isHost && (data.type === 'sync' || data.type === 'die' || data.type === 'revive')) {
+        if (this.state.isHost && ['sync', 'die', 'revive', 'pick'].includes(data.type)) {
             net.broadcastExcept(fromId, data);
         }
 
@@ -1185,6 +1193,9 @@ class Game {
             rp.lastSeenT = this.state.time;
             rp.activePower = data.activePowerId ? Object.values(POWERS).find(p => p.id === data.activePowerId) : null;
             rp.powerFrac = data.pf || 0;
+            rp.hearts = data.hl || 0;
+        } else if (data.type === 'pick') {
+            this.applyRemotePick(data);
         } else if (data.type === 'die') {
             const rp = this.remotePlayers.get(data.pid);
             if (rp) rp.isDead = true;
@@ -2156,6 +2167,7 @@ class Game {
                 startY: y - 40,
                 w: 24, h: 24,
                 isShard: false,
+                wy,
                 markedForDeletion: false
             });
         } else if (this.heartAllowedAt(wy, scoreMeters)) {
@@ -2169,6 +2181,7 @@ class Game {
                 w: 28, h: 28,
                 isShard: false,
                 isHeart: true,
+                wy,
                 markedForDeletion: false
             });
         } else if (this.seededRandom() < SHARD_CHANCE) {
@@ -2183,6 +2196,7 @@ class Game {
                 isShard: true,
                 shardValue: BIOMES[tier].gem.value,
                 tier,
+                wy,
                 markedForDeletion: false
             });
         }
@@ -2361,6 +2375,12 @@ class Game {
 
         this.platforms = this.platforms.filter(p => p.y < CONFIG.HEIGHT + 100);
         this.powerups = this.powerups.filter(p => p.y < CONFIG.HEIGHT + 100);
+        // Forget teammates' pickups once they're below the screen.
+        if (this.state.multiplayer) {
+            this.remotePlayers.forEach(rp => {
+                if (rp.picked) rp.picked.forEach(wy => { if (wy + this.state.score > CONFIG.HEIGHT + 100) rp.picked.delete(wy); });
+            });
+        }
         // Drones circle back instead of leaving, so cull the ones left below.
         this.enemies = this.enemies.filter(e => e instanceof BossDrone || e.y < CONFIG.HEIGHT + 100);
 
@@ -2530,9 +2550,30 @@ class Game {
     // The pickups this player can see and collect. Hearts are part of every
     // client's level, but only exist for a player with no extra lives left:
     // picking one up hides the rest, and spending that life brings them back.
+    // In co-op, pickups you took stay in the level (flagged `mine`) so a
+    // spectating view can still show them for a teammate who hasn't.
     visiblePickups() {
-        if (this.state.extraLives <= 0) return this.powerups;
-        return this.powerups.filter(p => !p.isHeart);
+        const hearts = this.state.extraLives <= 0;
+        return this.powerups.filter(p => !p.mine && (hearts || !p.isHeart));
+    }
+
+    // While you're down: the level as the teammate you're watching sees it,
+    // without what they've taken, and hearts only if they have none left.
+    spectatePickups(rp) {
+        const hearts = (rp.hearts || 0) <= 0;
+        return this.powerups.filter(p => !(rp.picked && rp.picked.has(p.wy)) && (hearts || !p.isHeart));
+    }
+
+    // A teammate took a pickup. If we're watching them, show it go.
+    applyRemotePick(d) {
+        const rp = this.remotePlayers.get(d.pid);
+        if (!rp || !rp.picked) return;
+        rp.picked.add(d.wy);
+        if (!this.player.isDead || this.spectatingPlayer !== rp) return;
+        const p = this.powerups.find(q => q.wy === d.wy);
+        if (!p) return;
+        const color = p.isShard ? BIOMES[p.tier || 0].gem.color : p.isHeart ? "#ff3366" : (rp.activePower ? rp.activePower.color : "#ffffff");
+        this.particles.spawn(p.x + p.w / 2, p.y + p.h / 2, color, p.isShard ? 10 : 20);
     }
 
     collectHeart(event) {
@@ -3348,7 +3389,8 @@ class Game {
                 vy: r(this.player.vy),
                 skinIndex: this.viewParams.skinIndex,
                 activePowerId: this.player.activePower ? this.player.activePower.id : null,
-                pf: Math.round(this.powerFraction(perks) * 100) / 100
+                pf: Math.round(this.powerFraction(perks) * 100) / 100,
+                hl: this.state.extraLives
             });
         }
 
@@ -3405,7 +3447,19 @@ class Game {
 
         this.updatePowerHud(perks);
 
-        this.powerups = this.powerups.filter(p => !p.markedForDeletion);
+        if (this.state.multiplayer) {
+            // Co-op: a pickup you took is only gone for you (see
+            // visiblePickups); the party hears so spectators see it go.
+            this.powerups.forEach(p => {
+                if (!p.markedForDeletion) return;
+                p.markedForDeletion = false;
+                if (p.mine) return;
+                p.mine = true;
+                if (window.network && Number.isInteger(p.wy)) window.network.send({ type: 'pick', pid: window.network.myId, wy: p.wy });
+            });
+        } else {
+            this.powerups = this.powerups.filter(p => !p.markedForDeletion);
+        }
     }
 
     draw() {
@@ -3423,7 +3477,10 @@ class Game {
             this.renderer.ctx.fillRect(p.x + p.w - 3, p.y, 3, p.h);
         });
 
-        this.visiblePickups().forEach(p => {
+        const shownPickups = this.state.multiplayer && this.player.isDead && this.spectatingPlayer
+            ? this.spectatePickups(this.spectatingPlayer)
+            : this.visiblePickups();
+        shownPickups.forEach(p => {
             p.y = p.startY + Math.sin(this.state.time * 0.1) * 5;
             if (p.isHeart) {
                 this.drawSprite(this.heartSprite, p, 0.85 + 0.15 * Math.sin(this.state.time * 0.15));
