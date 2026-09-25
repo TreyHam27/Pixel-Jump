@@ -20,6 +20,54 @@ function drawPixel(ctx, x, y, skin, look = 0, glowColor = null, glowBlur = 10) {
     ctx.fillRect(x + 16 + look, y + 7, 5, 5);
 }
 
+// Enemy art is all fillRect, chunky pixel art like the Pixels themselves.
+// Every helper leaves shadowBlur at 0 and globalAlpha as it found it.
+
+// A rotor seen side-on: a strut up from `topY`, a faint blur disc, and a
+// blade whose visible width swings with cos(t) so it reads as spinning.
+// `t` is the enemy's own dt clock, so TIME WARP slows it and pause stops it.
+function drawRotor(ctx, cx, topY, span, t, speed, scale = 1) {
+    const s = scale;
+    ctx.fillStyle = "#4a4e60";
+    ctx.fillRect(cx - s, topY - 4 * s, 2 * s, 4 * s);
+    const bladeY = topY - 6 * s;
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * 0.25;
+    ctx.fillStyle = "#c8ccdc";
+    ctx.fillRect(cx - span / 2, bladeY, span, 2 * s);
+    ctx.globalAlpha = alpha;
+    const half = Math.max(s, Math.round(Math.abs(Math.cos(t * speed)) * span / 2));
+    ctx.fillRect(cx - half, bladeY, half * 2, 2 * s);
+    ctx.fillStyle = "#6b7086";
+    ctx.fillRect(cx - 2 * s, bladeY - s, 4 * s, 3 * s);
+}
+
+// A body with `c`px chamfered corners: a 2px neon rim in `rim` (glowing)
+// around a dark `fill`, with a faint highlight along the top.
+function drawHull(ctx, x, y, w, h, fill, rim, c = 2, glow = 8) {
+    ctx.fillStyle = rim;
+    ctx.shadowBlur = glow;
+    ctx.shadowColor = rim;
+    ctx.fillRect(x + c, y, w - 2 * c, h);
+    ctx.fillRect(x, y + c, w, h - 2 * c);
+    ctx.shadowBlur = 0;
+    // The same shape shrunk by 2px, so the rim steps round the corners too.
+    ctx.fillStyle = fill;
+    ctx.fillRect(x + c + 2, y + 2, w - 2 * c - 4, h - 4);
+    ctx.fillRect(x + 2, y + c + 2, w - 4, h - 2 * c - 4);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.fillRect(x + c + 2, y + 2, w - 2 * c - 4, 1);
+}
+
+// A glowing rect (eyes, lenses, muzzles).
+function drawGlow(ctx, x, y, w, h, color, blur = 10) {
+    ctx.fillStyle = color;
+    ctx.shadowBlur = blur;
+    ctx.shadowColor = color;
+    ctx.fillRect(x, y, w, h);
+    ctx.shadowBlur = 0;
+}
+
 class Entity {
     constructor(x, y, w, h, color) {
         this.x = x; this.y = y; this.w = w; this.h = h;
@@ -299,9 +347,11 @@ class Drone extends Entity {
         this.v = speed * (side < 0 ? 1 : -1);
         this.sinOffset = Math.random() * Math.PI * 2;
         this.difficulty = difficulty;
+        this.t = 0; // animation clock (guests advance it in followNetEnemy)
     }
 
     update(dt) {
+        this.t += dt;
         // After leaving the screen a drone waits off-screen briefly, then
         // comes back in from the same side, a little higher or lower.
         if (this.hidden) {
@@ -326,20 +376,39 @@ class Drone extends Entity {
 
     draw(ctx) {
         if (this.hidden) return;
-        // Drone body
-        ctx.fillStyle = "#333";
-        ctx.fillRect(this.x, this.y, this.w, this.h);
-        // Red eye
-        ctx.fillStyle = "#ff0000";
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = "#ff0000";
-        ctx.fillRect(this.x + (this.v > 0 ? 20 : 5), this.y + 5, 5, 5);
-        ctx.shadowBlur = 0;
-        // Rotors
-        ctx.fillStyle = "#666";
-        const rot = Math.sin(Date.now() * 0.1) * 10;
-        ctx.fillRect(this.x - 5, this.y - 2 + rot, 10, 2);
-        ctx.fillRect(this.x + this.w - 5, this.y - 2 - rot, 10, 2);
+        const x = Math.round(this.x), y = Math.round(this.y), w = this.w, h = this.h;
+        const dir = this.v < 0 ? -1 : 1;
+
+        drawRotor(ctx, x + 7, y, 14, this.t, 0.5);
+        drawRotor(ctx, x + w - 7, y, 14, this.t + 2, 0.5);
+        this.drawThrusters(ctx, x, y);
+        drawHull(ctx, x, y, w, h, "#1b1b26", "#ff2a44");
+
+        // Visor with a red eye on the leading edge, scanning a pixel or two.
+        ctx.fillStyle = "#0a0a10";
+        ctx.fillRect(x + 4, y + 6, w - 8, 7);
+        const scan = Math.round(Math.sin(this.t * 0.08) * 1.5);
+        const ex = (dir > 0 ? x + w - 12 : x + 6) + scan;
+        drawGlow(ctx, ex, y + 7, 6, 5, "#ff2a44");
+        ctx.fillStyle = "#ffd0d6";
+        ctx.fillRect(ex + (dir > 0 ? 4 : 0), y + 7, 2, 2);
+
+        ctx.fillStyle = "#2e2e3e";
+        ctx.fillRect(x + 4, y + 15, w - 8, 1);
+    }
+
+    // Two nubs under the hull with a flickering exhaust.
+    drawThrusters(ctx, x, y) {
+        const flick = Math.abs(Math.sin(this.t * 0.6));
+        for (const nx of [x + 6, x + this.w - 10]) {
+            ctx.fillStyle = "#4a4e60";
+            ctx.fillRect(nx, y + this.h - 1, 4, 3);
+            const alpha = ctx.globalAlpha;
+            ctx.globalAlpha = alpha * (0.4 + 0.6 * flick);
+            ctx.fillStyle = "#ff8a3d";
+            ctx.fillRect(nx + 1, y + this.h + 2, 2, 1 + Math.round(flick * 2));
+            ctx.globalAlpha = alpha;
+        }
     }
 }
 
@@ -404,26 +473,33 @@ class ShooterDrone extends Drone {
 
     draw(ctx) {
         if (this.hidden) return;
-        // Different look for shooter drone
-        ctx.fillStyle = "#444";
-        ctx.fillRect(this.x, this.y, this.w, this.h);
+        const x = Math.round(this.x), y = Math.round(this.y), w = this.w, h = this.h;
+        const dir = this.v < 0 ? -1 : 1;
+        const charging = this.shootTimer < 20;
 
-        // Warning light
-        ctx.fillStyle = this.shootTimer < 20 ? "#fff" : "#ffaa00";
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.shootTimer < 20 ? "#fff" : "#ffaa00";
-        ctx.fillRect(this.x + (this.v > 0 ? 24 : 5), this.y + 7, 6, 6);
-        ctx.shadowBlur = 0;
+        drawRotor(ctx, x + 8, y, 16, this.t, 0.7);
+        drawRotor(ctx, x + w - 8, y, 16, this.t + 2, 0.7);
 
-        // Rotors
-        ctx.fillStyle = "#888";
-        const rot = Math.sin(Date.now() * 0.15) * 12;
-        ctx.fillRect(this.x - 6, this.y - 2 + rot, 12, 2);
-        ctx.fillRect(this.x + this.w - 6, this.y - 2 - rot, 12, 2);
+        // Under-slung cannon; the muzzle charges white just before it fires.
+        const cx = x + w / 2;
+        ctx.fillStyle = "#2b2b38";
+        ctx.fillRect(cx - 4, y + h - 1, 8, 3);
+        ctx.fillRect(cx - 2, y + h + 2, 4, 3);
+        const m = charging ? 6 : 4;
+        drawGlow(ctx, cx - m / 2, y + h + 5, m, charging ? 4 : 2, charging ? "#ffffff" : "#ffaa00", charging ? 16 : 6);
 
-        // Cannon
-        ctx.fillStyle = "#222";
-        ctx.fillRect(this.x + this.w / 4, this.y + this.h, this.w / 2, 4);
+        drawHull(ctx, x, y, w, h, "#1d1b24", "#ffaa00");
+
+        // Armour: a plating seam and rivets.
+        ctx.fillStyle = "#3a3444";
+        ctx.fillRect(x + 3, y + 13, w - 6, 1);
+        ctx.fillRect(x + 5, y + 16, 2, 2);
+        ctx.fillRect(x + w - 7, y + 16, 2, 2);
+
+        // Visor slit on the leading side.
+        ctx.fillStyle = "#0a0a10";
+        ctx.fillRect(x + 4, y + 5, w - 8, 6);
+        drawGlow(ctx, dir > 0 ? x + w - 16 : x + 6, y + 6, 10, 3, charging ? "#ffffff" : "#ffaa00");
     }
 }
 
@@ -440,9 +516,11 @@ class LaserDrone extends Entity {
         this.driftPhase = Math.random() * Math.PI * 2;
         this.phase = "cooldown"; // cooldown -> telegraph -> firing -> cooldown
         this.timer = 90 + Math.random() * 90;
+        this.t = 0; // animation clock (guests advance it in followNetEnemy)
     }
 
     update(dt) {
+        this.t += dt;
         this.driftPhase += 0.02 * dt;
 
         if (this.phase !== "firing") {
@@ -472,26 +550,59 @@ class LaserDrone extends Entity {
     }
 
     draw(ctx) {
+        const y = Math.round(this.y);
+        // While firing, x/w are the beam's, so remember where the body was.
+        // Co-op snapshots send x = 0 during the beam too, so this is the only
+        // place host and guests both know it.
+        if (this.phase !== "firing") this.bodyX = this.x;
+        const bx = Math.round(this.bodyX !== undefined ? this.bodyX : CONFIG.WIDTH / 2 - this.bodyW / 2);
+
+        // The warning band covers exactly the rect the beam will hit
+        // (y .. y + 8 once it fires).
         if (this.phase === "telegraph") {
-            ctx.fillStyle = "rgba(255, 0, 85, 0.35)";
-            ctx.fillRect(0, this.y + this.bodyH / 2 - 3, CONFIG.WIDTH, 6);
+            const a = 0.2 + 0.2 * Math.abs(Math.sin(this.t * 0.25));
+            ctx.fillStyle = `rgba(255, 0, 85, ${a})`;
+            ctx.fillRect(0, y, CONFIG.WIDTH, 8);
+            ctx.fillStyle = `rgba(255, 170, 0, ${a + 0.2})`;
+            ctx.fillRect(0, y + 4, CONFIG.WIDTH, 1);
         }
 
         if (this.phase === "firing") {
-            ctx.fillStyle = "#ff0055";
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = "#ff0055";
-            ctx.fillRect(this.x, this.y, this.w, this.h);
-            ctx.shadowBlur = 0;
-        } else {
-            ctx.fillStyle = "#440022";
-            ctx.fillRect(this.x, this.y, this.bodyW, this.bodyH);
-            ctx.fillStyle = this.phase === "telegraph" ? "#ffaa00" : "#ff0055";
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = ctx.fillStyle;
-            ctx.fillRect(this.x + this.bodyW / 2 - 3, this.y + this.bodyH / 2 - 3, 6, 6);
-            ctx.shadowBlur = 0;
+            drawGlow(ctx, this.x, y, this.w, this.h, "#ff0055", 20);
+            ctx.fillStyle = "#ffd6e4";
+            ctx.fillRect(this.x, y + 3, this.w, 2);
         }
+
+        this.drawBody(ctx, bx, y);
+    }
+
+    drawBody(ctx, x, y) {
+        const w = this.bodyW, h = this.bodyH;
+        const blink = Math.floor(this.t / 4) % 2 === 0;
+        const charge = this.phase === "telegraph" ? (blink ? "#ffaa00" : "#ffffff")
+            : this.phase === "firing" ? "#ffffff" : "#ff0055";
+
+        drawRotor(ctx, x + 6, y, 12, this.t, 0.55);
+        drawRotor(ctx, x + w - 6, y, 12, this.t + 2, 0.55);
+
+        // Emitter prongs level with the beam band.
+        ctx.fillStyle = "#3a0c22";
+        ctx.fillRect(x - 4, y + 1, 4, 6);
+        ctx.fillRect(x + w, y + 1, 4, 6);
+        drawGlow(ctx, x - 4, y + 3, 2, 2, charge, 8);
+        drawGlow(ctx, x + w + 2, y + 3, 2, 2, charge, 8);
+
+        drawHull(ctx, x, y, w, h, "#1e0a16", "#ff0055");
+
+        // Lens housing and lens, centred on the beam line.
+        ctx.fillStyle = "#0a0308";
+        ctx.fillRect(x + w / 2 - 6, y, 12, 8);
+        drawGlow(ctx, x + w / 2 - 3, y + 1, 6, 6, charge, this.phase === "cooldown" ? 8 : 16);
+
+        // Cooling vents.
+        ctx.fillStyle = "#4a1030";
+        ctx.fillRect(x + 6, y + 11, w - 12, 1);
+        ctx.fillRect(x + 6, y + 14, w - 12, 1);
     }
 }
 
@@ -683,34 +794,128 @@ class BossDrone extends Entity {
         }
 
         const hovering = this.state === 'hover' || this.state === 'enter';
-        const y = this.y + (hovering ? Math.sin(this.t * 0.12) * 6 : 0);
+        const x = Math.round(this.x);
+        const y = Math.round(this.y + (hovering ? Math.sin(this.t * 0.12) * 6 : 0));
+        const w = this.w, h = this.h;
         const flashing = this.invuln > 0 && Math.floor(this.t / 3) % 2 === 0;
+        const volleyDue = this.shootTimer < 20 && hovering;
+        const pulse = Math.abs(Math.sin(this.t * (this.raging ? 0.25 : 0.08)));
+        const rim = this.raging ? (pulse > 0.5 ? "#ff8800" : "#ff3300") : "#ff2244";
 
-        ctx.fillStyle = flashing ? "#ffffff" : (this.state === 'telegraph' && Math.floor(this.t / 4) % 2 ? "#cc2222" : this.color);
-        ctx.fillRect(this.x, y, this.w, 80);
+        this.drawRotorPods(ctx, x, y, rim);
+        this.drawCannons(ctx, x, y, volleyDue);
+        drawHull(ctx, x, y, w, h, "#1e070b", rim, 6, 14);
 
-        // Exposed: the top edge lights up as the weak spot.
-        if (this.state === 'exposed') {
-            ctx.fillStyle = "#00ffcc";
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = "#00ffcc";
-            ctx.fillRect(this.x, y, this.w, 5);
-            ctx.shadowBlur = 0;
+        // Armour plates; they blink hot while it lines up a dive.
+        ctx.fillStyle = this.state === 'telegraph' && Math.floor(this.t / 4) % 2 ? "#cc2222" : this.color;
+        ctx.fillRect(x + 8, y + 6, w - 16, 10);
+        ctx.fillRect(x + 6, y + 20, 18, 40);
+        ctx.fillRect(x + w - 24, y + 20, 18, 40);
+        ctx.fillRect(x + 8, y + 64, w - 16, 10);
+        ctx.fillStyle = "#4a0008";
+        for (const px of [x + 6, x + w - 24]) {
+            ctx.fillRect(px, y + 33, 18, 1);
+            ctx.fillRect(px, y + 46, 18, 1);
+        }
+        for (let i = 0; i < 5; i++) {
+            ctx.fillRect(x + 13 + i * 22, y + 12, 2, 2);
+            ctx.fillRect(x + 13 + i * 22, y + 68, 2, 2);
         }
 
-        ctx.fillStyle = "#ff0000";
-        ctx.fillRect(this.x, y - 15, this.w, 8);
-        ctx.fillStyle = "#00ff00";
-        ctx.fillRect(this.x, y - 15, this.w * (this.hp / this.maxHp), 8);
+        this.drawEye(ctx, x, y, volleyDue);
 
-        ctx.fillStyle = this.shootTimer < 20 && hovering ? "#fff" : (this.raging ? "#ff3300" : "#ffaa00");
-        ctx.beginPath();
-        ctx.arc(this.x + this.w / 2, y + 40, 20, 0, Math.PI * 2);
-        ctx.fill();
+        // Exposed: the top plate lights up as the weak spot, vents pulsing.
+        if (this.state === 'exposed') {
+            drawGlow(ctx, x + 6, y, w - 12, 5, "#00ffcc", 12);
+            const alpha = ctx.globalAlpha;
+            ctx.globalAlpha = alpha * (0.5 + 0.5 * Math.abs(Math.sin(this.t * 0.3)));
+            for (let i = 0; i < 5; i++) ctx.fillRect(x + 14 + i * 20, y + 9, 12, 3);
+            ctx.globalAlpha = alpha;
+        }
 
-        ctx.fillStyle = "#444";
-        const rot = Math.sin(this.t * 3.3) * 20;
-        ctx.fillRect(this.x - 20, y + 10 + rot, 40, 6);
-        ctx.fillRect(this.x + this.w - 20, y + 10 - rot, 40, 6);
+        if (flashing) {
+            const alpha = ctx.globalAlpha;
+            ctx.globalAlpha = alpha * 0.85;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(x + 6, y, w - 12, h);
+            ctx.fillRect(x, y + 6, w, h - 12);
+            ctx.globalAlpha = alpha;
+        }
+
+        this.drawHealthBar(ctx, x, y);
+    }
+
+    // Side arms carrying the two big rotor pods.
+    drawRotorPods(ctx, x, y, rim) {
+        const flick = Math.abs(Math.sin(this.t * 0.5));
+        for (const side of [-1, 1]) {
+            ctx.fillStyle = "#3a1016";
+            ctx.fillRect(side < 0 ? x - 10 : x + this.w, y + 20, 10, 6);
+            const podX = side < 0 ? x - 26 : x + this.w + 10;
+            drawRotor(ctx, podX + 8, y + 14, 44, this.t + (side > 0 ? 1.5 : 0), 0.35, 2);
+            drawHull(ctx, podX, y + 14, 16, 20, "#1e070b", rim, 2, 6);
+            const alpha = ctx.globalAlpha;
+            ctx.globalAlpha = alpha * (0.4 + 0.6 * flick);
+            ctx.fillStyle = "#ff8a3d";
+            ctx.fillRect(podX + 5, y + 34, 6, 2 + Math.round(flick * 4));
+            ctx.globalAlpha = alpha;
+        }
+    }
+
+    // One barrel per shot in the volley (five once it's raging).
+    drawCannons(ctx, x, y, volleyDue) {
+        const n = this.raging ? 5 : 3;
+        const cx = x + this.w / 2;
+        for (let i = 0; i < n; i++) {
+            const bx = cx + (i - (n - 1) / 2) * 16;
+            ctx.fillStyle = "#2b0a10";
+            ctx.fillRect(bx - 3, y + this.h - 2, 6, 8);
+            drawGlow(ctx, bx - 2, y + this.h + 6, 4, volleyDue ? 4 : 2,
+                volleyDue ? "#ffffff" : "#ff5500", volleyDue ? 14 : 4);
+        }
+    }
+
+    // The big eye: white just before a volley, looking down while it dives,
+    // dim and dazed while exposed.
+    drawEye(ctx, x, y, volleyDue) {
+        const cx = x + this.w / 2, cy = y + 40;
+        ctx.fillStyle = "#5a0a14";
+        ctx.fillRect(cx - 24, cy - 20, 48, 40);
+        ctx.fillStyle = "#0c0306";
+        ctx.fillRect(cx - 22, cy - 18, 44, 36);
+        ctx.fillStyle = "#26060c";
+        ctx.fillRect(cx - 22, cy - 18, 44, 4);
+
+        if (this.state === 'exposed') {
+            ctx.fillStyle = "#5a3a10";
+            ctx.fillRect(cx - 14, cy - 12, 28, 26);
+            ctx.fillStyle = "#1a0005";
+            ctx.fillRect(cx - 10, cy, 20, 3);
+            return;
+        }
+
+        drawGlow(ctx, cx - 14, cy - 13, 28, 28, volleyDue ? "#ffffff" : (this.raging ? "#ff3300" : "#ffaa00"), 18);
+        const diving = this.state === 'telegraph' || this.state === 'dive';
+        const px = diving ? 0 : Math.round(Math.sin(this.t * 0.05) * 5);
+        const py = diving ? 6 : 0;
+        ctx.fillStyle = "#1a0005";
+        ctx.fillRect(cx - 6 + px, cy - 5 + py, 12, 12);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.fillRect(cx - 11, cy - 10, 4, 4);
+    }
+
+    // One segment per HP.
+    drawHealthBar(ctx, x, y) {
+        const w = this.w;
+        ctx.fillStyle = "#1a0005";
+        ctx.fillRect(x - 2, y - 17, w + 4, 12);
+        ctx.fillStyle = "#550010";
+        ctx.fillRect(x, y - 15, w, 8);
+        ctx.fillStyle = "#33ff66";
+        ctx.fillRect(x, y - 15, Math.round(w * Math.max(0, this.hp) / this.maxHp), 8);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.fillRect(x, y - 15, Math.round(w * Math.max(0, this.hp) / this.maxHp), 1);
+        ctx.fillStyle = "#1a0005";
+        for (let i = 1; i < this.maxHp; i++) ctx.fillRect(x + Math.round(w * i / this.maxHp), y - 15, 1, 8);
     }
 }

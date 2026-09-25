@@ -1,6 +1,6 @@
 # Pixel Jump
 
-A neon endless vertical jumper for the browser. Climb through eight biomes, dodge drones, meteors and lasers, beat a boss every 4000m, and unlock Pixels with their own perks. You can play solo on the daily layout or in co-op with up to four friends.
+A neon endless vertical jumper for the browser. Climb through eight biomes, dodge drones, meteors and lasers, beat a boss every 3000m, and unlock Pixels with their own perks. You can play solo on the daily layout or in co-op with up to four friends.
 
 **Play:** https://treyham27.github.io/Pixel-Jump/
 
@@ -16,7 +16,7 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 ## Features
 
 - **Biomes:** eight of them. Hazards stack as you climb: wind, moving platforms, meteors, gravity pulses, laser drones and control glitches.
-- **Boss fights:** every 4000m. The boss hovers and fires volleys, then telegraphs a dive to your level. Land on it while it's exposed. Each kill is worth +500m and 150 💎.
+- **Boss fights:** every 3000m. The boss hovers and fires volleys, then telegraphs a dive to your level. Land on it while it's exposed. Each kill is worth +500m and 150 💎.
 - **Pixels (skins):** you unlock them by height, by buying them in the gem shop, or by finding the secret ones. Each has a perk, such as JUMP, EMP, GEMS x2 or SCORE x2.
 - **Daily layout:** solo runs use the day's seed, and your best run of the day replays as a ghost.
 - **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC; COPY CODE shares it).

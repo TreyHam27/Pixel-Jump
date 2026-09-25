@@ -8,7 +8,7 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.7.1';
+const GAME_VERSION = '1.7.2';
 const NET_PROTOCOL = 4;
 
 const CONFIG = {
@@ -36,7 +36,7 @@ const CONFIG = {
     DRONE_CAP_STEP: 1500,
     LASER_CAP: 2,
     PROJECTILE_SPEED: 6,
-    BOSS_LOOP_DISTANCE: 4000
+    BOSS_LOOP_DISTANCE: 3000
 };
 
 // Level generation version: bump when spawnPlatform() would build a different
