@@ -274,6 +274,30 @@ canvas {
     flex-shrink: 0;
 }
 
+/* A tiny Pixel in place of the icon (unlock notices) */
+.alert-pixel {
+    display: block;
+    position: relative;
+    width: 18px;
+    height: 18px;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+}
+
+.alert-pixel-eye {
+    position: absolute;
+    top: 30%;
+    width: 20%;
+    height: 20%;
+}
+
+.alert-pixel-eye-l {
+    left: 20%;
+}
+
+.alert-pixel-eye-r {
+    right: 20%;
+}
+
 /* Type variants */
 #system-alert.alert-success {
     border-color: rgba(0, 255, 170, 0.4);
@@ -311,8 +335,9 @@ canvas {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 215, 0, 0.3);
 }
 
-/* A life was spent */
-#system-alert.alert-life {
+/* A life was spent or a heart picked up */
+#system-alert.alert-life,
+#system-alert.alert-heart {
     border-color: rgba(255, 51, 102, 0.4);
     border-left-color: #ff3366;
     color: #ff5c85;

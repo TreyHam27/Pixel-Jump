@@ -9,7 +9,7 @@
 //
 // VERSION must match GAME_VERSION in js/config.js (tests/test_version.js
 // checks); bumping it drops the old caches.
-const VERSION = '1.7.3';
+const VERSION = '1.7.4';
 const CACHE = 'pixel-jump-' + VERSION;
 const FONT_CACHE = 'pixel-jump-fonts';
 

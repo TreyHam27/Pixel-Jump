@@ -1697,12 +1697,20 @@ class Game {
     // information rather than stale text left on screen — a countdown that
     // calls this every second just keeps resetting the timer, so it stays up
     // continuously and disappears 4s after the final update.
-    showAlert(text, type = 'info') {
-        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', unlock: '🎨', life: '💔' };
+    // `skin` (a SKINS entry) swaps the icon for a tiny drawing of that Pixel.
+    showAlert(text, type = 'info', skin = null) {
+        const icons = { info: '⚙', success: '✓', warning: '⏳', danger: '⚠', reward: '🏆', pulse: '⏱', unlock: '🎨', life: '💔', heart: '❤️' };
         const el = this.ui.alert;
-        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-unlock', 'alert-life');
+        el.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger', 'alert-reward', 'alert-pulse', 'alert-unlock', 'alert-life', 'alert-heart');
         el.classList.add('alert-' + type, 'alert-visible');
-        this.ui.alertIcon.innerText = icons[type] || icons.info;
+        if (skin) {
+            this.ui.alertIcon.innerHTML = `<span class="alert-pixel" style="background-color:${skin.color};">
+                <span class="alert-pixel-eye alert-pixel-eye-l" style="background-color:${skin.eye};"></span>
+                <span class="alert-pixel-eye alert-pixel-eye-r" style="background-color:${skin.eye};"></span>
+            </span>`;
+        } else {
+            this.ui.alertIcon.innerText = icons[type] || icons.info;
+        }
         this.ui.alertText.innerText = text;
 
         if (this.alertHideTimer) clearTimeout(this.alertHideTimer);
@@ -1712,15 +1720,15 @@ class Game {
     // One-shot notices (biome changes, unlocks, rewards) take turns in the
     // alert box instead of overwriting each other: a secret Pixel unlocks on
     // the very frame its biome is entered.
-    notify(text, type = 'info') {
-        this.noticeQueue.push([text, type]);
+    notify(text, type = 'info', skin = null) {
+        this.noticeQueue.push([text, type, skin]);
         if (!this.noticeTimer) this.showNextNotice();
     }
 
     showNextNotice() {
         const next = this.noticeQueue.shift();
         if (!next) { this.noticeTimer = null; return; }
-        this.showAlert(next[0], next[1]);
+        this.showAlert(next[0], next[1], next[2]);
         this.noticeTimer = setTimeout(() => this.showNextNotice(), 2200);
     }
 
@@ -2391,7 +2399,7 @@ class Game {
         }
         this.particles.spawn(event.x + 14, event.y + 14, "#ff3366", 20);
         sounds.play('powerup');
-        this.notify("EXTRA LIFE +1 ❤️", 'success');
+        this.notify("EXTRA LIFE +1", 'heart');
     }
 
     // ---------------------------------------------------- challenge links
@@ -2913,7 +2921,7 @@ class Game {
                 if (this.state.running && this.state.runUnlocks) this.state.runUnlocks.push((g.skin ? "🎨 " : "🏅 ") + label);
                 // New Pixels are announced like the game's other notices;
                 // everything else gets the achievement badge.
-                if (g.skin) this.notify(label, 'unlock');
+                if (g.skin) this.notify(label, 'unlock', SKINS.find(s => s.id === g.skinId));
                 else this.showAchievement(label, "🏅");
             }
         });

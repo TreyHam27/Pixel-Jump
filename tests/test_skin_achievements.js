@@ -84,6 +84,25 @@ try {
     if (!game.noticeQueue.some(([t]) => t.includes(third.name))) {
         throw new Error("Simultaneous unlock was dropped instead of queued");
     }
+    // The notice shows the unlocked Pixel itself, not a generic icon.
+    const queued = game.noticeQueue.find(([t]) => t.includes(third.name));
+    if (!queued[2] || queued[2].id !== third.id) {
+        throw new Error("Unlock notice should carry its Pixel, got: " + (queued[2] && queued[2].id));
+    }
+    if (!String(game.ui.alertIcon.innerHTML).includes(second.color)) {
+        throw new Error("Unlock notice icon should draw the Pixel in its colour");
+    }
+
+    // A heart pickup gets the red heart notice.
+    game.clearNotices();
+    let shownType = null;
+    const realShowAlert = game.showAlert;
+    game.showAlert = (text, type, skin) => { shownType = type; return realShowAlert.call(game, text, type, skin); };
+    game.collectHeart({ x: 100, y: 100 });
+    game.showAlert = realShowAlert;
+    if (shownType !== 'heart') {
+        throw new Error("Heart pickup notice should use the red heart style, got: " + shownType);
+    }
     console.log("SIMULTANEOUS UNLOCKS QUEUE SUCCESS");
 
     // A returning player mid-climb: skins already earned are back-filled
