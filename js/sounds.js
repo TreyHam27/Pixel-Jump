@@ -106,12 +106,10 @@ class SoundManager {
         }
     }
 
-    // "Spring": a 25% pulse sweep over a triangle for body. It plays on every
-    // bounce, so the pitch wanders a few percent to keep repeats from grating.
+    // "Muffled": the original square sweep (150 -> 600 Hz) through a low
+    // filter that takes the buzz off, fading out instead of clicking off.
     playJump() {
-        const p = 1 + (Math.random() - 0.5) * 0.06;
-        this.voice({ duty: 0.25, dur: 0.13, peak: 0.12, freq: [[0, 240 * p], [0.085, 720 * p, 'exp']], lowpass: 4200 });
-        this.voice({ wave: 'triangle', dur: 0.1, peak: 0.11, freq: [[0, 120 * p], [0.085, 360 * p, 'exp']] });
+        this.voice({ wave: 'square', dur: 0.12, peak: 0.09, attack: 0.004, freq: [[0, 150], [0.1, 600, 'exp']], lowpass: 1600 });
     }
 
     // "Tumble": a noise hit, a yelp up, a wobbling 8-bit staircase down, then
