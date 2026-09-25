@@ -82,6 +82,17 @@ class SoundManager {
                 osc.start(now);
                 osc.stop(now + 0.4);
                 break;
+            case 'heart_lost':
+                // The gain sound flipped: down a fifth, "de-do" instead of "do-de".
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(990, now);
+                osc.frequency.setValueAtTime(660, now + 0.12);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.setValueAtTime(0.18, now + 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+                break;
             case 'power':
                 // A quick rising arpeggio, distinct from the gem blip.
                 osc.type = 'square';

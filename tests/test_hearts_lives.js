@@ -72,6 +72,7 @@ try {
     // ---- Hearts and power-ups each have their own sound.
     assert(/case 'heart':/.test(__sounds) && /case 'power':/.test(__sounds), "heart and power sounds exist");
     assert(__app.includes("sounds.play('heart')") && __app.includes("sounds.play('power')"), "and are played");
+    assert(/case 'heart_lost':/.test(__sounds) && __app.includes("sounds.play('heart_lost')"), "losing a heart has its own sound");
     console.log("SOUNDS SUCCESS");
 
     // ---- Co-op: banked hearts save you instantly, behind a HARD SHIELD,
