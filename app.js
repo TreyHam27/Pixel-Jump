@@ -2911,7 +2911,7 @@ class Game {
     rescuePlayer(color, text) {
         this.deployRescueNet();
         this.player.grantPower(POWERS.SHIELD);
-        sounds.play('heart');
+        sounds.play('heart_lost');
         this.particles.spawn(this.player.x + 13, this.player.y + 13, color, 30, "blast");
         this.showAlert(text, 'life');
     }
