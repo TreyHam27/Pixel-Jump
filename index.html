@@ -280,21 +280,35 @@
         </div>
     </div>
 
-    <!-- iPhone browser tabs: the game only runs as a Home Screen app. -->
+    <!-- Phone and tablet browser tabs: the game only runs as an installed app. -->
     <div id="install-gate" role="dialog" aria-modal="true" aria-labelledby="install-gate-title" hidden>
         <div class="install-card">
             <div class="install-pixel" aria-hidden="true"><span></span><span></span></div>
             <h1 id="install-gate-title">PIXEL JUMP</h1>
-            <p class="install-lead">On iPhone, Pixel Jump plays as an app. Add it to your Home Screen. It's free and takes five seconds.</p>
-            <p id="install-gate-safari" class="install-note" hidden>First, open this page in <b>Safari</b>.</p>
-            <ol class="install-steps">
-                <li>Tap <b>Share</b>
-                    <svg class="install-share" viewBox="0 0 24 24" aria-label="the Share icon"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M6 11H5v10h14V11h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    in Safari (on newer iPhones, tap <b>⋯</b> first)</li>
-                <li>Scroll down and tap <b>Add to Home Screen</b></li>
-                <li>Open <b>Pixel Jump</b> from your Home Screen</li>
-            </ol>
-            <p class="install-foot">The app keeps its own save, separate from Safari.</p>
+            <div id="install-gate-ios" hidden>
+                <p class="install-lead">On iPhone and iPad, Pixel Jump plays as an app. Add it to your Home Screen. It's free and takes five seconds.</p>
+                <p id="install-gate-safari" class="install-note" hidden>First, open this page in <b>Safari</b>.</p>
+                <ol class="install-steps">
+                    <li>Tap <b>Share</b>
+                        <svg class="install-share" viewBox="0 0 24 24" aria-label="the Share icon"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M6 11H5v10h14V11h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        in Safari (if you don't see it, tap <b>⋯</b> first)</li>
+                    <li>Scroll down and tap <b>Add to Home Screen</b></li>
+                    <li>Open <b>Pixel Jump</b> from your Home Screen</li>
+                </ol>
+                <p class="install-foot">The app keeps its own save, separate from Safari.</p>
+            </div>
+            <div id="install-gate-android" hidden>
+                <p class="install-lead">On Android, Pixel Jump plays as an app. Install it. It's free and takes one tap.</p>
+                <p id="install-gate-chrome" class="install-note" hidden>First, open this page in <b>Chrome</b>: tap <b>⋮</b> and choose <b>Open in Chrome</b> (or <b>Open in browser</b>).</p>
+                <button id="install-gate-btn" class="install-btn" type="button" hidden>INSTALL PIXEL JUMP</button>
+                <p id="install-gate-done" class="install-note install-done" hidden>Installed! Open <b>Pixel Jump</b> from your home screen.</p>
+                <ol class="install-steps">
+                    <li>Tap the <b>⋮</b> menu in the corner of your browser</li>
+                    <li>Tap <b>Install app</b> or <b>Add to Home screen</b></li>
+                    <li>Open <b>Pixel Jump</b> from your home screen</li>
+                </ol>
+                <p class="install-foot">Already installed? Open it from your home screen. Your save comes with you.</p>
+            </div>
         </div>
     </div>
 

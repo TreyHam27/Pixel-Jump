@@ -40,13 +40,23 @@ function parseChallenge(search, todaySeed) {
 
 const SITE_URL = 'https://treyham27.github.io/Pixel-Jump/';
 
-// On iPhone the game only runs as a Home Screen app (full screen, no
-// browser bars, its own save). True for an iPhone/iPod browser tab.
-function needsHomeScreenInstall(nav, win) {
+// On phones and tablets the game only runs as an installed app (full screen,
+// no browser bars). installPlatform() says which install steps to show:
+// 'ios' (iPhone, iPad, iPod; iPadOS Safari poses as a Mac, but Macs have no touch),
+// 'android' (phones and tablets), or null for desktops.
+function installPlatform(nav) {
     const ua = (nav && nav.userAgent) || '';
-    if (!/iPhone|iPod/.test(ua) || nav.standalone) return false;
+    if (/iPhone|iPod|iPad/.test(ua) || (/Macintosh/.test(ua) && nav.maxTouchPoints > 0)) return 'ios';
+    if (/Android/.test(ua)) return 'android';
+    return null;
+}
+
+// True for a phone or tablet browser tab; false once running as the app.
+function needsHomeScreenInstall(nav, win) {
+    if (!installPlatform(nav) || nav.standalone) return false;
     try {
-        if (win && typeof win.matchMedia === 'function' && win.matchMedia('(display-mode: standalone)').matches) return false;
+        if (win && typeof win.matchMedia === 'function' &&
+            (win.matchMedia('(display-mode: standalone)').matches || win.matchMedia('(display-mode: fullscreen)').matches)) return false;
     } catch (e) { /* no matchMedia: treat as a tab */ }
     return true;
 }
@@ -55,6 +65,29 @@ function needsHomeScreenInstall(nav, win) {
 // browsers inside other apps (no "Safari/" token) are sent to Safari first.
 function isIOSNonSafari(ua) {
     return /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua || '') || !/Safari\//.test(ua || '');
+}
+
+// Browsers inside other apps (Instagram, Facebook, TikTok, Snapchat, other
+// WebViews) can't install anything, so Android players are sent to Chrome.
+function isAndroidInAppBrowser(ua) {
+    return /; wv\)|FBAN|FBAV|Instagram|musical_ly|Bytedance|Snapchat|Line\/|Twitter/.test(ua || '');
+}
+
+// Chrome, Edge and Samsung Internet offer a one-tap install through
+// beforeinstallprompt. It can fire before the game exists, so it's caught
+// here and handed over. Desktop browsers keep their own install UI.
+const installPrompt = { event: null, onReady: null, onInstalled: null };
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('beforeinstallprompt', (e) => {
+        if (!needsHomeScreenInstall(typeof navigator !== 'undefined' ? navigator : null, window)) return;
+        e.preventDefault();
+        installPrompt.event = e;
+        if (installPrompt.onReady) installPrompt.onReady();
+    });
+    window.addEventListener('appinstalled', () => {
+        installPrompt.event = null;
+        if (installPrompt.onInstalled) installPrompt.onInstalled();
+    });
 }
 
 // Lifetime totals shown on the Records screen (lp_stats).
@@ -213,6 +246,11 @@ class Game {
             touchControls: document.getElementById("touch-controls"),
             installGate: document.getElementById("install-gate"),
             installGateSafari: document.getElementById("install-gate-safari"),
+            installGateChrome: document.getElementById("install-gate-chrome"),
+            installGateIOS: document.getElementById("install-gate-ios"),
+            installGateAndroid: document.getElementById("install-gate-android"),
+            installGateBtn: document.getElementById("install-gate-btn"),
+            installGateDone: document.getElementById("install-gate-done"),
             setTouch: document.getElementById("set-touch"),
             setTouchRow: document.getElementById("set-touch-row"),
             setTips: document.getElementById("set-tips"),
@@ -2401,15 +2439,39 @@ class Game {
         }
     }
 
-    // iPhone browser tabs get Add to Home Screen steps instead of the game.
+    // Phone and tablet browser tabs get install steps instead of the game.
     applyInstallGate() {
         const nav = typeof navigator !== 'undefined' ? navigator : null;
         this.installGated = needsHomeScreenInstall(nav, typeof window !== 'undefined' ? window : null);
         if (!this.installGated || !this.ui.installGate) return;
+        const android = installPlatform(nav) === 'android';
         this.ui.installGate.hidden = false;
-        if (this.ui.installGateSafari) this.ui.installGateSafari.hidden = !isIOSNonSafari(nav.userAgent);
+        this.ui.installGateIOS.hidden = android;
+        this.ui.installGateAndroid.hidden = !android;
+        this.ui.installGateSafari.hidden = android || !isIOSNonSafari(nav.userAgent);
+        this.ui.installGateChrome.hidden = !android || !isAndroidInAppBrowser(nav.userAgent);
         const container = document.getElementById('game-container');
         if (container) container.inert = true;
+        if (!android) return;
+
+        // The one-tap button appears once the browser says it can install.
+        const showButton = () => { this.ui.installGateBtn.hidden = !installPrompt.event; };
+        installPrompt.onReady = showButton;
+        installPrompt.onInstalled = () => {
+            this.ui.installGateBtn.hidden = true;
+            this.ui.installGateDone.hidden = false;
+        };
+        this.ui.installGateBtn.onclick = async () => {
+            const e = installPrompt.event;
+            if (!e) return;
+            installPrompt.event = null;
+            e.prompt();
+            let accepted = false;
+            try { accepted = (await e.userChoice).outcome === 'accepted'; } catch (err) { /* treat as dismissed */ }
+            if (accepted) installPrompt.onInstalled();
+            else showButton();
+        };
+        showButton();
     }
 
     startGame(isMp = false, mpSeed = null) {
