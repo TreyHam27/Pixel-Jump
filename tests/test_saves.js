@@ -27,6 +27,14 @@ try {
     assert(Array.isArray(JSON.parse(localStorage.getItem('lp_fame'))), "fame rewritten as a list");
     console.log("CORRUPT SAVES SUCCESS");
 
+    // Gems used to be saved as lp_shards: carried over once, old key removed.
+    localStorage.removeItem('lp_gems');
+    localStorage.setItem('lp_shards', '250');
+    g = new Game();
+    assert(g.state.gems === 250, "old lp_shards balance carries over");
+    assert(localStorage.getItem('lp_gems') === '250' && localStorage.getItem('lp_shards') === null, "migrated to lp_gems");
+    console.log("SHARDS MIGRATION SUCCESS");
+
     // Older saves only had lp_best: real height starts from it.
     localStorage.clear && localStorage.clear();
     ['lp_best_height', 'lp_owned_skins', 'lp_achievements', 'lp_fame', 'lp_ghost'].forEach(k => localStorage.removeItem(k));

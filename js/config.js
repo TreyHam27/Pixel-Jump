@@ -56,7 +56,7 @@ const HEART_CHANCE_START = 0.04;
 const HEART_CHANCE_END = 0.01;
 const HEART_RAMP_METERS = 8000;
 const HEART_MIN_GAP = 1000; // px of world height between hearts (> CONFIG.HEIGHT)
-const SHARD_CHANCE = 0.4;
+const GEM_CHANCE = 0.4;
 // How far above the top of the screen platforms are generated in advance.
 const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
 // Ghost recording: one sample every GHOST_STEP frames of game time, capped
@@ -118,7 +118,7 @@ function biomeIndexAt(meters) {
     return BIOMES.indexOf(biomeAt(meters));
 }
 
-// Shop consumables. Hearts are bought with shards and carried between
+// Shop consumables. Hearts are bought with gems and carried between
 // runs as stock — each one is spent automatically on a death that would
 // otherwise end the run (see Game.die()).
 const HEART_COST = 50;
@@ -186,14 +186,14 @@ const SKINS = [
     { id: 'obsidian', name: "Obsidian", color: "#1a0033", eye: "#ff00ff", cost: 1200, ability: { jumpMult: 1.25, powerDurationMult: 2 } },
     { id: 'prism', name: "Prism", color: "#ff00ff", eye: "#ffffff", cost: 2500, ability: { speedMult: 1.25, airJump: true } },
     { id: 'pulsewarden', name: "Pulse Warden", color: "#00ff99", eye: "#003322", cost: 5000, ability: { jumpMult: 1.25, dronePulseSec: 5 } },
-    { id: 'hoarder', name: "Crystal Hoarder", color: "#33e0ff", eye: "#002233", cost: 9000, ability: { speedMult: 1.25, shardMagnetRadius: 150, shardMult: 2 } },
+    { id: 'hoarder', name: "Crystal Hoarder", color: "#33e0ff", eye: "#002233", cost: 9000, ability: { speedMult: 1.25, gemMagnetRadius: 150, gemMult: 2 } },
     { id: 'aegis', name: "Aegis", color: "#3366ff", eye: "#ffffff", cost: 15000, ability: { jumpMult: 1.25, startShield: true, biomeImmune: true } },
     { id: 'overclock', name: "Overclock", color: "#ff2222", eye: "#ffe600", cost: 50000, ability: { speedMult: 1.3, jumpMult: 1.3, powerDurationMult: 2, scoreMult: 2 } },
 
     // Secret skins: never shown in the menu picker until their distance is
     // reached (see Game.unlockedSkinIndexes()), one per new biome.
     { id: 'riftdiver', name: "Rift Diver", color: "#6600cc", eye: "#00ffff", unlock: 5000, secret: true, ability: { powerDurationMult: 1.5 } },
-    { id: 'neonghost', name: "Neon Ghost", color: "#ff0099", eye: "#00ffff", unlock: 8000, secret: true, ability: { shardMagnetRadius: 150 } },
+    { id: 'neonghost', name: "Neon Ghost", color: "#ff0099", eye: "#00ffff", unlock: 8000, secret: true, ability: { gemMagnetRadius: 150 } },
     { id: 'staticking', name: "Static King", color: "#ffffff", eye: "#ff0000", unlock: 12000, secret: true, ability: { speedMult: 1.25, biomeImmune: true } },
     { id: 'thevoid', name: "The Void", color: "#000000", eye: "#ff0000", unlock: 17000, secret: true, ability: { startAtScore: 50000, jumpMult: 1.1 } }
 ];
@@ -218,7 +218,7 @@ const PERKS = [
       describe: v => (v < 1 ? '-' : '+') + perkPct(v) + ' gravity' + (v < 1 ? ' (floatier)' : '') },
     { key: 'powerDurationMult', label: 'POWER', color: '#ffaa00', active: v => !!v && v !== 1,
       describe: v => Number.isInteger(v) ? 'Power-ups last ' + v + 'x as long' : '+' + perkPct(v) + ' power-up duration' },
-    { key: 'shardMagnetRadius', label: 'MAGNET', color: '#ffff00', active: v => !!v, covers: 'MAGNET',
+    { key: 'gemMagnetRadius', label: 'MAGNET', color: '#ffff00', active: v => !!v, covers: 'MAGNET',
       describe: () => 'Always pulls in nearby gems' },
     { key: 'startShield', label: 'SHIELD START', color: '#3366ff', active: v => !!v,
       describe: () => 'Every run starts with a HARD SHIELD' },
@@ -228,7 +228,7 @@ const PERKS = [
       describe: () => 'Always has a double jump' },
     { key: 'dronePulseSec', label: 'EMP', color: '#00ff99', active: v => !!v,
       describe: v => 'Every ' + v + 's, destroys all drones on screen (solo only)' },
-    { key: 'shardMult', label: 'GEMS x2', color: '#33e0ff', active: v => !!v && v !== 1,
+    { key: 'gemMult', label: 'GEMS x2', color: '#33e0ff', active: v => !!v && v !== 1,
       describe: v => 'Gem pickups are worth ' + v + 'x' },
     { key: 'biomeImmune', label: 'SHIELDED', color: '#3399ff', active: v => !!v,
       describe: () => 'Immune to wind, gravity pulses and glitches' },
@@ -260,7 +260,7 @@ const ACHIEVEMENTS = [
     { id: 'magnet', name: 'Attractive', desc: 'Pick up a MAGNET power-up', condition: (state, player) => player.activePower && player.activePower.name === "MAGNET" },
     { id: 'pacifist', name: 'Pacifist Pilot', desc: 'Reach 5,000m without collecting a power-up', condition: (state, player) => state.score >= 50000 && state.powersCollected === 0 },
     { id: 'boss', name: 'Titan Slayer', desc: 'Beat a boss', condition: (state, player) => state.loops >= 1 },
-    { id: 'rich', name: 'Data Hoarder', desc: 'Hold 100 gems', condition: (state, player) => state.shards >= 100 },
+    { id: 'rich', name: 'Data Hoarder', desc: 'Hold 100 gems', condition: (state, player) => state.gems >= 100 },
 
     // Every distance-gated skin doubles as an achievement. Crossing its high
     // score is exactly what unlocks it (see Game.isSkinLocked()), so that same

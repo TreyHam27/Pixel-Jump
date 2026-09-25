@@ -28,7 +28,7 @@ function fight(dt) {
     g.state.score = CONFIG.BOSS_LOOP_DISTANCE * 10; // the first boss is due
     const keys = g.input.keys;
     let boss = null, killedAt = null, scoreAtKill = null;
-    const shardsBefore = g.state.shards;
+    const gemsBefore = g.state.gems;
     const origDefeat = g.onBossDefeated.bind(g);
     g.onBossDefeated = () => {
         scoreAtKill = g.state.score;
@@ -64,7 +64,7 @@ function fight(dt) {
         g.update(dt);
         if (killedAt !== null) break;
     }
-    return { g, boss, killedAt, scoreAtKill, shardsBefore };
+    return { g, boss, killedAt, scoreAtKill, gemsBefore };
 }
 
 try {
@@ -76,7 +76,7 @@ try {
         assert(r.g.state.runLoops === 1, "one boss beaten this run");
         assert(localStorage.getItem('lp_loops') === '1', "lifetime loop count saved");
         assert(r.g.state.bonusScore === BOSS_BONUS_METERS * 10, "bonus distance banked: " + r.g.state.bonusScore);
-        assert(r.g.state.shards === r.shardsBefore + BOSS_GEM_BOUNTY, "gem bounty paid");
+        assert(r.g.state.gems === r.gemsBefore + BOSS_GEM_BOUNTY, "gem bounty paid");
         assert(r.g.state.score === r.scoreAtKill, "no warp: the camera height doesn't jump");
         assert(r.g.state.nextBossAt === r.killedAt + CONFIG.BOSS_LOOP_DISTANCE, "next boss a full loop later");
         r.g.update(1);

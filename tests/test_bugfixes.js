@@ -3,7 +3,7 @@ const { setupMocks, loadGameSource } = require('./test_helpers');
 setupMocks();
 
 // Regression coverage for a batch of gameplay fixes: off-screen platforms,
-// jetpack crashes, returning drones, power-up refresh and shard value.
+// jetpack crashes, returning drones, power-up refresh and gem value.
 eval(loadGameSource() + `
 function assert(cond, msg) {
     if (!cond) throw new Error("ASSERT FAILED: " + msg);
@@ -123,17 +123,17 @@ try {
         game.startGame();
         game.powerups = [];
         for (let m = 0; m < 20000; m += 7) game.spawnPlatform(-m * 10);
-        let shards = game.powerups.filter(p => p.isShard);
-        assert(shards.length > 100, "some shards spawned");
-        assert(shards.every(p => {
+        let gems = game.powerups.filter(p => p.isGem);
+        assert(gems.length > 100, "some gems spawned");
+        assert(gems.every(p => {
             const b = biomeAt(Math.floor(-(p.startY + 30 - game.state.score) / 10));
-            return p.tier === BIOMES.indexOf(b) && p.shardValue === b.gem.value;
-        }), "every shard is worth its biome's value");
-        assert(new Set(shards.map(p => p.tier)).size === BIOMES.length, "gems of every tier appear");
-        let before = game.state.shards;
-        game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isShard: true, shardValue: 75, tier: 6, markedForDeletion: false }];
+            return p.tier === BIOMES.indexOf(b) && p.gemValue === b.gem.value;
+        }), "every gem is worth its biome's value");
+        assert(new Set(gems.map(p => p.tier)).size === BIOMES.length, "gems of every tier appear");
+        let before = game.state.gems;
+        game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isGem: true, gemValue: 75, tier: 6, markedForDeletion: false }];
         game.update(1);
-        assert(game.state.shards === before + 75, "picking up a shard adds its value");
+        assert(game.state.gems === before + 75, "picking up a gem adds its value");
     }
 
     console.log("BUGFIX TESTS PASSED");

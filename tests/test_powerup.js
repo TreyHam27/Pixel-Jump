@@ -8,7 +8,7 @@ try {
     mockGame.startGame();
 
     // Create a mock powerup colliding with player
-    mockGame.powerups.push({ x: mockGame.player.x, y: mockGame.player.y, w: 20, h: 20, isShard: false });
+    mockGame.powerups.push({ x: mockGame.player.x, y: mockGame.player.y, w: 20, h: 20, isGem: false });
 
     mockGame.update(1);
     console.log("UPDATE AFTER POWERUP SUCCESS");

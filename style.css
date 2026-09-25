@@ -100,7 +100,7 @@ canvas {
     text-align: center;
 }
 
-#shard-display {
+#gem-display {
     position: absolute;
     top: calc(8px + var(--safe-top));
     right: calc(8px + var(--safe-right));
@@ -134,7 +134,7 @@ canvas {
     }
 }
 
-#shard-display.gem-pop {
+#gem-display.gem-pop {
     animation: gem-collect-pop 0.35s ease-out;
 }
 
@@ -183,7 +183,7 @@ canvas {
         font-size: clamp(24px, 7.5vw, 34px);
     }
 
-    #shard-display {
+    #gem-display {
         font-size: clamp(18px, 6vw, 28px);
     }
 

@@ -18,7 +18,7 @@ try {
         g.state.hearts = lives;
         g.startGame();
         for (let i = 0; i < 600; i++) g.spawnPlatform(-1000 - i * 95);
-        return JSON.stringify({ p: g.platforms.map(p => [p.x, p.y, p.w]), u: g.powerups.map(p => [p.x, p.y, !!p.isHeart, !!p.isShard]) });
+        return JSON.stringify({ p: g.platforms.map(p => [p.x, p.y, p.w]), u: g.powerups.map(p => [p.x, p.y, !!p.isHeart, !!p.isGem]) });
     };
     assert(layout(0) === layout(2), "hearts don't change the generated level");
     console.log("HEART DETERMINISM SUCCESS");
@@ -30,7 +30,7 @@ try {
     g.powerups = [];
     for (let i = 0; i < 4000; i++) g.spawnPlatform(-1000 - i * 95);
     const heartWYs = g.powerups.filter(p => p.isHeart).map(p => p.startY - g.state.score);
-    const powers = g.powerups.filter(p => !p.isHeart && !p.isShard).length;
+    const powers = g.powerups.filter(p => !p.isHeart && !p.isGem).length;
     assert(heartWYs.length > 20 && heartWYs.length < powers, "hearts are findable but rarer than power-ups (" + heartWYs.length + " vs " + powers + ")");
     for (let i = 1; i < heartWYs.length; i++) {
         assert(heartWYs[i - 1] - heartWYs[i] >= HEART_MIN_GAP, "hearts are at least HEART_MIN_GAP apart");
@@ -44,7 +44,7 @@ try {
     g = new Game();
     g.state.hearts = 1;
     g.startGame();
-    const heart = () => ({ x: g.player.x, y: g.player.y, startY: g.player.y, w: 20, h: 20, isHeart: true, isShard: false, markedForDeletion: false });
+    const heart = () => ({ x: g.player.x, y: g.player.y, startY: g.player.y, w: 20, h: 20, isHeart: true, isGem: false, markedForDeletion: false });
     g.powerups = [heart()];
     assert(g.visiblePickups().length === 0, "hearts are hidden while you have a life");
     g.update(1);
@@ -118,7 +118,7 @@ try {
         game.startGame();
         game.powerups = [];
         for (let i = 0; i < 3000; i++) game.spawnPlatform(-meters * 10 - i * 95 / 10);
-        return game.powerups.filter(p => !p.isHeart && !p.isShard).length;
+        return game.powerups.filter(p => !p.isHeart && !p.isGem).length;
     };
     const low = powersAt(0), high = powersAt(9000);
     assert(high > low * 1.5, "more power-ups high up (" + low + " at 0m, " + high + " at 9000m)");

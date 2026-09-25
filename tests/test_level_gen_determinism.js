@@ -22,7 +22,7 @@ function makeClient(seed) {
         orig(wy);
         const p = g.platforms[beforeP];
         const u = g.powerups[beforeU];
-        g.genLog.push([wy, p.x, p.w, p.vx, u ? (u.isShard ? 'gem' : 'power') : '-'].join('|'));
+        g.genLog.push([wy, p.x, p.w, p.vx, u ? (u.isGem ? 'gem' : 'power') : '-'].join('|'));
     };
     return g;
 }
@@ -71,7 +71,7 @@ try {
     // The first screen keeps its pickups (reset() used to wipe them).
     const fresh = new Game();
     fresh.startMultiplayerGame(12345);
-    assert(fresh.powerups.length > 0, "the first screen of a run should have shards/power-ups");
+    assert(fresh.powerups.length > 0, "the first screen of a run should have gems/power-ups");
     const solo = new Game();
     solo.startGame();
     assert(solo.powerups.length > 0, "solo runs keep their first-screen pickups too");

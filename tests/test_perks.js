@@ -95,13 +95,13 @@ try {
     game.state.multiplayer = false;
     console.log("EMP SOLO ONLY SUCCESS");
 
-    // GEMS x2: a 5-shard pickup banks 10.
+    // GEMS x2: a 5-gem pickup banks 10.
     game = new Game();
     equip(game, 'hoarder');
-    game.state.shards = 0;
-    game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isShard: true, shardValue: 5, markedForDeletion: false }];
+    game.state.gems = 0;
+    game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isGem: true, gemValue: 5, markedForDeletion: false }];
     game.update(1);
-    if (game.state.shards !== 10) throw new Error("GEMS x2 should double shard pickups, got " + game.state.shards);
+    if (game.state.gems !== 10) throw new Error("GEMS x2 should double gem pickups, got " + game.state.gems);
     console.log("GEMS X2 SUCCESS");
 
     // SHIELDED: wind in a late biome no longer pushes the player sideways.

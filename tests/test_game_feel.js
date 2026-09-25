@@ -44,7 +44,7 @@ try {
     localStorage.removeItem('lp_stats');
     g = new Game();
     g.startGame();
-    g.addShards(15);
+    g.addGems(15);
     g.state.powersCollected = 2;
     g.state.score = 12000;
     g.player.y = 400; g.player.vy = 0;
