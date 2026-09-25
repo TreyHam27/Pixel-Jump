@@ -118,7 +118,7 @@ try {
     assert(G2.remotePlayers.get('g1').x === 42, "G2 should see G1's position via the host relay");
 
     // ---------- Deaths: the run continues while anyone is alive ----------
-    as(G1, () => { G1.state.extraLives = 0; G1.die(true); });
+    as(G1, () => { G1.state.hearts = 0; G1.die(true); });
     bus.pump();
     assert(G1.player.isDead && G1.state.running, "G1 is dead but the run continues");
     assert(H.remotePlayers.get('g1').isDead && G3.remotePlayers.get('g1').isDead, "Everyone sees G1 dead");
@@ -126,7 +126,7 @@ try {
     assert(G1.respawnInterval, "G1's own respawn countdown should be running");
     assert(!H.respawnInterval && !G2.respawnInterval, "Alive players have no countdown");
 
-    as(G2, () => { G2.state.extraLives = 0; G2.die(true); });
+    as(G2, () => { G2.state.hearts = 0; G2.die(true); });
     bus.pump();
     assert(G2.respawnInterval && G1.respawnInterval && G1.respawnInterval !== G2.respawnInterval,
         "G1 and G2 each run their own countdown");
@@ -147,10 +147,10 @@ try {
     assert(H.state.running, "Run continues for the rest");
 
     // ---------- Last players fall: run ends for everyone ----------
-    as(H, () => { H.state.extraLives = 0; H.die(true); });
+    as(H, () => { H.state.hearts = 0; H.die(true); });
     bus.pump();
     assert(G1.state.running, "G1 still alive, run continues");
-    as(G1, () => { G1.state.extraLives = 0; G1.die(true); });
+    as(G1, () => { G1.state.hearts = 0; G1.die(true); });
     bus.pump();
     for (const g of [H, G1, G2]) {
         assert(!g.state.running, "Run should end once everyone is dead");
