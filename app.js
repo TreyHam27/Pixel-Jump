@@ -351,6 +351,8 @@ class Game {
             this.ui.toMpBtn.onclick = (e) => {
                 if (e && e.stopPropagation) e.stopPropagation();
                 this.setMenuPanel('mp');
+                // Warm the relay logins so HOST/JOIN don't wait on them.
+                if (window.network && window.network.prefetchRelay) window.network.prefetchRelay();
                 let savedName = localStorage.getItem('lp_mp_name');
                 if (savedName) this.ui.mpNameInput.value = savedName.toUpperCase();
             };

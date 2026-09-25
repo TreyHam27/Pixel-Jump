@@ -77,6 +77,9 @@ function setupMocks(opts = {}) {
     global.requestAnimationFrame = () => {};
     global.Image = class {};
     global.Audio = class { play() {} };
+    // Node has a real fetch; no test may reach the network (the TURN relay
+    // credentials URL in config.js is live). Relay tests install a fake.
+    global.fetch = undefined;
 }
 
 // Concatenates every game source file (in the same load order as index.html)

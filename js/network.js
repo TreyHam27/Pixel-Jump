@@ -13,6 +13,26 @@ function normalizeRoomCode(input) {
     return code;
 }
 
+// The relay's credentials response is untrusted input headed for
+// RTCPeerConnection: keep only well-formed stun:/turn:/turns: entries.
+function sanitizeIceServers(list) {
+    if (!Array.isArray(list)) return [];
+    const okUrl = u => typeof u === 'string' && /^(stun|turns?):/.test(u);
+    const out = [];
+    for (const s of list.slice(0, 12)) {
+        if (!s || typeof s !== 'object') continue;
+        const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+        if (!urls.length || !urls.every(okUrl)) continue;
+        if (s.username !== undefined && typeof s.username !== 'string') continue;
+        if (s.credential !== undefined && typeof s.credential !== 'string') continue;
+        const entry = { urls: s.urls };
+        if (s.username !== undefined) entry.username = s.username;
+        if (s.credential !== undefined) entry.credential = s.credential;
+        out.push(entry);
+    }
+    return out;
+}
+
 class NetworkManager {
     constructor() {
         this.peer = null;
@@ -54,6 +74,53 @@ class NetworkManager {
         this.onDisconnected = null;  // guest: lost the host
         this.onError = null;         // errors in a live session
         this.onStatus = null;
+
+        // TURN relay logins (see TURN_CREDENTIALS_URL), fetched when the
+        // co-op menu opens and before host/join, cached for TURN_CACHE_MS.
+        this.relayUrl = typeof TURN_CREDENTIALS_URL === 'string' ? TURN_CREDENTIALS_URL : '';
+        this.relayTimeoutMs = TURN_FETCH_TIMEOUT_MS;
+        this.relayServers = [];
+        this.relayFetchedAt = 0;
+        this.relayPending = null;
+        // ?relay forces every connection through the relay, to test it from
+        // a network where direct links would work.
+        this.relayOnly = typeof location !== 'undefined' && /[?&]relay\b/.test(location.search || '');
+    }
+
+    // Starts (or joins) a fetch of relay logins. Returns null when there's
+    // nothing to wait for, so host()/join() stay synchronous up to init().
+    // Never rejects: a failed or slow fetch just leaves co-op direct-only.
+    prefetchRelay() {
+        if (!this.relayUrl || typeof fetch !== 'function') return null;
+        if (this.relayPending) return this.relayPending;
+        if (this.relayFetchedAt && Date.now() - this.relayFetchedAt < TURN_CACHE_MS) return null;
+
+        const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+        let timer = null;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                if (ctrl) ctrl.abort();
+                reject(new Error("timed out"));
+            }, this.relayTimeoutMs);
+        });
+        const request = fetch(this.relayUrl, ctrl ? { signal: ctrl.signal } : undefined)
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return res.json();
+            });
+        this.relayPending = Promise.race([request, timeout])
+            .then(list => {
+                const servers = sanitizeIceServers(list);
+                if (!servers.length) throw new Error("no usable servers");
+                this.relayServers = servers;
+                this.relayFetchedAt = Date.now();
+            })
+            .catch(err => console.warn("TURN relay unavailable, co-op is direct-only:", err && err.message))
+            .then(() => {
+                clearTimeout(timer);
+                this.relayPending = null;
+            });
+        return this.relayPending;
     }
 
     generateCode() {
@@ -65,16 +132,16 @@ class NetworkManager {
     }
 
     getIceServers() {
-        // Google's public STUN servers. The free "openrelay" TURN relay and
-        // stun.services.mozilla.com no longer answer (checked 2026-09), so
-        // they only slowed ICE down. Players behind strict NATs need a TURN
-        // relay: add one (with your own credentials) to EXTRA_ICE_SERVERS.
+        // Google's public STUN servers, then the fetched TURN relay (for
+        // strict NATs where a direct link can't form), then any
+        // hand-configured extras. The old keyless "openrelay" servers and
+        // stun.services.mozilla.com no longer answer (checked 2026-09).
         const base = [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' }
         ];
-        return base.concat(typeof EXTRA_ICE_SERVERS !== 'undefined' ? EXTRA_ICE_SERVERS : []);
+        return base.concat(this.relayServers, typeof EXTRA_ICE_SERVERS !== 'undefined' ? EXTRA_ICE_SERVERS : []);
     }
 
     init(id = null) {
@@ -82,9 +149,10 @@ class NetworkManager {
             let settled = false;
             const peer = new Peer(id, {
                 debug: 1, // errors only
-                config: {
-                    'iceServers': this.getIceServers()
-                }
+                config: Object.assign(
+                    { 'iceServers': this.getIceServers() },
+                    this.relayOnly ? { iceTransportPolicy: 'relay' } : {}
+                )
             });
             this.peer = peer;
 
@@ -280,6 +348,15 @@ class NetworkManager {
     async host() {
         this.disconnect(); // Clear any existing peer before hosting fresh
         const gen = this.joinGen;
+        const wait = this.prefetchRelay();
+        if (wait) {
+            await wait;
+            if (gen !== this.joinGen) {
+                const cancelled = new Error("Hosting was cancelled.");
+                cancelled.type = 'cancelled';
+                throw cancelled;
+            }
+        }
         this.isHost = true;
         const maxRetries = 5;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -329,6 +406,12 @@ class NetworkManager {
             err.type = 'cancelled';
             return err;
         };
+
+        const wait = this.prefetchRelay();
+        if (wait) {
+            await wait;
+            if (gen !== this.joinGen) throw cancelled();
+        }
 
         await this.init();
         if (gen !== this.joinGen) throw cancelled();

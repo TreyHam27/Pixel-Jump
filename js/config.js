@@ -8,7 +8,7 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.7.2';
+const GAME_VERSION = '1.7.3';
 const NET_PROTOCOL = 4;
 
 const CONFIG = {
@@ -126,10 +126,19 @@ const MAX_EXTRA_LIVES = 3;
 // Slot 0 is always the party leader; each slot's colour is used for that
 // player's in-game name tag and their row in the party panel.
 const MAX_PARTY_SIZE = 4;
-// Extra WebRTC ICE servers for co-op, appended to Google's public STUN
-// servers. Players behind strict NATs (some mobile carriers, corporate
-// networks) can only connect through a TURN relay; add one here with your
-// own credentials, e.g.
+// TURN relay for co-op on strict networks (school/office WiFi, some mobile
+// carriers) where two browsers can't connect directly. Host and join fetch
+// relay logins from this Metered Open Relay URL:
+//   https://<app>.metered.live/api/v1/turn/credentials?apiKey=<key>
+// The key is public by design (it's in the page); the free plan stops at
+// 20 GB/month with no charge, and co-op then falls back to direct-only.
+// WebRTC still prefers a direct link, so only games that need it use the
+// relay. Empty = no relay.
+const TURN_CREDENTIALS_URL = 'https://pixeljump.metered.live/api/v1/turn/credentials?apiKey=f430cd6be005e6cd08915b58d886132f11ba';
+const TURN_FETCH_TIMEOUT_MS = 4000;       // host/join never wait longer
+const TURN_CACHE_MS = 30 * 60 * 1000;     // reuse fetched logins this long
+// Extra hand-configured WebRTC ICE servers, appended after Google's public
+// STUN servers and the relay above, e.g.
 //   { urls: 'turn:turn.example.com:443?transport=tcp', username: '...', credential: '...' }
 const EXTRA_ICE_SERVERS = [];
 // A teammate with no position update for this many frames (60fps game time)
