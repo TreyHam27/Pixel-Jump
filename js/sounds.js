@@ -95,12 +95,13 @@ class SoundManager {
         }
     }
 
-    // "Spring": a 25% pulse sweep over a triangle for body. It plays on every
-    // bounce, so the pitch wanders a few percent to keep repeats from grating.
+    // "Bubble": a round sine bloop with a quiet triangle octave on top. It
+    // plays on every bounce, so the pitch wanders a few percent to keep
+    // repeats from grating.
     playJump() {
         const p = 1 + (Math.random() - 0.5) * 0.06;
-        this.voice({ duty: 0.25, dur: 0.13, peak: 0.12, freq: [[0, 240 * p], [0.085, 720 * p, 'exp']], lowpass: 4200 });
-        this.voice({ wave: 'triangle', dur: 0.1, peak: 0.11, freq: [[0, 120 * p], [0.085, 360 * p, 'exp']] });
+        this.voice({ wave: 'sine', dur: 0.12, peak: 0.17, attack: 0.003, freq: [[0, 330 * p], [0.06, 990 * p, 'exp']] });
+        this.voice({ wave: 'triangle', dur: 0.08, peak: 0.05, freq: [[0, 660 * p], [0.06, 1980 * p, 'exp']] });
     }
 
     // "Tumble": a noise hit, a yelp up, a wobbling 8-bit staircase down, then
@@ -113,12 +114,12 @@ class SoundManager {
         this.voice({ wave: 'triangle', start: 0.78, dur: 0.32, peak: 0.24, attack: 0.005, freq: [[0, 110], [0.25, 40, 'exp']] });
     }
 
-    // "Bonk": bumping the exposed boss knocks you back unhurt, so a springy
-    // falling boing with an impact click rather than a pained sound.
+    // "Clang": bumping the exposed boss knocks you back unhurt, so two
+    // clashing metallic tones over a noise hit, like striking its armor.
     playHit() {
-        this.voice({ noise: true, dur: 0.04, peak: 0.18, attack: 0.001, bandpass: 2500, q: 1.2 });
-        this.voice({ wave: 'triangle', dur: 0.16, peak: 0.2, attack: 0.002, freq: [[0, 520], [0.12, 170, 'exp']] });
-        this.voice({ duty: 0.5, dur: 0.07, peak: 0.07, lowpass: 900, freq: [[0, 110], [0.06, 70, 'exp']] });
+        this.voice({ noise: true, dur: 0.05, peak: 0.2, attack: 0.001, bandpass: 4000, q: 0.9 });
+        this.voice({ duty: 0.5, dur: 0.26, peak: 0.06, attack: 0.002, lowpass: 5000, freq: [[0, 880], [0.25, 860, 'exp']] });
+        this.voice({ duty: 0.25, dur: 0.22, peak: 0.05, attack: 0.002, lowpass: 5000, freq: [[0, 1245], [0.2, 1220, 'exp']] });
     }
 
     // One enveloped voice routed to master. Options: wave | duty | noise,
