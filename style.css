@@ -2487,7 +2487,7 @@ body.reduce-motion *::after {
     font-size: 11px;
 }
 
-/* iPhone browser tabs: Add to Home Screen steps cover everything. */
+/* Phone and tablet browser tabs: install steps cover everything. */
 #install-gate {
     position: fixed;
     inset: 0;
@@ -2589,6 +2589,41 @@ body.reduce-motion *::after {
 
 .install-steps b {
     color: #00ffff;
+}
+
+.install-btn {
+    display: block;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 16px;
+    border: 2px solid #00ffcc;
+    border-radius: var(--radius);
+    background: rgba(0, 255, 204, 0.15);
+    color: #00ffcc;
+    font: inherit;
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    box-shadow: 0 0 18px rgba(0, 255, 204, 0.45);
+    cursor: pointer;
+}
+
+.install-btn:active {
+    background: rgba(0, 255, 204, 0.3);
+}
+
+.install-btn:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
+.install-done {
+    border-color: #00ffcc;
+    color: #00ffcc;
+}
+
+.install-done b {
+    color: #fff;
 }
 
 .install-share {
