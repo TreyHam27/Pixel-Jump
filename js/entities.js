@@ -226,7 +226,7 @@ class Player extends Entity {
             if (rectsIntersect(this, p)) {
                 if (p.isShard) {
                     p.markedForDeletion = true;
-                    return { event: "shard", x: p.x, y: p.y, value: p.shardValue || 1 };
+                    return { event: "shard", x: p.x, y: p.y, value: p.shardValue || 1, color: BIOMES[p.tier || 0].gem.color };
                 } else if (p.isHeart) {
                     p.markedForDeletion = true;
                     return { event: "heart", x: p.x, y: p.y };

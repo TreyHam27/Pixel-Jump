@@ -126,6 +126,36 @@ try {
     assert(r.canvas.width === CONFIG.WIDTH && r.dpr === 1, "1x on a normal screen");
     console.log("HIDPI SUCCESS");
 
+    // ---- iPhone: browser tabs get Add to Home Screen steps, not the game.
+    const SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+    const CHROME_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/129.0 Mobile/15E148 Safari/604.1';
+    const INSTAGRAM = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0';
+    const IPAD = 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+    const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+    const tab = { matchMedia: () => ({ matches: false }) };
+    const app = { matchMedia: (q) => ({ matches: q === '(display-mode: standalone)' }) };
+    assert(needsHomeScreenInstall({ userAgent: SAFARI }, tab), "iPhone Safari tab is gated");
+    assert(needsHomeScreenInstall({ userAgent: INSTAGRAM }, tab), "iPhone in-app browser is gated");
+    assert(!needsHomeScreenInstall({ userAgent: SAFARI, standalone: true }, tab), "the Home Screen app plays");
+    assert(!needsHomeScreenInstall({ userAgent: SAFARI }, app), "display-mode standalone plays");
+    assert(!needsHomeScreenInstall({ userAgent: IPAD }, tab), "iPad isn't gated");
+    assert(!needsHomeScreenInstall({ userAgent: ANDROID }, tab), "Android isn't gated");
+    assert(!needsHomeScreenInstall(null, null), "no navigator: not gated");
+    assert(!isIOSNonSafari(SAFARI) && isIOSNonSafari(CHROME_IOS) && isIOSNonSafari(INSTAGRAM), "non-Safari browsers are told to open Safari");
+
+    const realNav = globalThis.navigator;
+    __setNav({ userAgent: CHROME_IOS });
+    const gated = new Game();
+    assert(gated.installGated && gated.ui.installGate.hidden === false, "the gate shows on an iPhone tab");
+    assert(gated.ui.installGateSafari.hidden === false, "with the open-in-Safari step for Chrome");
+    gated.startGame();
+    assert(!gated.state.running, "no run can start behind the gate");
+    __setNav({ userAgent: SAFARI, standalone: true });
+    const installed = new Game();
+    assert(!installed.installGated, "the installed app isn't gated");
+    __setNav(realNav);
+    console.log("IPHONE GATE SUCCESS");
+
     process.exit(0);
 } catch (e) {
     console.error("FAILED:", e.stack || e);

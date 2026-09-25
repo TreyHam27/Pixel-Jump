@@ -31,7 +31,7 @@ try {
     {
         let game = new Game();
         game.startGame();
-        game.state.revived = true; // free revive already spent, so a fall ends the run
+        game.state.extraLives = 0; // the run-start heart already spent, so a fall ends the run
         game.platforms = [{ x: 0, y: CONFIG.HEIGHT + 10, w: CONFIG.WIDTH, h: 40 }];
         game.player.y = CONFIG.HEIGHT - 20;
         game.player.vy = 6;
@@ -113,18 +113,27 @@ try {
         assert(p.powerTimer === first.time * ((p.skin.ability || {}).powerDurationMult || 1), "timer is refreshed");
     }
 
-    // 7. Shards are worth SHARD_VALUE (10) gems.
+    // 7. Gems are worth their biome's gem value (5 at the start up to 100
+    // in The Void), decided by the platform's own height.
     {
+        assert(BIOMES[0].gem.value === 5 && BIOMES[BIOMES.length - 1].gem.value === 100, "gems run from 5 to 100");
+        assert(BIOMES.every((b, i) => i === 0 || b.gem.value > BIOMES[i - 1].gem.value), "every biome pays more than the last");
+        assert(new Set(BIOMES.map(b => b.gem.color)).size === BIOMES.length, "every tier has its own colour");
         let game = new Game();
         game.startGame();
-        for (let i = 0; i < 200; i++) game.spawnPlatform(-100 - i * 10);
+        game.powerups = [];
+        for (let m = 0; m < 20000; m += 7) game.spawnPlatform(-m * 10);
         let shards = game.powerups.filter(p => p.isShard);
-        assert(shards.length > 0, "some shards spawned");
-        assert(SHARD_VALUE === 10 && shards.every(p => p.shardValue === SHARD_VALUE), "every shard is worth 10");
+        assert(shards.length > 100, "some shards spawned");
+        assert(shards.every(p => {
+            const b = biomeAt(Math.floor(-(p.startY + 30 - game.state.score) / 10));
+            return p.tier === BIOMES.indexOf(b) && p.shardValue === b.gem.value;
+        }), "every shard is worth its biome's value");
+        assert(new Set(shards.map(p => p.tier)).size === BIOMES.length, "gems of every tier appear");
         let before = game.state.shards;
-        game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isShard: true, shardValue: SHARD_VALUE, markedForDeletion: false }];
+        game.powerups = [{ x: game.player.x, y: game.player.y, startY: game.player.y, w: 16, h: 16, isShard: true, shardValue: 75, tier: 6, markedForDeletion: false }];
         game.update(1);
-        assert(game.state.shards === before + 10, "picking up a shard adds 10");
+        assert(game.state.shards === before + 75, "picking up a shard adds its value");
     }
 
     console.log("BUGFIX TESTS PASSED");

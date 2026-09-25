@@ -7,7 +7,7 @@ function makeMockContext() {
     return {
         fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: 'left',
         shadowBlur: 0, shadowColor: '', globalAlpha: 1,
-        fillRect() {}, strokeRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
+        fillRect() {}, strokeRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {},
         stroke() {}, fill() {}, arc() {}, fillText() {}, save() {}, restore() {},
         setTransform() {}, scale() {}, translate() {}, drawImage() {}, setLineDash() {},
         measureText() { return { width: 0 }; },

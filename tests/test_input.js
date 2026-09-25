@@ -118,6 +118,35 @@ try {
     assert(!game.canQuickStart(key('Space')), "no quick start mid-run");
     console.log("START GUARDS SUCCESS");
 
+    // Arrow keys in the shop: browse the Pixels, Enter/Space buys or equips.
+    const shop = new Game();
+    shop.activeMenuPanel = 'shop';
+    const tiers = shop.gemShopSkins().length;
+    shop.gemShopIndex = 0;
+    assert(shop.canMenuKey(key('ArrowRight'), 'shop') && !shop.canQuickStart(key('ArrowRight')), "shop keys, not solo keys");
+    shop.handleShopKey(key('ArrowRight'));
+    shop.handleShopKey(key('KeyD'));
+    assert(shop.gemShopIndex === 2, "right / D step forward, at " + shop.gemShopIndex);
+    shop.handleShopKey(key('ArrowLeft'));
+    shop.handleShopKey(key('ArrowLeft'));
+    shop.handleShopKey(key('ArrowLeft'));
+    assert(shop.gemShopIndex === tiers - 1, "left wraps around to the top tier");
+    let clicks = 0;
+    const buyBtn = { disabled: false, click() { clicks++; } };
+    shop.ui.gemShop.querySelector = (sel) => sel === '.gem-skin-buy-btn' ? buyBtn : null;
+    const enter = key('Enter');
+    shop.handleShopKey(enter);
+    shop.handleShopKey(key('Space'));
+    assert(clicks === 2 && enter.prevented, "Enter and Space press BUY");
+    shop.handleShopKey(key('Enter', { target: { closest: (sel) => sel === 'button' ? {} : null } }));
+    assert(clicks === 2, "a focused button handles its own Enter");
+    buyBtn.disabled = true;
+    shop.handleShopKey(key('Enter'));
+    assert(clicks === 2, "EQUIPPED (disabled) isn't pressed");
+    shop.activeMenuPanel = 'sp';
+    assert(!shop.canMenuKey(key('ArrowRight'), 'shop'), "no shop keys off the shop");
+    console.log("SHOP KEYS SUCCESS");
+
     // Holding jump can't chain re-jumps off a stale grounded flag.
     const p = new Player(100, 500);
     const floor = [{ x: 0, y: 526, w: 600, h: 20 }];

@@ -40,6 +40,23 @@ function parseChallenge(search, todaySeed) {
 
 const SITE_URL = 'https://treyham27.github.io/Pixel-Jump/';
 
+// On iPhone the game only runs as a Home Screen app (full screen, no
+// browser bars, its own save). True for an iPhone/iPod browser tab.
+function needsHomeScreenInstall(nav, win) {
+    const ua = (nav && nav.userAgent) || '';
+    if (!/iPhone|iPod/.test(ua) || nav.standalone) return false;
+    try {
+        if (win && typeof win.matchMedia === 'function' && win.matchMedia('(display-mode: standalone)').matches) return false;
+    } catch (e) { /* no matchMedia: treat as a tab */ }
+    return true;
+}
+
+// Only Safari offers Add to Home Screen reliably; Chrome, Firefox and the
+// browsers inside other apps (no "Safari/" token) are sent to Safari first.
+function isIOSNonSafari(ua) {
+    return /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua || '') || !/Safari\//.test(ua || '');
+}
+
 // Lifetime totals shown on the Records screen (lp_stats).
 const STAT_DEFAULTS = { runs: 0, meters: 0, gems: 0, powerups: 0, livesLost: 0, seconds: 0 };
 
@@ -194,6 +211,8 @@ class Game {
 
             // Phones, challenge links and sharing
             touchControls: document.getElementById("touch-controls"),
+            installGate: document.getElementById("install-gate"),
+            installGateSafari: document.getElementById("install-gate-safari"),
             setTouch: document.getElementById("set-touch"),
             setTouchRow: document.getElementById("set-touch-row"),
             setTips: document.getElementById("set-tips"),
@@ -249,6 +268,7 @@ class Game {
             }
         }
 
+        this.applyInstallGate();
         this.bindEvents();
         this.updateSkinUI();
         this.updateFameUI();
@@ -333,6 +353,10 @@ class Game {
         window.addEventListener('keydown', (e) => {
             if (this.runCardOpen) {
                 this.handleRunCardKey(e);
+                return;
+            }
+            if (this.canMenuKey(e, 'shop')) {
+                this.handleShopKey(e);
                 return;
             }
             if (!this.canQuickStart(e)) return;
@@ -772,13 +796,36 @@ class Game {
     // never from a held (auto-repeating) key left over from the last run,
     // never while typing, and never under the revive prompt.
     canQuickStart(e) {
+        return this.canMenuKey(e, 'sp');
+    }
+
+    // The same rules for any menu panel's keys (the solo menu, the shop).
+    canMenuKey(e, panel) {
         if (e.repeat || this.state.running) return false;
-        if (this.activeMenuPanel !== 'sp' || this.runCardOpen || this.settingsOpen) return false;
+        if (this.activeMenuPanel !== panel || this.runCardOpen || this.settingsOpen) return false;
         const revive = this.ads && this.ads.reviveOverlay;
         if (revive && revive.style.display === 'flex') return false;
         const t = e.target;
         if (t && t.closest && t.closest('input, textarea, select')) return false;
         return true;
+    }
+
+    // Keyboard in the shop: left/right browse the Pixels, Space / Enter
+    // presses the framed card's BUY / EQUIP. A focused button handles its own
+    // Space / Enter, so that isn't doubled.
+    handleShopKey(e) {
+        const role = InputHandler.eventRole(e);
+        if (role === 'left' || role === 'right') {
+            e.preventDefault();
+            this.changeGemShopSkin(role === 'left' ? -1 : 1);
+            return;
+        }
+        const press = e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter';
+        const t = e.target;
+        if (!press || (t && t.closest && t.closest('button'))) return;
+        e.preventDefault();
+        const buy = this.ui.gemShop && this.ui.gemShop.querySelector && this.ui.gemShop.querySelector('.gem-skin-buy-btn');
+        if (buy && !buy.disabled) buy.click();
     }
 
     // A solo start from the menu (click, tap or key). While in a co-op party
@@ -983,6 +1030,9 @@ class Game {
         rp.slot = member.slot;
         rp.skinIndex = skinIndex;
         rp.lastSeenT = this.state.time;
+        // World heights (wy) of the pickups they've taken, so a spectator
+        // sees the level the way they do.
+        rp.picked = new Set();
         this.remotePlayers.set(member.pid, rp);
         return rp;
     }
@@ -1001,7 +1051,11 @@ class Game {
             vx: num(d.vx, -50, 50) || 0,
             vy: num(d.vy, -50, 50) || 0,
             skinIndex,
-            activePowerId: power ? power.id : null
+            activePowerId: power ? power.id : null,
+            // Share of the power-up's time left (0-1), for the spectate HUD.
+            pf: power ? (num(d.pf, 0, 1) || 0) : 0,
+            // Hearts banked (decides whether hearts show in their view).
+            hl: Number.isInteger(d.hl) ? Math.max(0, Math.min(MAX_EXTRA_LIVES, d.hl)) : 0
         };
     }
 
@@ -1060,7 +1114,7 @@ class Game {
         // traffic from guests (never party control messages), and a guest
         // only listens to its host.
         if (this.state.isHost) {
-            if (!['handshake', 'sync', 'die', 'revive', 'hit', 'stomp'].includes(data.type)) return;
+            if (!['handshake', 'sync', 'die', 'revive', 'hit', 'stomp', 'pick'].includes(data.type)) return;
         } else if (net.friendId && fromId !== net.friendId) {
             return;
         }
@@ -1072,12 +1126,15 @@ class Game {
             data = clean;
         } else if (data.type === 'die' || data.type === 'revive') {
             data = { type: data.type, pid: this.state.isHost ? fromId : String(data.pid) };
+        } else if (data.type === 'pick') {
+            if (!Number.isInteger(data.wy) || Math.abs(data.wy) > 1e8) return;
+            data = { type: 'pick', pid: this.state.isHost ? fromId : String(data.pid), wy: data.wy };
         }
 
         // The host is the hub: relay every guest's gameplay traffic to the
         // rest of the party (a clean copy, stamped with the sender's ID so it
         // can't be spoofed).
-        if (this.state.isHost && (data.type === 'sync' || data.type === 'die' || data.type === 'revive')) {
+        if (this.state.isHost && ['sync', 'die', 'revive', 'pick'].includes(data.type)) {
             net.broadcastExcept(fromId, data);
         }
 
@@ -1135,6 +1192,10 @@ class Game {
             rp.vy = data.vy;
             rp.lastSeenT = this.state.time;
             rp.activePower = data.activePowerId ? Object.values(POWERS).find(p => p.id === data.activePowerId) : null;
+            rp.powerFrac = data.pf || 0;
+            rp.hearts = data.hl || 0;
+        } else if (data.type === 'pick') {
+            this.applyRemotePick(data);
         } else if (data.type === 'die') {
             const rp = this.remotePlayers.get(data.pid);
             if (rp) rp.isDead = true;
@@ -1385,22 +1446,57 @@ class Game {
         if (boss) boss.takeDamage(this.particles);
     }
 
-    // Dead in co-op: the camera follows whoever is lowest; say who.
+    // Dead in co-op: the camera follows whoever is lowest; say who (and
+    // keep them, so the power-up HUD can show theirs).
     updateSpectateHud() {
         const hud = this.ui.spectateHud;
         if (!hud) return;
         let name = null;
+        let lowest = null;
         if (this.state.multiplayer && this.player.isDead) {
-            let lowest = null;
             this.remotePlayers.forEach(rp => {
                 if (!rp.isDead && !this.remoteAway(rp) && (!lowest || rp.y > lowest.y)) lowest = rp;
             });
             if (lowest) name = lowest.name || 'PLAYER';
         }
+        this.spectatingPlayer = lowest;
         if (name === this.spectating) return;
         this.spectating = name;
         hud.hidden = !name;
         if (name) hud.innerText = 'SPECTATING ' + name;
+    }
+
+    // Share of the local player's power-up time left (0-1). Measured
+    // against the stretched duration, or long-lasting power Pixels would
+    // start with an overflowing bar.
+    powerFraction(perks) {
+        const power = this.player.activePower;
+        if (!power) return 0;
+        const fullTime = power.time * (perks.powerDurationMult || 1);
+        return Math.max(0, Math.min(1, this.player.powerTimer / fullTime));
+    }
+
+    // The power-up bar: your own, or while you're down in co-op, the
+    // teammate you're spectating (a dead player's own power is frozen).
+    updatePowerHud(perks) {
+        let power = this.player.activePower;
+        let frac = this.powerFraction(perks);
+        let owner = '';
+        if (this.state.multiplayer && this.player.isDead) {
+            const rp = this.spectatingPlayer;
+            power = rp ? rp.activePower : null;
+            frac = rp ? rp.powerFrac || 0 : 0;
+            owner = rp ? (rp.name || 'PLAYER') + ': ' : '';
+        }
+        if (!power) {
+            this.ui.power.style.opacity = 0;
+            return;
+        }
+        this.ui.power.style.opacity = 1;
+        this.ui.powerText.innerText = owner + power.name;
+        this.ui.powerText.style.color = power.color;
+        this.ui.powerFill.style.backgroundColor = power.color;
+        this.ui.powerFill.style.width = (frac * 100) + "%";
     }
 
     startMultiplayerGame(seed) {
@@ -1652,14 +1748,17 @@ class Game {
         return true;
     }
 
-    // Spends one banked extra life. Returns false when the bank is empty so
-    // useSpareLife() falls through to the normal revive flow.
+    // Spends one banked extra life. Returns false when the bank is empty.
     consumeExtraLife() {
         if (this.state.extraLives <= 0) return false;
-        this.state.extraLives--;
+        this.setExtraLives(this.state.extraLives - 1);
+        return true;
+    }
+
+    setExtraLives(n) {
+        this.state.extraLives = Math.max(0, Math.min(MAX_EXTRA_LIVES, n));
         localStorage.setItem('lp_extraLives', this.state.extraLives);
         this.updateExtraLifeUI();
-        return true;
     }
 
     // Buying a Pixel also equips it — that's why you bought it.
@@ -1895,8 +1994,9 @@ class Game {
         localStorage.setItem('lp_loops', this.state.loops);
         this.state.bonusScore += BOSS_BONUS_METERS * 10;
         this.addShards(BOSS_GEM_BOUNTY);
+        this.setExtraLives(MAX_EXTRA_LIVES);
         this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
-        this.notify(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎`, 'reward');
+        this.notify(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎  HEARTS FULL`, 'reward');
         sounds.play('powerup');
     }
 
@@ -1956,7 +2056,6 @@ class Game {
         this.state.pulseTimer = 0;
         this.state.maxScore = Math.floor(this.state.score / 10);
         this.state.bossActive = false;
-        this.state.usedExtraRevive = false;
         this.state.frames = 0;
         this.state.time = 0;
         // Spawn/animation clocks in 60fps-frame units of game time (see
@@ -2027,6 +2126,7 @@ class Game {
         this.tombstones = new Map();
         this.state.diveTurn = 0;
         this.spectating = null;
+        this.spectatingPlayer = null;
 
         this.ui.power.style.opacity = 0;
         this.clearNotices();
@@ -2067,6 +2167,7 @@ class Game {
                 startY: y - 40,
                 w: 24, h: 24,
                 isShard: false,
+                wy,
                 markedForDeletion: false
             });
         } else if (this.heartAllowedAt(wy, scoreMeters)) {
@@ -2080,16 +2181,22 @@ class Game {
                 w: 28, h: 28,
                 isShard: false,
                 isHeart: true,
+                wy,
                 markedForDeletion: false
             });
         } else if (this.seededRandom() < SHARD_CHANCE) {
+            // Worth more the higher the biome (by the platform's own height,
+            // so every client agrees).
+            const tier = biomeIndexAt(scoreMeters);
             this.powerups.push({
                 x: x + w / 2 - 8,
                 y: y - 30,
                 startY: y - 30,
                 w: 16, h: 16,
                 isShard: true,
-                shardValue: SHARD_VALUE,
+                shardValue: BIOMES[tier].gem.value,
+                tier,
+                wy,
                 markedForDeletion: false
             });
         }
@@ -2268,6 +2375,12 @@ class Game {
 
         this.platforms = this.platforms.filter(p => p.y < CONFIG.HEIGHT + 100);
         this.powerups = this.powerups.filter(p => p.y < CONFIG.HEIGHT + 100);
+        // Forget teammates' pickups once they're below the screen.
+        if (this.state.multiplayer) {
+            this.remotePlayers.forEach(rp => {
+                if (rp.picked) rp.picked.forEach(wy => { if (wy + this.state.score > CONFIG.HEIGHT + 100) rp.picked.delete(wy); });
+            });
+        }
         // Drones circle back instead of leaving, so cull the ones left below.
         this.enemies = this.enemies.filter(e => e instanceof BossDrone || e.y < CONFIG.HEIGHT + 100);
 
@@ -2282,7 +2395,19 @@ class Game {
         }
     }
 
+    // iPhone browser tabs get Add to Home Screen steps instead of the game.
+    applyInstallGate() {
+        const nav = typeof navigator !== 'undefined' ? navigator : null;
+        this.installGated = needsHomeScreenInstall(nav, typeof window !== 'undefined' ? window : null);
+        if (!this.installGated || !this.ui.installGate) return;
+        this.ui.installGate.hidden = false;
+        if (this.ui.installGateSafari) this.ui.installGateSafari.hidden = !isIOSNonSafari(nav.userAgent);
+        const container = document.getElementById('game-container');
+        if (container) container.inert = true;
+    }
+
     startGame(isMp = false, mpSeed = null) {
+        if (this.installGated) return;
         // Whatever menu button had focus must not catch the Space/Enter that
         // follows, and keys held in the menu shouldn't carry into the run.
         this.blurFocus();
@@ -2293,6 +2418,10 @@ class Game {
         this.state.multiplayer = isMp;
         this.state.deathCount = 0;
         this.reset(isMp ? mpSeed : null);
+        // Every run starts with at least one heart: the free life each round
+        // lives in the hearts meter rather than behind a hidden revive.
+        if (this.state.extraLives < 1) this.setExtraLives(1);
+        if ((this.player.skin.ability || {}).startShield) this.player.grantPower(POWERS.SHIELD);
 
         this.ui.menu.style.opacity = 0;
         if (this.ui.menusWrapper) this.ui.menusWrapper.style.opacity = 0;
@@ -2372,8 +2501,40 @@ class Game {
         return { canvas: c, size };
     }
 
+    // A gem in its biome's colour: a cut diamond (flat crown, pointed
+    // base) with a lighter crown and a glint, drawn once with its glow.
+    makeGemSprite(color) {
+        const size = 40;
+        const dpr = this.renderer.dpr || 1;
+        const c = document.createElement('canvas');
+        c.width = size * dpr;
+        c.height = size * dpr;
+        const ctx = c.getContext && c.getContext('2d');
+        if (!ctx || !ctx.beginPath) return null;
+        if (ctx.scale) ctx.scale(dpr, dpr);
+        const x = size / 2 - 10, y = size / 2 - 9;
+        const shape = (pts) => {
+            ctx.beginPath();
+            pts.forEach(([px, py], i) => i ? ctx.lineTo(x + px, y + py) : ctx.moveTo(x + px, y + py));
+            ctx.closePath();
+            ctx.fill();
+        };
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = color;
+        ctx.fillStyle = color;
+        shape([[4, 0], [16, 0], [20, 6], [10, 18], [0, 6]]);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        shape([[4, 0], [16, 0], [20, 6], [0, 6]]);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        shape([[10, 6], [20, 6], [10, 18]]);
+        ctx.fillStyle = '#fff';
+        shape([[5, 1], [8, 1], [6, 5], [3, 5]]);
+        return { canvas: c, size };
+    }
+
     makePickupSprites() {
-        this.gemSprite = this.makePickupSprite('💎', '#00ffff');
+        this.gemSprites = BIOMES.map(b => this.makeGemSprite(b.gem.color));
         this.heartSprite = this.makePickupSprite('❤️', '#ff3366', 28);
     }
 
@@ -2389,19 +2550,48 @@ class Game {
     // The pickups this player can see and collect. Hearts are part of every
     // client's level, but only exist for a player with no extra lives left:
     // picking one up hides the rest, and spending that life brings them back.
+    // In co-op, pickups you took stay in the level (flagged `mine`) so a
+    // spectating view can still show them for a teammate who hasn't.
     visiblePickups() {
-        if (this.state.extraLives <= 0) return this.powerups;
-        return this.powerups.filter(p => !p.isHeart);
+        const hearts = this.state.extraLives <= 0;
+        return this.powerups.filter(p => !p.mine && (hearts || !p.isHeart));
+    }
+
+    // While you're down: the level as the teammate you're watching sees it,
+    // without what they've taken, and hearts only if they have none left.
+    spectatePickups(rp) {
+        const hearts = (rp.hearts || 0) <= 0;
+        return this.powerups.filter(p => !(rp.picked && rp.picked.has(p.wy)) && (hearts || !p.isHeart));
+    }
+
+    // While you're down, the teammate you're watching pulls pickups in with
+    // their MAGNET (or a gem-magnet Pixel) just as on their own screen.
+    pullForSpectated(rp, dt) {
+        const ability = (rp.skin && rp.skin.ability) || {};
+        const magnet = rp.activePower === POWERS.MAGNET;
+        if (!magnet && !ability.shardMagnetRadius) return;
+        this.spectatePickups(rp).forEach(p => {
+            if (magnet) rp.pullPickup(p, 200, dt);
+            if (p.isShard && ability.shardMagnetRadius) rp.pullPickup(p, ability.shardMagnetRadius, dt);
+        });
+    }
+
+    // A teammate took a pickup. If we're watching them, show it go.
+    applyRemotePick(d) {
+        const rp = this.remotePlayers.get(d.pid);
+        if (!rp || !rp.picked) return;
+        rp.picked.add(d.wy);
+        if (!this.player.isDead || this.spectatingPlayer !== rp) return;
+        const p = this.powerups.find(q => q.wy === d.wy);
+        if (!p) return;
+        const color = p.isShard ? BIOMES[p.tier || 0].gem.color : p.isHeart ? "#ff3366" : (rp.activePower ? rp.activePower.color : "#ffffff");
+        this.particles.spawn(p.x + p.w / 2, p.y + p.h / 2, color, p.isShard ? 10 : 20);
     }
 
     collectHeart(event) {
-        if (this.state.extraLives < MAX_EXTRA_LIVES) {
-            this.state.extraLives++;
-            localStorage.setItem('lp_extraLives', this.state.extraLives);
-            this.updateExtraLifeUI();
-        }
+        if (this.state.extraLives < MAX_EXTRA_LIVES) this.setExtraLives(this.state.extraLives + 1);
         this.particles.spawn(event.x + 14, event.y + 14, "#ff3366", 20);
-        sounds.play('powerup');
+        sounds.play('heart');
         this.notify("EXTRA LIFE +1", 'heart');
     }
 
@@ -2626,7 +2816,8 @@ class Game {
         this.state.running = false;
         this.updateTouchControls(); // not over a revive prompt
 
-        if (!this.state.revived) {
+        // With ads off there is no revive offer: hearts are the only lives.
+        if (ADS_ENABLED && !this.state.revived) {
             this.ads.showRevivePrompt(
                 () => { this.revive(); },
                 () => { this.gameOver(); }
@@ -2637,17 +2828,9 @@ class Game {
     }
 
     // A fall or hit that would end the run (solo) or knock you out (co-op)
-    // spends a spare life instead, if there is one: the equipped Pixel's
-    // free revive first (it refreshes every run, so it's the cheaper thing
-    // to burn), then a banked extra life. Returns true if the player was
+    // spends a heart instead, if there is one. Returns true if the player was
     // saved.
     useSpareLife() {
-        const ability = this.player.skin.ability || {};
-        if (ability.extraRevive && !this.state.usedExtraRevive) {
-            this.state.usedExtraRevive = true;
-            this.rescuePlayer("#00ffaa", "BACKUP LIFE ENGAGED");
-            return true;
-        }
         if (this.consumeExtraLife()) {
             this.rescuePlayer("#ff3366", "EXTRA LIFE SPENT — " + this.state.extraLives + " LEFT");
             return true;
@@ -2660,7 +2843,7 @@ class Game {
     rescuePlayer(color, text) {
         this.deployRescueNet();
         this.player.grantPower(POWERS.SHIELD);
-        sounds.play('powerup');
+        sounds.play('heart');
         this.particles.spawn(this.player.x + 13, this.player.y + 13, color, 30, "blast");
         this.showAlert(text, 'life');
     }
@@ -2874,6 +3057,7 @@ class Game {
         if (this.ui.challengeHud) this.ui.challengeHud.hidden = true;
         if (this.ui.spectateHud) this.ui.spectateHud.hidden = true;
         this.spectating = null;
+        this.spectatingPlayer = null;
         this.showRunCard(finalScore);
     }
 
@@ -3044,6 +3228,7 @@ class Game {
         // A dead co-op player's body is gone until they respawn: no physics,
         // no landing on platforms, no pickups.
         let event = this.player.isDead ? null : this.player.update(dt, this.input, this.platforms, this.visiblePickups());
+        if (this.state.multiplayer && this.player.isDead && this.spectatingPlayer) this.pullForSpectated(this.spectatingPlayer, dt);
 
         if (glitching) {
             const tmp = this.input.keys.left;
@@ -3098,14 +3283,14 @@ class Game {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#ff3300", 2, "blast");
         } else if (event && event.event === "shard") {
             this.addShards((event.value || 1) * (perks.shardMult || 1));
-            this.particles.spawn(event.x + 8, event.y + 8, "#00ffff", 10);
+            this.particles.spawn(event.x + 8, event.y + 8, event.color || "#00ffff", 10);
             sounds.play('powerup');
         } else if (event && event.event === "heart") {
             this.collectHeart(event);
         } else if (event && event.event === "powerup") {
             this.state.powersCollected++;
             this.particles.spawn(event.x + 12, event.y + 12, this.player.activePower.color, 20);
-            sounds.play('powerup');
+            sounds.play('power');
         }
 
         this.updateDronePulse(dt, perks);
@@ -3216,7 +3401,9 @@ class Game {
                 vx: r(this.player.vx),
                 vy: r(this.player.vy),
                 skinIndex: this.viewParams.skinIndex,
-                activePowerId: this.player.activePower ? this.player.activePower.id : null
+                activePowerId: this.player.activePower ? this.player.activePower.id : null,
+                pf: Math.round(this.powerFraction(perks) * 100) / 100,
+                hl: this.state.extraLives
             });
         }
 
@@ -3271,21 +3458,21 @@ class Game {
         this.ui.score.innerText = fmtNum(displayScore) + "m";
         this.ui.best.innerText = "BEST: " + fmtNum(this.state.highScore) + "m";
 
-        if (this.player.activePower) {
-            this.ui.power.style.opacity = 1;
-            this.ui.powerText.innerText = this.player.activePower.name;
-            this.ui.powerText.style.color = this.player.activePower.color;
-            this.ui.powerFill.style.backgroundColor = this.player.activePower.color;
-            // Measured against the stretched duration, or long-lasting power
-            // Pixels would start with an overflowing bar.
-            const fullTime = this.player.activePower.time * (perks.powerDurationMult || 1);
-            let pct = (this.player.powerTimer / fullTime) * 100;
-            this.ui.powerFill.style.width = pct + "%";
-        } else {
-            this.ui.power.style.opacity = 0;
-        }
+        this.updatePowerHud(perks);
 
-        this.powerups = this.powerups.filter(p => !p.markedForDeletion);
+        if (this.state.multiplayer) {
+            // Co-op: a pickup you took is only gone for you (see
+            // visiblePickups); the party hears so spectators see it go.
+            this.powerups.forEach(p => {
+                if (!p.markedForDeletion) return;
+                p.markedForDeletion = false;
+                if (p.mine) return;
+                p.mine = true;
+                if (window.network && Number.isInteger(p.wy)) window.network.send({ type: 'pick', pid: window.network.myId, wy: p.wy });
+            });
+        } else {
+            this.powerups = this.powerups.filter(p => !p.markedForDeletion);
+        }
     }
 
     draw() {
@@ -3303,15 +3490,18 @@ class Game {
             this.renderer.ctx.fillRect(p.x + p.w - 3, p.y, 3, p.h);
         });
 
-        this.visiblePickups().forEach(p => {
+        const shownPickups = this.state.multiplayer && this.player.isDead && this.spectatingPlayer
+            ? this.spectatePickups(this.spectatingPlayer)
+            : this.visiblePickups();
+        shownPickups.forEach(p => {
             p.y = p.startY + Math.sin(this.state.time * 0.1) * 5;
             if (p.isHeart) {
                 this.drawSprite(this.heartSprite, p, 0.85 + 0.15 * Math.sin(this.state.time * 0.15));
             } else if (p.isShard) {
-                // Same 💎 as the gem counter, pre-rendered with its glow;
-                // the pulse is just the sprite's opacity.
+                // Pre-rendered in the gem's biome colour, with its glow; the
+                // pulse is just the sprite's opacity.
                 const ctx = this.renderer.ctx;
-                const sprite = this.gemSprite;
+                const sprite = this.gemSprites && this.gemSprites[p.tier || 0];
                 if (sprite) {
                     ctx.globalAlpha = 0.8 + 0.2 * Math.sin(this.state.time * 0.3);
                     ctx.drawImage(sprite.canvas, p.x + p.w / 2 - sprite.size / 2, p.y + p.h / 2 - sprite.size / 2, sprite.size, sprite.size);

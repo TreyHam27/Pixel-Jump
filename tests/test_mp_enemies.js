@@ -175,12 +175,111 @@ try {
     assert(Math.abs(hostOnG.x - (x0 + 60)) < 3, "eases into place, at " + hostOnG.x);
     console.log("SMOOTHING SUCCESS");
 
+    // ---- Pickups are per person: host and guest can both take the same gem.
+    const gemH = H.powerups.find(p => p.isShard);
+    const gemG = gemH && G.powerups.find(p => p.isShard && p.x === gemH.x &&
+        Math.abs((p.startY - G.state.score) - (gemH.startY - H.state.score)) < 1);
+    assert(gemH && gemG, "the same gem exists on both clients");
+    const walletH = H.state.shards, walletG = G.state.shards;
+    [gemH, gemG].forEach(p => { p.x = 50; p.y = p.startY = 400; });
+    step(1);
+    assert(H.state.shards === walletH + gemH.shardValue && G.state.shards === walletG + gemG.shardValue, "both collect it");
+    assert(gemH.mine && gemG.mine && !H.visiblePickups().includes(gemH) && !G.visiblePickups().includes(gemG), "and it's gone for each");
+    const hostPid = H.net.myId;
+    assert(G.remotePlayers.get(hostPid).picked.has(gemH.wy), "the party hears what the host took");
+    console.log("PER-PERSON PICKUPS SUCCESS");
+
+    // ---- A boss kill refills everyone's hearts, guests included.
+    [H, G, G2].forEach(g => { g.state.extraLives = 0; });
+    as(H, () => { H.onBossDefeated(); H.net.send({ type: 'boss_down' }); });
+    bus.pump();
+    assert([H, G, G2].every(g => g.state.extraLives === MAX_EXTRA_LIVES), "hearts refilled to " + MAX_EXTRA_LIVES);
+    assert(G.ui.lifeDisplay.innerText === MAX_EXTRA_LIVES + ' ❤️', "the guest's meter shows it");
+    console.log("BOSS HEART REFILL SUCCESS");
+
+    // ---- Sync carries how much of a power-up is left, sanitized.
+    const clean = H.sanitizeSync({ x: 1, y: 1, activePowerId: POWERS.SHIELD.id, pf: 7 });
+    assert(clean.pf === 1, "pf is clamped to 1");
+    assert(H.sanitizeSync({ x: 1, y: 1, activePowerId: POWERS.SHIELD.id, pf: 'x' }).pf === 0, "junk pf is 0");
+    assert(H.sanitizeSync({ x: 1, y: 1, activePowerId: null, pf: 0.5 }).pf === 0, "no power, no pf");
+    assert(H.sanitizeSync({ x: 1, y: 1, hl: 9 }).hl === MAX_EXTRA_LIVES && H.sanitizeSync({ x: 1, y: 1, hl: 'x' }).hl === 0, "hl is clamped");
+    console.log("SYNC POWER FRACTION SUCCESS");
+
     // ---- Dead in co-op: say who the camera is following.
     G.player.invuln = 0;
-    as(G, () => G.die(true));
+    as(G, () => { G.state.extraLives = 0; G.die(true); });
     as(G, () => G.update(1));
     assert(G.ui.spectateHud.hidden === false && /^SPECTATING /.test(G.ui.spectateHud.innerText), "spectating label: " + G.ui.spectateHud.innerText);
     console.log("SPECTATE SUCCESS");
+
+    // ---- Spectating shows the teammate's power-up, not your frozen one.
+    as(G, () => G.update(1));
+    G.player.activePower = POWERS.ROCKET; // frozen on the dead guest
+    G2.state.extraLives = 0;
+    as(G2, () => G2.die(true));
+    as(H, () => { H.player.grantPower(POWERS.SHIELD); H.player.powerTimer = POWERS.SHIELD.time / 2; });
+    step(4);
+    assert(G.spectatingPlayer && G.spectatingPlayer.name === H.party.find(m => m.isHost).name, "spectating the host");
+    assert(G.ui.power.style.opacity === 1 && /HARD SHIELD/.test(G.ui.powerText.innerText), "the host's power shows: " + G.ui.powerText.innerText);
+    assert(G.ui.powerText.innerText.startsWith(G.spectatingPlayer.name + ':'), "labelled with whose it is");
+    const w = parseFloat(G.ui.powerFill.style.width);
+    assert(w > 40 && w <= 50, "with their time left, at " + w + "%");
+    H.player.activePower = null;
+    step(4);
+    assert(G.ui.power.style.opacity === 0, "their power ends: the bar hides");
+    console.log("SPECTATE POWER-UP SUCCESS");
+
+    // ---- Spectating shows the level as the teammate sees it.
+    const watched = G.spectatingPlayer;
+    const free = G.powerups.filter(p => p.isShard && !p.mine && Number.isInteger(p.wy));
+    assert(free.length >= 2, "two gems on screen");
+    const [gemA, gemB] = free;
+    gemB.mine = true; // G took B before going down
+    const hostA = H.powerups.find(p => p.wy === gemA.wy);
+    assert(hostA && !hostA.mine, "the host still has gem A");
+    hostA.x = 50; hostA.y = hostA.startY = 400;
+    step(1);
+    const view = G.spectatePickups(watched);
+    assert(!view.includes(gemA), "the gem the host took is gone from the spectate view");
+    assert(view.includes(gemB), "the gem only G took shows, since the host hasn't taken it");
+    const heart = { x: 100, y: 300, startY: 300, w: 28, h: 28, isShard: false, isHeart: true, wy: -123456, markedForDeletion: false };
+    G.powerups.push(heart);
+    H.state.extraLives = 0;
+    step(3);
+    assert(watched.hearts === 0 && G.spectatePickups(watched).includes(heart), "hearts show while the host has none");
+    H.state.extraLives = 2;
+    step(3);
+    assert(watched.hearts === 2 && !G.spectatePickups(watched).includes(heart), "and hide once they have some");
+    // The watched teammate's MAGNET pulls pickups in on the spectator's screen too.
+    const far = { x: watched.x + 120, y: watched.y, startY: watched.y, w: 16, h: 16, isShard: true, tier: 0, shardValue: 5, wy: -424242, markedForDeletion: false };
+    G.powerups.push(far);
+    const gap = () => Math.hypot(watched.x - far.x, watched.y - far.y);
+    const gap0 = gap();
+    H.player.grantPower(POWERS.MAGNET);
+    step(4);
+    assert(watched.activePower === POWERS.MAGNET && gap() < gap0 - 20, "the teammate's magnet pulls the gem: " + gap0 + " -> " + gap());
+    H.player.activePower = null;
+    step(2);
+    const gap1 = gap();
+    step(4);
+    assert(Math.abs(gap() - gap1) < 1, "no magnet, no pull");
+    console.log("SPECTATE MAGNET SUCCESS");
+
+    as(G, () => G.mpRevive());
+    assert(!G.visiblePickups().includes(gemB) && G.visiblePickups().includes(gemA), "respawned: back to G's own view");
+    console.log("SPECTATE PICKUPS SUCCESS");
+
+    // ---- 'pick' is sanitized and stamped with the sender.
+    const gOnH = H.remotePlayers.get(G.net.myId);
+    const pickedBefore = gOnH.picked.size;
+    as(G, () => G.net.send({ type: 'pick', pid: 'spoof', wy: 'abc' }));
+    as(G, () => G.net.send({ type: 'pick', pid: 'spoof', wy: NaN }));
+    bus.pump();
+    assert(gOnH.picked.size === pickedBefore, "a bad wy is dropped");
+    as(G, () => G.net.send({ type: 'pick', pid: 'spoof', wy: -777 }));
+    bus.pump();
+    assert(gOnH.picked.has(-777) && G2.remotePlayers.get(G.net.myId).picked.has(-777) && !G2.remotePlayers.has('spoof'), "relayed as the real sender");
+    console.log("PICK MESSAGE SUCCESS");
 
     console.log("MP ENEMIES PASSED");
     process.exit(0);

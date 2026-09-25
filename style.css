@@ -195,6 +195,13 @@ canvas {
     .hud-btn {
         top: calc(78px + var(--safe-top));
     }
+
+    #system-alert {
+        padding: 8px 14px;
+        gap: 8px;
+        font-size: 13px;
+        letter-spacing: 0.3px;
+    }
 }
 
 /* POWER UP HUD */
@@ -248,11 +255,14 @@ canvas {
     border-left: 4px solid #00ccff;
     border-radius: var(--radius);
     padding: 10px 22px;
-    margin-top: 20px;
+    /* Below the HUD row (and the notch), and never wide enough to reach the
+       pause button in the top-right corner. */
+    margin-top: calc(20px + var(--safe-top));
     font-weight: bold;
     font-size: 15px;
     width: fit-content;
-    max-width: min(90%, 500px);
+    max-width: min(500px, calc(100% - 2 * (60px + max(var(--safe-left), var(--safe-right)))));
+    box-sizing: border-box;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     text-align: center;
@@ -469,6 +479,53 @@ canvas {
     }
 }
 
+/* The way into co-op is a glowing magenta card (the shop is cyan), with a
+   slow pulse so it reads as a button rather than a hint. The way back to
+   solo gets the same card, without the pulse. */
+#to-mp-btn,
+#to-sp-btn {
+    --mode-rgb: 255, 0, 255;
+    color: rgb(var(--mode-rgb));
+    border: 2px solid rgb(var(--mode-rgb));
+    border-radius: var(--radius);
+    background: rgba(var(--mode-rgb), 0.1);
+    box-shadow: 0 0 12px rgba(var(--mode-rgb), 0.35);
+    text-shadow: 0 0 8px rgba(var(--mode-rgb), 0.6);
+    padding: 10px 10px 8px;
+    font-size: 30px;
+}
+
+#to-sp-btn {
+    --mode-rgb: 0, 255, 255;
+}
+
+#to-mp-btn .mode-switch-label,
+#to-sp-btn .mode-switch-label {
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+#to-mp-btn {
+    animation: mode-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes mode-pulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(var(--mode-rgb), 0.35); }
+    50% { box-shadow: 0 0 26px rgba(var(--mode-rgb), 0.9); }
+}
+
+@media (hover: hover) {
+    #to-mp-btn:hover,
+    #to-sp-btn:hover {
+        color: #fff;
+        background: rgba(var(--mode-rgb), 0.25);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #to-mp-btn { animation: none; }
+}
+
 /* Phones: the side arrows would sit on top of the cards, so they move down
    to the bottom corners. */
 @media (max-width: 520px) {
@@ -482,6 +539,24 @@ canvas {
     .mode-switch-label {
         font-size: 10px;
     }
+
+    #to-mp-btn,
+    #to-sp-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        font-size: 20px;
+    }
+
+    #to-mp-btn .mode-switch-label,
+    #to-sp-btn .mode-switch-label {
+        margin-top: 0;
+        font-size: 12px;
+    }
+
+    /* Arrow on the outside edge, pointing the way. */
+    #to-mp-btn { flex-direction: row-reverse; }
 }
 
 /* MP UI Styles — built from the same card / button / section-label pieces as
@@ -1687,9 +1762,11 @@ canvas {
 
 /* Below the HUD rows (score, BEST, power-up bar) and the system-message box,
    so a badge and a notice can show at the same time. */
+/* Sits in the #ui-layer column right under #system-alert (which always
+   keeps its space), so a badge never lands on top of a notice. */
 #achievement-pop {
-    position: absolute;
-    top: calc(190px + var(--safe-top));
+    position: relative;
+    margin-top: 10px;
     background: #ffd700;
     color: #000;
     padding: 10px 20px;
@@ -1703,10 +1780,12 @@ canvas {
 
 @keyframes slideIn {
     0% {
-        transform: translateY(-100px);
+        opacity: 0;
+        transform: translateY(-10px);
     }
 
     100% {
+        opacity: 1;
         transform: translateY(0);
     }
 }
@@ -2147,6 +2226,15 @@ canvas {
     margin-bottom: 0;
 }
 
+/* Keyboard focus in the shop (arrow keys browse, Enter buys). */
+.nav-btn:focus-visible,
+.gem-skin-buy-btn:focus-visible,
+.gem-dot:focus-visible,
+.mode-switch-arrow:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
 /* The shop is the main thing to do between runs: gem-cyan and glowing,
    and it pulses with a BUY badge whenever something new is affordable. */
 #shop-open-btn {
@@ -2397,4 +2485,121 @@ body.reduce-motion *::after {
     color: var(--accent);
     border-color: rgba(var(--accent-rgb), 0.45);
     font-size: 11px;
+}
+
+/* iPhone browser tabs: Add to Home Screen steps cover everything. */
+#install-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(24px + var(--safe-top)) calc(16px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(16px + var(--safe-left));
+    background: #050505;
+    color: #fff;
+    overflow-y: auto;
+}
+
+.install-card {
+    max-width: 360px;
+    text-align: center;
+}
+
+.install-pixel {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 16px;
+    background: #ff3366;
+    box-shadow: 0 0 24px rgba(255, 51, 102, 0.7);
+}
+
+.install-pixel span {
+    position: absolute;
+    top: 14px;
+    width: 10px;
+    height: 10px;
+    background: #fff;
+}
+
+.install-pixel span:first-child { left: 10px; }
+.install-pixel span:last-child { right: 10px; }
+
+#install-gate h1 {
+    margin: 0 0 12px;
+    font-size: 30px;
+    letter-spacing: 2px;
+    color: #00ffcc;
+    text-shadow: 0 0 12px rgba(0, 255, 204, 0.6);
+}
+
+.install-lead {
+    margin: 0 0 18px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #ddd;
+}
+
+.install-note {
+    margin: 0 0 16px;
+    padding: 10px 12px;
+    border: 1px solid #ffcc00;
+    border-radius: var(--radius);
+    color: #ffcc00;
+    font-size: 14px;
+}
+
+.install-steps {
+    margin: 0 0 18px;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+    text-align: left;
+}
+
+.install-steps li {
+    counter-increment: step;
+    position: relative;
+    margin-bottom: 10px;
+    padding: 12px 12px 12px 48px;
+    border: 1px solid rgba(0, 255, 255, 0.35);
+    border-radius: var(--radius);
+    background: rgba(0, 255, 255, 0.06);
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+.install-steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-pill);
+    background: #00ffff;
+    color: #000;
+    font-weight: bold;
+    font-size: 14px;
+    line-height: 24px;
+    text-align: center;
+}
+
+.install-steps b {
+    color: #00ffff;
+}
+
+.install-share {
+    width: 20px;
+    height: 20px;
+    vertical-align: -4px;
+    color: #00a8ff;
+}
+
+.install-foot {
+    margin: 0;
+    font-size: 12px;
+    color: #8a8a8a;
 }
