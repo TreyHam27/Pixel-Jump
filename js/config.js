@@ -8,7 +8,7 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.8.0';
+const GAME_VERSION = '1.8.1';
 const NET_PROTOCOL = 5;
 
 const CONFIG = {
