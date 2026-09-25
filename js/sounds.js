@@ -106,11 +106,10 @@ class SoundManager {
         }
     }
 
-    // "Rounded": the original 150 -> 600 Hz sweep on a triangle, with a
-    // little filtered square mixed in to keep some of its edge.
+    // "Mellow": the original 150 -> 600 Hz sweep on a pure triangle, so no
+    // buzz, fading out instead of clicking off.
     playJump() {
-        this.voice({ wave: 'triangle', dur: 0.12, peak: 0.13, attack: 0.004, freq: [[0, 150], [0.1, 600, 'exp']] });
-        this.voice({ wave: 'square', dur: 0.1, peak: 0.03, attack: 0.004, freq: [[0, 150], [0.1, 600, 'exp']], lowpass: 2200 });
+        this.voice({ wave: 'triangle', dur: 0.12, peak: 0.15, attack: 0.004, freq: [[0, 150], [0.1, 600, 'exp']] });
     }
 
     // "Tumble": a noise hit, a yelp up, a wobbling 8-bit staircase down, then
