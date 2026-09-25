@@ -106,10 +106,11 @@ class SoundManager {
         }
     }
 
-    // "Muffled": the original square sweep (150 -> 600 Hz) through a low
-    // filter that takes the buzz off, fading out instead of clicking off.
+    // "Rounded": the original 150 -> 600 Hz sweep on a triangle, with a
+    // little filtered square mixed in to keep some of its edge.
     playJump() {
-        this.voice({ wave: 'square', dur: 0.12, peak: 0.09, attack: 0.004, freq: [[0, 150], [0.1, 600, 'exp']], lowpass: 1600 });
+        this.voice({ wave: 'triangle', dur: 0.12, peak: 0.13, attack: 0.004, freq: [[0, 150], [0.1, 600, 'exp']] });
+        this.voice({ wave: 'square', dur: 0.1, peak: 0.03, attack: 0.004, freq: [[0, 150], [0.1, 600, 'exp']], lowpass: 2200 });
     }
 
     // "Tumble": a noise hit, a yelp up, a wobbling 8-bit staircase down, then
