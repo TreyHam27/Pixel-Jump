@@ -2,7 +2,7 @@ const { setupMocks, loadGameSource } = require('./test_helpers');
 
 setupMocks();
 
-// Regression test for the gem shop: buying a skin deducts shards, persists
+// Regression test for the gem shop: buying a skin deducts gems, persists
 // ownership by skin id, equips it on the spot, and the carousel walks the
 // price-sorted tier ladder. Also covers migrating old index-based saves.
 eval(loadGameSource() + `
@@ -43,19 +43,19 @@ try {
     }
     console.log("TIER LADDER SORTED SUCCESS");
 
-    // Not enough shards yet: purchase must fail and nothing should change.
-    game.state.shards = cost - 1;
+    // Not enough gems yet: purchase must fail and nothing should change.
+    game.state.gems = cost - 1;
     let ok = game.buyGemSkin(CHEAP_INDEX);
     if (ok || game.ownedSkins.includes(cheap.id)) {
-        throw new Error("Purchase should have failed with insufficient shards");
+        throw new Error("Purchase should have failed with insufficient gems");
     }
-    console.log("INSUFFICIENT SHARDS BLOCKED SUCCESS");
+    console.log("INSUFFICIENT GEMS BLOCKED SUCCESS");
 
-    // Grant enough shards and buy it: owned, and equipped straight away.
-    game.state.shards = cost;
+    // Grant enough gems and buy it: owned, and equipped straight away.
+    game.state.gems = cost;
     ok = game.buyGemSkin(CHEAP_INDEX);
     if (!ok) throw new Error("Purchase should have succeeded");
-    if (game.state.shards !== 0) throw new Error("Shards were not deducted correctly");
+    if (game.state.gems !== 0) throw new Error("Gems were not deducted correctly");
     if (!game.ownedSkins.includes(cheap.id)) throw new Error("Skin id was not added to ownedSkins");
     if (game.isSkinLocked(CHEAP_INDEX)) throw new Error("isSkinLocked() should report unlocked after purchase");
     if (game.viewParams.skinIndex !== CHEAP_INDEX) throw new Error("Buying a Pixel should equip it");
@@ -63,10 +63,10 @@ try {
     console.log("PURCHASE EQUIPS SUCCESS");
 
     // Buying again should be a no-op (already owned).
-    game.state.shards = 99999;
+    game.state.gems = 99999;
     ok = game.buyGemSkin(CHEAP_INDEX);
     if (ok) throw new Error("Buying an already-owned skin should be a no-op");
-    if (game.state.shards !== 99999) throw new Error("Shards should not be spent twice on the same skin");
+    if (game.state.gems !== 99999) throw new Error("Gems should not be spent twice on the same skin");
     console.log("DOUBLE PURCHASE BLOCKED SUCCESS");
 
     // Ownership and the equipped Pixel persist across a fresh Game instance.
@@ -85,7 +85,7 @@ try {
     // The shop shows purchasable skins one at a time in a carousel: stepping
     // must cover every one of them and wrap at both ends.
     if (shopSkins.some(({ s }) => s.cost === undefined)) {
-        throw new Error("gemShopSkins() included a skin that isn't shards-purchasable");
+        throw new Error("gemShopSkins() included a skin that isn't gems-purchasable");
     }
 
     game2.gemShopIndex = 0;

@@ -92,7 +92,7 @@ class Game {
             // inflate the score, and must not unlock them early. Older saves
             // only have lp_best, so they start from that.
             bestHeight: parseInt(localStorage.getItem('lp_best_height')) || parseInt(localStorage.getItem('lp_best')) || 0,
-            shards: parseInt(localStorage.getItem('lp_shards')) || 0,
+            gems: parseInt(localStorage.getItem('lp_shards')) || 0,
             loops: parseInt(localStorage.getItem('lp_loops')) || 0,
             skinIndex: Math.max(0, skinIndexById(localStorage.getItem('lp_skin'))),
             extraLives: parseInt(localStorage.getItem('lp_extraLives')) || 0,
@@ -150,7 +150,7 @@ class Game {
             prev: document.getElementById("prev-btn"),
             next: document.getElementById("next-btn"),
             fame: document.getElementById("fame-list"),
-            shardDisplay: document.getElementById("shard-display"),
+            gemDisplay: document.getElementById("gem-display"),
             lifeDisplay: document.getElementById("life-display"),
             shopLifeBtn: document.getElementById("shop-life-btn"),
             shopLifeCount: document.getElementById("shop-life-count"),
@@ -305,7 +305,7 @@ class Game {
         }
 
         // Shop pixel carousel — same left/right stepping as the main-menu skin
-        // picker, over just the shards-purchasable skins.
+        // picker, over just the gems-purchasable skins.
         if (this.ui.gemPrev) {
             this.ui.gemPrev.onclick = (e) => { e.stopPropagation(); this.changeGemShopSkin(-1); };
         }
@@ -1578,7 +1578,7 @@ class Game {
         this.ui.prev.style.visibility = showArrows;
         this.ui.next.style.visibility = showArrows;
 
-        if (this.ui.shardDisplay) this.ui.shardDisplay.innerText = fmtNum(this.state.shards) + " 💎";
+        if (this.ui.gemDisplay) this.ui.gemDisplay.innerText = fmtNum(this.state.gems) + " 💎";
         this.updateShopBadge();
         if (this.ui.skinAbility) this.ui.skinAbility.innerHTML = this.renderPerkTags(s.ability);
     }
@@ -1595,7 +1595,7 @@ class Game {
         ).join('');
     }
 
-    // Every shards-purchasable skin (anything in SKINS with a `cost`), paired
+    // Every gems-purchasable skin (anything in SKINS with a `cost`), paired
     // with its SKINS index so the carousel can address it, cheapest first so
     // the carousel reads as a tier ladder.
     gemShopSkins() {
@@ -1631,7 +1631,7 @@ class Game {
         const tier = this.gemShopIndex + 1;
         const owned = this.ownedSkins.includes(s.id);
         const equipped = owned && this.viewParams.skinIndex === i;
-        const affordable = this.state.shards >= s.cost;
+        const affordable = this.state.gems >= s.cost;
         // Tiers glow harder the higher they sit, and the top four (the
         // run-changing perks) get the premium frame, so the ladder reads at a
         // glance.
@@ -1689,9 +1689,9 @@ class Game {
     // Something in the shop you could buy right now: a Pixel you don't own
     // yet, or an extra life with room in the stock.
     shopHasAffordable() {
-        const shards = this.state.shards;
-        if (this.state.extraLives < MAX_EXTRA_LIVES && shards >= EXTRA_LIFE_COST) return true;
-        return this.gemShopSkins().some(({ s }) => !this.ownedSkins.includes(s.id) && shards >= s.cost);
+        const gems = this.state.gems;
+        if (this.state.extraLives < MAX_EXTRA_LIVES && gems >= EXTRA_LIFE_COST) return true;
+        return this.gemShopSkins().some(({ s }) => !this.ownedSkins.includes(s.id) && gems >= s.cost);
     }
 
     updateShopBadge() {
@@ -1721,7 +1721,7 @@ class Game {
         if (!this.ui.shopLifeBtn) return;
 
         const full = this.state.extraLives >= MAX_EXTRA_LIVES;
-        const affordable = this.state.shards >= EXTRA_LIFE_COST;
+        const affordable = this.state.gems >= EXTRA_LIFE_COST;
         const label = this.ui.shopLifeBtn.querySelector('.btn-label');
         const cost = this.ui.shopLifeBtn.querySelector('.btn-cost');
 
@@ -1734,13 +1734,13 @@ class Game {
     }
 
     buyExtraLife() {
-        if (this.state.extraLives >= MAX_EXTRA_LIVES || this.state.shards < EXTRA_LIFE_COST) {
+        if (this.state.extraLives >= MAX_EXTRA_LIVES || this.state.gems < EXTRA_LIFE_COST) {
             this.shakeUI(this.ui.shopLifeBtn);
             return false;
         }
-        this.state.shards -= EXTRA_LIFE_COST;
+        this.state.gems -= EXTRA_LIFE_COST;
         this.state.extraLives++;
-        localStorage.setItem('lp_shards', this.state.shards);
+        localStorage.setItem('lp_shards', this.state.gems);
         localStorage.setItem('lp_extraLives', this.state.extraLives);
         this.updateExtraLifeUI();
         this.renderGemShop();
@@ -1765,13 +1765,13 @@ class Game {
     buyGemSkin(index, button) {
         const s = SKINS[index];
         if (!s || this.ownedSkins.includes(s.id)) return false;
-        if (s.cost === undefined || this.state.shards < s.cost) {
+        if (s.cost === undefined || this.state.gems < s.cost) {
             this.shakeUI(button);
             return false;
         }
-        this.state.shards -= s.cost;
+        this.state.gems -= s.cost;
         this.ownedSkins.push(s.id);
-        localStorage.setItem('lp_shards', this.state.shards);
+        localStorage.setItem('lp_shards', this.state.gems);
         localStorage.setItem('lp_owned_skins', JSON.stringify(this.ownedSkins));
         this.equipSkin(index);
         this.renderGemShop();
@@ -1993,7 +1993,7 @@ class Game {
         this.state.loops = (this.state.loops || 0) + 1;
         localStorage.setItem('lp_loops', this.state.loops);
         this.state.bonusScore += BOSS_BONUS_METERS * 10;
-        this.addShards(BOSS_GEM_BOUNTY);
+        this.addGems(BOSS_GEM_BOUNTY);
         this.setExtraLives(MAX_EXTRA_LIVES);
         this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
         this.notify(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎  HEARTS FULL`, 'reward');
@@ -2001,15 +2001,15 @@ class Game {
     }
 
     // Banks gems and pops the counter.
-    addShards(n) {
-        this.state.shards += n;
+    addGems(n) {
+        this.state.gems += n;
         if (this.state.running) this.state.runGems = (this.state.runGems || 0) + n;
-        localStorage.setItem('lp_shards', this.state.shards);
-        if (this.ui.shardDisplay) {
-            this.ui.shardDisplay.innerText = fmtNum(this.state.shards) + " 💎";
-            this.ui.shardDisplay.classList.remove('gem-pop');
-            void this.ui.shardDisplay.offsetWidth; // restart animation on rapid pickups
-            this.ui.shardDisplay.classList.add('gem-pop');
+        localStorage.setItem('lp_shards', this.state.gems);
+        if (this.ui.gemDisplay) {
+            this.ui.gemDisplay.innerText = fmtNum(this.state.gems) + " 💎";
+            this.ui.gemDisplay.classList.remove('gem-pop');
+            void this.ui.gemDisplay.offsetWidth; // restart animation on rapid pickups
+            this.ui.gemDisplay.classList.add('gem-pop');
         }
     }
 
@@ -2097,7 +2097,7 @@ class Game {
         localStorage.setItem('lp_skin', SKINS[this.viewParams.skinIndex].id);
 
         // Pickups are cleared *before* the first screen of platforms is built,
-        // or the shards and power-ups spawned on it would be thrown away.
+        // or the gems and power-ups spawned on it would be thrown away.
         this.powerups = [];
         this.enemies = [];
         this.projectiles = [];
@@ -2166,7 +2166,7 @@ class Game {
                 y: y - 40,
                 startY: y - 40,
                 w: 24, h: 24,
-                isShard: false,
+                isGem: false,
                 wy,
                 markedForDeletion: false
             });
@@ -2179,12 +2179,12 @@ class Game {
                 y: y - 40,
                 startY: y - 40,
                 w: 28, h: 28,
-                isShard: false,
+                isGem: false,
                 isHeart: true,
                 wy,
                 markedForDeletion: false
             });
-        } else if (this.seededRandom() < SHARD_CHANCE) {
+        } else if (this.seededRandom() < GEM_CHANCE) {
             // Worth more the higher the biome (by the platform's own height,
             // so every client agrees).
             const tier = biomeIndexAt(scoreMeters);
@@ -2193,8 +2193,8 @@ class Game {
                 y: y - 30,
                 startY: y - 30,
                 w: 16, h: 16,
-                isShard: true,
-                shardValue: BIOMES[tier].gem.value,
+                isGem: true,
+                gemValue: BIOMES[tier].gem.value,
                 tier,
                 wy,
                 markedForDeletion: false
@@ -2569,10 +2569,10 @@ class Game {
     pullForSpectated(rp, dt) {
         const ability = (rp.skin && rp.skin.ability) || {};
         const magnet = rp.activePower === POWERS.MAGNET;
-        if (!magnet && !ability.shardMagnetRadius) return;
+        if (!magnet && !ability.gemMagnetRadius) return;
         this.spectatePickups(rp).forEach(p => {
             if (magnet) rp.pullPickup(p, 200, dt);
-            if (p.isShard && ability.shardMagnetRadius) rp.pullPickup(p, ability.shardMagnetRadius, dt);
+            if (p.isGem && ability.gemMagnetRadius) rp.pullPickup(p, ability.gemMagnetRadius, dt);
         });
     }
 
@@ -2584,8 +2584,8 @@ class Game {
         if (!this.player.isDead || this.spectatingPlayer !== rp) return;
         const p = this.powerups.find(q => q.wy === d.wy);
         if (!p) return;
-        const color = p.isShard ? BIOMES[p.tier || 0].gem.color : p.isHeart ? "#ff3366" : (rp.activePower ? rp.activePower.color : "#ffffff");
-        this.particles.spawn(p.x + p.w / 2, p.y + p.h / 2, color, p.isShard ? 10 : 20);
+        const color = p.isGem ? BIOMES[p.tier || 0].gem.color : p.isHeart ? "#ff3366" : (rp.activePower ? rp.activePower.color : "#ffffff");
+        this.particles.spawn(p.x + p.w / 2, p.y + p.h / 2, color, p.isGem ? 10 : 20);
     }
 
     collectHeart(event) {
@@ -3281,8 +3281,8 @@ class Game {
                 this.particles.spawn(this.player.x + 13, this.player.y + 13, this.player.color, 1, "trail");
         } else if (event === "thrust") {
             this.particles.spawn(this.player.x + 13, this.player.y + 26, "#ff3300", 2, "blast");
-        } else if (event && event.event === "shard") {
-            this.addShards((event.value || 1) * (perks.shardMult || 1));
+        } else if (event && event.event === "gem") {
+            this.addGems((event.value || 1) * (perks.gemMult || 1));
             this.particles.spawn(event.x + 8, event.y + 8, event.color || "#00ffff", 10);
             sounds.play('powerup');
         } else if (event && event.event === "heart") {
@@ -3497,7 +3497,7 @@ class Game {
             p.y = p.startY + Math.sin(this.state.time * 0.1) * 5;
             if (p.isHeart) {
                 this.drawSprite(this.heartSprite, p, 0.85 + 0.15 * Math.sin(this.state.time * 0.15));
-            } else if (p.isShard) {
+            } else if (p.isGem) {
                 // Pre-rendered in the gem's biome colour, with its glow; the
                 // pulse is just the sprite's opacity.
                 const ctx = this.renderer.ctx;

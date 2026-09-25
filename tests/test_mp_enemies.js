@@ -151,7 +151,7 @@ try {
     step(6);
     assert(G.netEnemies.get(boss.nid).hp === 9, "guests see the new health");
 
-    const before = [H, G, G2].map(g => ({ loops: g.state.runLoops, bonus: g.state.bonusScore, gems: g.state.shards }));
+    const before = [H, G, G2].map(g => ({ loops: g.state.runLoops, bonus: g.state.bonusScore, gems: g.state.gems }));
     boss.hp = 1; boss.invuln = 0;
     as(G2, () => G2.net.send({ type: 'stomp', nid: boss.nid }));
     bus.pump();
@@ -159,7 +159,7 @@ try {
     [H, G, G2].forEach((g, i) => {
         assert(g.state.runLoops === before[i].loops + 1, "boss counted for " + i);
         assert(g.state.bonusScore === before[i].bonus + BOSS_BONUS_METERS * 10, "bonus for " + i);
-        assert(g.state.shards === before[i].gems + BOSS_GEM_BOUNTY, "bounty for " + i);
+        assert(g.state.gems === before[i].gems + BOSS_GEM_BOUNTY, "bounty for " + i);
     });
     step(6);
     assert(!G.enemies.some(e => e instanceof BossDrone), "boss gone for guests");
@@ -176,14 +176,14 @@ try {
     console.log("SMOOTHING SUCCESS");
 
     // ---- Pickups are per person: host and guest can both take the same gem.
-    const gemH = H.powerups.find(p => p.isShard);
-    const gemG = gemH && G.powerups.find(p => p.isShard && p.x === gemH.x &&
+    const gemH = H.powerups.find(p => p.isGem);
+    const gemG = gemH && G.powerups.find(p => p.isGem && p.x === gemH.x &&
         Math.abs((p.startY - G.state.score) - (gemH.startY - H.state.score)) < 1);
     assert(gemH && gemG, "the same gem exists on both clients");
-    const walletH = H.state.shards, walletG = G.state.shards;
+    const walletH = H.state.gems, walletG = G.state.gems;
     [gemH, gemG].forEach(p => { p.x = 50; p.y = p.startY = 400; });
     step(1);
-    assert(H.state.shards === walletH + gemH.shardValue && G.state.shards === walletG + gemG.shardValue, "both collect it");
+    assert(H.state.gems === walletH + gemH.gemValue && G.state.gems === walletG + gemG.gemValue, "both collect it");
     assert(gemH.mine && gemG.mine && !H.visiblePickups().includes(gemH) && !G.visiblePickups().includes(gemG), "and it's gone for each");
     const hostPid = H.net.myId;
     assert(G.remotePlayers.get(hostPid).picked.has(gemH.wy), "the party hears what the host took");
@@ -231,7 +231,7 @@ try {
 
     // ---- Spectating shows the level as the teammate sees it.
     const watched = G.spectatingPlayer;
-    const free = G.powerups.filter(p => p.isShard && !p.mine && Number.isInteger(p.wy));
+    const free = G.powerups.filter(p => p.isGem && !p.mine && Number.isInteger(p.wy));
     assert(free.length >= 2, "two gems on screen");
     const [gemA, gemB] = free;
     gemB.mine = true; // G took B before going down
@@ -242,7 +242,7 @@ try {
     const view = G.spectatePickups(watched);
     assert(!view.includes(gemA), "the gem the host took is gone from the spectate view");
     assert(view.includes(gemB), "the gem only G took shows, since the host hasn't taken it");
-    const heart = { x: 100, y: 300, startY: 300, w: 28, h: 28, isShard: false, isHeart: true, wy: -123456, markedForDeletion: false };
+    const heart = { x: 100, y: 300, startY: 300, w: 28, h: 28, isGem: false, isHeart: true, wy: -123456, markedForDeletion: false };
     G.powerups.push(heart);
     H.state.extraLives = 0;
     step(3);
@@ -251,7 +251,7 @@ try {
     step(3);
     assert(watched.hearts === 2 && !G.spectatePickups(watched).includes(heart), "and hide once they have some");
     // The watched teammate's MAGNET pulls pickups in on the spectator's screen too.
-    const far = { x: watched.x + 120, y: watched.y, startY: watched.y, w: 16, h: 16, isShard: true, tier: 0, shardValue: 5, wy: -424242, markedForDeletion: false };
+    const far = { x: watched.x + 120, y: watched.y, startY: watched.y, w: 16, h: 16, isGem: true, tier: 0, gemValue: 5, wy: -424242, markedForDeletion: false };
     G.powerups.push(far);
     const gap = () => Math.hypot(watched.x - far.x, watched.y - far.y);
     const gap0 = gap();

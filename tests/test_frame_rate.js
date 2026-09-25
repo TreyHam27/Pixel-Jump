@@ -101,21 +101,21 @@ try {
     const dead = new Game();
     dead.startMultiplayerGame(99);
     dead.player.isDead = true;
-    const y0 = dead.player.y, gems0 = dead.state.shards;
-    dead.powerups = [{ x: dead.player.x, y: dead.player.y, startY: dead.player.y, w: 16, h: 16, isShard: true, shardValue: 5, markedForDeletion: false }];
+    const y0 = dead.player.y, gems0 = dead.state.gems;
+    dead.powerups = [{ x: dead.player.x, y: dead.player.y, startY: dead.player.y, w: 16, h: 16, isGem: true, gemValue: 5, markedForDeletion: false }];
     for (let i = 0; i < 30; i++) dead.update(1);
-    assert(dead.player.y === y0 && dead.state.shards === gems0, "dead body stays put and collects nothing");
+    assert(dead.player.y === y0 && dead.state.gems === gems0, "dead body stays put and collects nothing");
     console.log("DEAD BODY SUCCESS");
 
     // Magnets pull pickups vertically as well as sideways.
     const m = new Game();
     m.startGame();
     m.player.activePower = POWERS.MAGNET; m.player.powerTimer = 999;
-    const shard = { x: m.player.x, y: m.player.y - 150, startY: m.player.y - 150, w: 16, h: 16, isShard: true, shardValue: 5, markedForDeletion: false };
-    m.powerups = [shard];
-    const gap0 = m.player.y - shard.startY;
+    const gem = { x: m.player.x, y: m.player.y - 150, startY: m.player.y - 150, w: 16, h: 16, isGem: true, gemValue: 5, markedForDeletion: false };
+    m.powerups = [gem];
+    const gap0 = m.player.y - gem.startY;
     for (let i = 0; i < 5; i++) { m.player.vy = 0; m.player.update(1, m.input, [], m.powerups); m.draw(); }
-    assert(m.player.y - shard.startY < gap0 * 0.8, "magnet should pull a pickup above the player down toward it");
+    assert(m.player.y - gem.startY < gap0 * 0.8, "magnet should pull a pickup above the player down toward it");
     console.log("MAGNET PULL SUCCESS");
 } catch (e) {
     console.error("FAILED:", e.stack || e);

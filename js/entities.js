@@ -219,14 +219,14 @@ class Player extends Entity {
             // Magnet Logic (temporary MAGNET power-up pulls any pickup)
             if (this.activePower === POWERS.MAGNET) this.pullPickup(p, 200, dt);
 
-            // Always-on shard pull from an equipped Pixel's permanent ability
+            // Always-on gem pull from an equipped Pixel's permanent ability
             // (separate from, and stacks with, the temporary MAGNET power-up)
-            if (p.isShard && ability.shardMagnetRadius) this.pullPickup(p, ability.shardMagnetRadius, dt);
+            if (p.isGem && ability.gemMagnetRadius) this.pullPickup(p, ability.gemMagnetRadius, dt);
 
             if (rectsIntersect(this, p)) {
-                if (p.isShard) {
+                if (p.isGem) {
                     p.markedForDeletion = true;
-                    return { event: "shard", x: p.x, y: p.y, value: p.shardValue || 1, color: BIOMES[p.tier || 0].gem.color };
+                    return { event: "gem", x: p.x, y: p.y, value: p.gemValue || 1, color: BIOMES[p.tier || 0].gem.color };
                 } else if (p.isHeart) {
                     p.markedForDeletion = true;
                     return { event: "heart", x: p.x, y: p.y };

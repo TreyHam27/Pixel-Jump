@@ -2,7 +2,7 @@ const { setupMocks, loadGameSource } = require('./test_helpers');
 
 setupMocks();
 
-// Regression test for the shop's purchasable EXTRA LIFE consumable: shards are
+// Regression test for the shop's purchasable EXTRA LIFE consumable: gems are
 // deducted, stock caps at MAX_EXTRA_LIVES, it persists across a reload, and a
 // banked life is spent on a death that would otherwise end the run, every
 // run starts with at least one, and with ads off nothing else revives you.
@@ -10,27 +10,27 @@ eval(loadGameSource() + `
 try {
     const game = new Game();
 
-    // Not enough shards: purchase must fail and change nothing.
-    game.state.shards = EXTRA_LIFE_COST - 1;
-    if (game.buyExtraLife()) throw new Error("Purchase should have failed with insufficient shards");
+    // Not enough gems: purchase must fail and change nothing.
+    game.state.gems = EXTRA_LIFE_COST - 1;
+    if (game.buyExtraLife()) throw new Error("Purchase should have failed with insufficient gems");
     if (game.state.extraLives !== 0) throw new Error("Extra lives should still be 0 after a failed purchase");
-    console.log("INSUFFICIENT SHARDS BLOCKED SUCCESS");
+    console.log("INSUFFICIENT GEMS BLOCKED SUCCESS");
 
-    // Enough shards: buy one.
-    game.state.shards = EXTRA_LIFE_COST;
+    // Enough gems: buy one.
+    game.state.gems = EXTRA_LIFE_COST;
     if (!game.buyExtraLife()) throw new Error("Purchase should have succeeded");
-    if (game.state.shards !== 0) throw new Error("Shards were not deducted correctly");
+    if (game.state.gems !== 0) throw new Error("Gems were not deducted correctly");
     if (game.state.extraLives !== 1) throw new Error("Extra life was not banked");
     console.log("PURCHASE SUCCESS");
 
-    // Stock is capped: buying past MAX_EXTRA_LIVES must not spend shards.
-    game.state.shards = EXTRA_LIFE_COST * 10;
+    // Stock is capped: buying past MAX_EXTRA_LIVES must not spend gems.
+    game.state.gems = EXTRA_LIFE_COST * 10;
     while (game.state.extraLives < MAX_EXTRA_LIVES) {
         if (!game.buyExtraLife()) throw new Error("Purchase should succeed below the stock cap");
     }
-    const shardsAtCap = game.state.shards;
+    const gemsAtCap = game.state.gems;
     if (game.buyExtraLife()) throw new Error("Buying past MAX_EXTRA_LIVES should be a no-op");
-    if (game.state.shards !== shardsAtCap) throw new Error("Shards should not be spent once stock is full");
+    if (game.state.gems !== gemsAtCap) throw new Error("Gems should not be spent once stock is full");
     if (game.state.extraLives !== MAX_EXTRA_LIVES) throw new Error("Stock exceeded MAX_EXTRA_LIVES");
     console.log("STOCK CAP SUCCESS");
 
