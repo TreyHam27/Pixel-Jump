@@ -31,7 +31,7 @@ try {
     {
         let game = new Game();
         game.startGame();
-        game.state.extraLives = 0; // the run-start heart already spent, so a fall ends the run
+        game.state.hearts = 0; // the run-start heart already spent, so a fall ends the run
         game.platforms = [{ x: 0, y: CONFIG.HEIGHT + 10, w: CONFIG.WIDTH, h: 40 }];
         game.player.y = CONFIG.HEIGHT - 20;
         game.player.vy = 6;

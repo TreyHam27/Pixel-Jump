@@ -27,7 +27,7 @@ try {
 
     // Any spent life comes back behind a HARD SHIELD.
     game = new Game();
-    game.state.extraLives = 1;
+    game.state.hearts = 1;
     equip(game, 'unit734');
     game.die(true);
     if (!game.state.running) throw new Error("Run should continue on the banked life");

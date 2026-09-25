@@ -138,7 +138,7 @@ canvas {
     animation: gem-collect-pop 0.35s ease-out;
 }
 
-/* Banked extra lives, right under the gem counter (and just as persistent).
+/* Banked hearts, right under the gem counter (and just as persistent).
    Dimmed at zero: that's when heart pickups show up in the level. */
 #life-display {
     position: absolute;
@@ -1207,7 +1207,7 @@ canvas {
     background: linear-gradient(to right, #333, transparent);
 }
 
-/* CONSUMABLES CARD (extra life) */
+/* CONSUMABLES CARD (heart) */
 .shop-card {
     position: relative;
     background: linear-gradient(160deg, rgba(255, 51, 102, 0.12), rgba(255, 255, 255, 0.03));

@@ -95,7 +95,7 @@ class Game {
             gems: parseInt(localStorage.getItem('lp_gems') ?? localStorage.getItem('lp_shards')) || 0,
             loops: parseInt(localStorage.getItem('lp_loops')) || 0,
             skinIndex: Math.max(0, skinIndexById(localStorage.getItem('lp_skin'))),
-            extraLives: parseInt(localStorage.getItem('lp_extraLives')) || 0,
+            hearts: parseInt(localStorage.getItem('lp_hearts')) || 0,
             frames: 0,
             bgOffset: 0,
             time: 0,
@@ -264,13 +264,13 @@ class Game {
         }
 
         // Migration: the shop used to sell a one-shot HARD SHIELD boost at the
-        // same price as an extra life. Anyone still holding an unspent boost
+        // same price as a heart. Anyone still holding an unspent boost
         // gets it converted rather than silently losing what they paid for.
         if (localStorage.getItem('lp_boughtBoost') === '1') {
             localStorage.removeItem('lp_boughtBoost');
-            if (this.state.extraLives < MAX_EXTRA_LIVES) {
-                this.state.extraLives++;
-                localStorage.setItem('lp_extraLives', this.state.extraLives);
+            if (this.state.hearts < MAX_HEARTS) {
+                this.state.hearts++;
+                localStorage.setItem('lp_hearts', this.state.hearts);
             }
         }
 
@@ -279,7 +279,7 @@ class Game {
         this.updateSkinUI();
         this.updateFameUI();
         this.renderGemShop();
-        this.updateExtraLifeUI();
+        this.updateHeartUI();
 
         this.ui.menuScore.innerText = "HIGH SCORE: " + fmtNum(this.state.highScore) + "m";
         if (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) {
@@ -306,7 +306,7 @@ class Game {
         if (this.ui.shopLifeBtn) {
             this.ui.shopLifeBtn.onclick = (e) => {
                 e.stopPropagation();
-                this.buyExtraLife();
+                this.buyHeart();
             };
         }
 
@@ -1061,7 +1061,7 @@ class Game {
             // Share of the power-up's time left (0-1), for the spectate HUD.
             pf: power ? (num(d.pf, 0, 1) || 0) : 0,
             // Hearts banked (decides whether hearts show in their view).
-            hl: Number.isInteger(d.hl) ? Math.max(0, Math.min(MAX_EXTRA_LIVES, d.hl)) : 0
+            hl: Number.isInteger(d.hl) ? Math.max(0, Math.min(MAX_HEARTS, d.hl)) : 0
         };
     }
 
@@ -1693,10 +1693,10 @@ class Game {
     }
 
     // Something in the shop you could buy right now: a Pixel you don't own
-    // yet, or an extra life with room in the stock.
+    // yet, or a heart with room in the stock.
     shopHasAffordable() {
         const gems = this.state.gems;
-        if (this.state.extraLives < MAX_EXTRA_LIVES && gems >= EXTRA_LIFE_COST) return true;
+        if (this.state.hearts < MAX_HEARTS && gems >= HEART_COST) return true;
         return this.gemShopSkins().some(({ s }) => !this.ownedSkins.includes(s.id) && gems >= s.cost);
     }
 
@@ -1709,62 +1709,62 @@ class Game {
         if (badge) badge.hidden = !can;
     }
 
-    // Extra lives are stock rather than a one-shot toggle: the card shows how
-    // many are banked, and the button locks at MAX_EXTRA_LIVES.
-    updateExtraLifeUI() {
-        if (this.ui.shopLifeCount) this.ui.shopLifeCount.innerText = this.state.extraLives;
+    // Hearts are stock rather than a one-shot toggle: the card shows how
+    // many are banked, and the button locks at MAX_HEARTS.
+    updateHeartUI() {
+        if (this.ui.shopLifeCount) this.ui.shopLifeCount.innerText = this.state.hearts;
         const hearts = this.ui.lifeDisplay;
         if (hearts) {
-            const text = this.state.extraLives + " ❤️";
+            const text = this.state.hearts + " ❤️";
             if (hearts.innerText !== text && hearts.classList) {
                 hearts.classList.remove('life-pop');
                 void hearts.offsetWidth; // restart the animation
                 hearts.classList.add('life-pop');
             }
             hearts.innerText = text;
-            if (hearts.classList) hearts.classList.toggle('empty', this.state.extraLives <= 0);
+            if (hearts.classList) hearts.classList.toggle('empty', this.state.hearts <= 0);
         }
         if (!this.ui.shopLifeBtn) return;
 
-        const full = this.state.extraLives >= MAX_EXTRA_LIVES;
-        const affordable = this.state.gems >= EXTRA_LIFE_COST;
+        const full = this.state.hearts >= MAX_HEARTS;
+        const affordable = this.state.gems >= HEART_COST;
         const label = this.ui.shopLifeBtn.querySelector('.btn-label');
         const cost = this.ui.shopLifeBtn.querySelector('.btn-cost');
 
-        if (label) label.innerText = full ? "STOCK FULL" : "BUY EXTRA LIFE";
-        if (cost) cost.innerText = EXTRA_LIFE_COST + " 💎";
+        if (label) label.innerText = full ? "STOCK FULL" : "BUY HEART";
+        if (cost) cost.innerText = HEART_COST + " 💎";
         this.ui.shopLifeBtn.classList.toggle('maxed', full);
         this.ui.shopLifeBtn.classList.toggle('unaffordable', !full && !affordable);
         this.ui.shopLifeBtn.disabled = full;
         this.updateShopBadge();
     }
 
-    buyExtraLife() {
-        if (this.state.extraLives >= MAX_EXTRA_LIVES || this.state.gems < EXTRA_LIFE_COST) {
+    buyHeart() {
+        if (this.state.hearts >= MAX_HEARTS || this.state.gems < HEART_COST) {
             this.shakeUI(this.ui.shopLifeBtn);
             return false;
         }
-        this.state.gems -= EXTRA_LIFE_COST;
-        this.state.extraLives++;
+        this.state.gems -= HEART_COST;
+        this.state.hearts++;
         localStorage.setItem('lp_gems', this.state.gems);
-        localStorage.setItem('lp_extraLives', this.state.extraLives);
-        this.updateExtraLifeUI();
+        localStorage.setItem('lp_hearts', this.state.hearts);
+        this.updateHeartUI();
         this.renderGemShop();
         this.updateSkinUI();
         return true;
     }
 
-    // Spends one banked extra life. Returns false when the bank is empty.
-    consumeExtraLife() {
-        if (this.state.extraLives <= 0) return false;
-        this.setExtraLives(this.state.extraLives - 1);
+    // Spends one banked heart. Returns false when the bank is empty.
+    consumeHeart() {
+        if (this.state.hearts <= 0) return false;
+        this.setHearts(this.state.hearts - 1);
         return true;
     }
 
-    setExtraLives(n) {
-        this.state.extraLives = Math.max(0, Math.min(MAX_EXTRA_LIVES, n));
-        localStorage.setItem('lp_extraLives', this.state.extraLives);
-        this.updateExtraLifeUI();
+    setHearts(n) {
+        this.state.hearts = Math.max(0, Math.min(MAX_HEARTS, n));
+        localStorage.setItem('lp_hearts', this.state.hearts);
+        this.updateHeartUI();
     }
 
     // Buying a Pixel also equips it — that's why you bought it.
@@ -1781,7 +1781,7 @@ class Game {
         localStorage.setItem('lp_owned_skins', JSON.stringify(this.ownedSkins));
         this.equipSkin(index);
         this.renderGemShop();
-        this.updateExtraLifeUI();
+        this.updateHeartUI();
         return true;
     }
 
@@ -2000,7 +2000,7 @@ class Game {
         localStorage.setItem('lp_loops', this.state.loops);
         this.state.bonusScore += BOSS_BONUS_METERS * 10;
         this.addGems(BOSS_GEM_BOUNTY);
-        this.setExtraLives(MAX_EXTRA_LIVES);
+        this.setHearts(MAX_HEARTS);
         this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
         this.notify(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎  HEARTS FULL`, 'reward');
         sounds.play('powerup');
@@ -2178,7 +2178,7 @@ class Game {
             });
         } else if (this.heartAllowedAt(wy, scoreMeters)) {
             // Always generated (so every client builds the same level), but
-            // only shown to a player with no extra lives left.
+            // only shown to a player with no hearts left.
             this.state.lastHeartWY = wy;
             this.powerups.push({
                 x: x + w / 2 - 14,
@@ -2426,7 +2426,7 @@ class Game {
         this.reset(isMp ? mpSeed : null);
         // Every run starts with at least one heart: the free life each round
         // lives in the hearts meter rather than behind a hidden revive.
-        if (this.state.extraLives < 1) this.setExtraLives(1);
+        if (this.state.hearts < 1) this.setHearts(1);
         if ((this.player.skin.ability || {}).startShield) this.player.grantPower(POWERS.SHIELD);
 
         this.ui.menu.style.opacity = 0;
@@ -2554,12 +2554,12 @@ class Game {
     }
 
     // The pickups this player can see and collect. Hearts are part of every
-    // client's level, but only exist for a player with no extra lives left:
+    // client's level, but only exist for a player with no hearts left:
     // picking one up hides the rest, and spending that life brings them back.
     // In co-op, pickups you took stay in the level (flagged `mine`) so a
     // spectating view can still show them for a teammate who hasn't.
     visiblePickups() {
-        const hearts = this.state.extraLives <= 0;
+        const hearts = this.state.hearts <= 0;
         return this.powerups.filter(p => !p.mine && (hearts || !p.isHeart));
     }
 
@@ -2595,10 +2595,10 @@ class Game {
     }
 
     collectHeart(event) {
-        if (this.state.extraLives < MAX_EXTRA_LIVES) this.setExtraLives(this.state.extraLives + 1);
+        if (this.state.hearts < MAX_HEARTS) this.setHearts(this.state.hearts + 1);
         this.particles.spawn(event.x + 14, event.y + 14, "#ff3366", 20);
         sounds.play('heart');
-        this.notify("EXTRA LIFE +1", 'heart');
+        this.notify("HEART +1", 'heart');
     }
 
     // ---------------------------------------------------- challenge links
@@ -2837,8 +2837,8 @@ class Game {
     // spends a heart instead, if there is one. Returns true if the player was
     // saved.
     useSpareLife() {
-        if (this.consumeExtraLife()) {
-            this.rescuePlayer("#ff3366", "EXTRA LIFE SPENT — " + this.state.extraLives + " LEFT");
+        if (this.consumeHeart()) {
+            this.rescuePlayer("#ff3366", "HEART SPENT — " + this.state.hearts + " LEFT");
             return true;
         }
         return false;
@@ -3045,7 +3045,7 @@ class Game {
         this.updateFameUI();
         this.updateSkinUI();
         this.renderGemShop();
-        this.updateExtraLifeUI();
+        this.updateHeartUI();
         const skin = SKINS[this.viewParams.skinIndex] || SKINS[0];
         const seed = String(this.state.runSeed);
         this.lastRun = {
@@ -3409,7 +3409,7 @@ class Game {
                 skinIndex: this.viewParams.skinIndex,
                 activePowerId: this.player.activePower ? this.player.activePower.id : null,
                 pf: Math.round(this.powerFraction(perks) * 100) / 100,
-                hl: this.state.extraLives
+                hl: this.state.hearts
             });
         }
 

@@ -6,21 +6,21 @@ setupMocks();
 global.__sounds = fs.readFileSync(path.join(__dirname, '..', 'js', 'sounds.js'), 'utf8');
 global.__app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
-// Heart pickups (only for a player with no extra lives), spare lives in
+// Heart pickups (only for a player with no hearts), spare lives in
 // co-op, the drone cap and the power-up ramp.
 eval(loadGameSource() + `
 function assert(cond, msg) { if (!cond) throw new Error("ASSERT FAILED: " + msg); }
 try {
     // ---- Hearts are part of the level whatever your lives: the layout
-    // (and every pickup) is identical at 0 and at 2 extra lives.
+    // (and every pickup) is identical at 0 and at 2 hearts.
     const layout = (lives) => {
         const g = new Game();
-        g.state.extraLives = lives;
+        g.state.hearts = lives;
         g.startGame();
         for (let i = 0; i < 600; i++) g.spawnPlatform(-1000 - i * 95);
         return JSON.stringify({ p: g.platforms.map(p => [p.x, p.y, p.w]), u: g.powerups.map(p => [p.x, p.y, !!p.isHeart, !!p.isGem]) });
     };
-    assert(layout(0) === layout(2), "extra lives don't change the generated level");
+    assert(layout(0) === layout(2), "hearts don't change the generated level");
     console.log("HEART DETERMINISM SUCCESS");
 
     // ---- Findable but rarer than power-ups, never two within a screen of
@@ -42,18 +42,18 @@ try {
 
     // ---- Only visible and collectible at 0 lives.
     g = new Game();
-    g.state.extraLives = 1;
+    g.state.hearts = 1;
     g.startGame();
     const heart = () => ({ x: g.player.x, y: g.player.y, startY: g.player.y, w: 20, h: 20, isHeart: true, isGem: false, markedForDeletion: false });
     g.powerups = [heart()];
     assert(g.visiblePickups().length === 0, "hearts are hidden while you have a life");
     g.update(1);
-    assert(g.state.extraLives === 1 && g.powerups.length === 1, "a hidden heart can't be collected");
-    g.state.extraLives = 0;
+    assert(g.state.hearts === 1 && g.powerups.length === 1, "a hidden heart can't be collected");
+    g.state.hearts = 0;
     g.powerups = [heart()];
     g.update(1);
-    assert(g.state.extraLives === 1, "a heart at 0 lives gives a life");
-    assert(localStorage.getItem('lp_extraLives') === '1', "the new life is saved");
+    assert(g.state.hearts === 1, "a heart at 0 lives gives a life");
+    assert(localStorage.getItem('lp_hearts') === '1', "the new life is saved");
     assert(g.ui.lifeDisplay.innerText === '1 ❤️', "the hearts counter updates");
     assert(g.powerups.length === 0, "the heart is used up");
     console.log("HEART PICKUP SUCCESS");
@@ -62,11 +62,11 @@ try {
     // test_mp_enemies.js).
     g = new Game();
     g.startGame();
-    g.state.extraLives = 0;
+    g.state.hearts = 0;
     g.onBossDefeated();
-    assert(g.state.extraLives === MAX_EXTRA_LIVES, "a boss kill refills the hearts");
-    assert(localStorage.getItem('lp_extraLives') === String(MAX_EXTRA_LIVES), "and saves them");
-    assert(g.ui.lifeDisplay.innerText === MAX_EXTRA_LIVES + ' ❤️', "the meter shows them");
+    assert(g.state.hearts === MAX_HEARTS, "a boss kill refills the hearts");
+    assert(localStorage.getItem('lp_hearts') === String(MAX_HEARTS), "and saves them");
+    assert(g.ui.lifeDisplay.innerText === MAX_HEARTS + ' ❤️', "the meter shows them");
     console.log("BOSS REFILL SUCCESS");
 
     // ---- Hearts and power-ups each have their own sound.
@@ -78,15 +78,15 @@ try {
     // without ever telling the party you died.
     const sent = [];
     window.network = { myId: 'me', send(m) { sent.push(m); } };
-    localStorage.setItem('lp_extraLives', '2');
+    localStorage.setItem('lp_hearts', '2');
     g = new Game();
     g.startMultiplayerGame(77);
     g.die(true);
-    assert(!g.player.isDead && g.state.extraLives === 1, "a banked heart saves you");
+    assert(!g.player.isDead && g.state.hearts === 1, "a banked heart saves you");
     assert(g.player.activePower === POWERS.SHIELD, "a co-op rescue grants HARD SHIELD");
     g.player.activePower = null;
     g.die(true);
-    assert(!g.player.isDead && g.state.extraLives === 0, "then the next one");
+    assert(!g.player.isDead && g.state.hearts === 0, "then the next one");
     assert(g.player.activePower === POWERS.SHIELD, "with a HARD SHIELD again");
     assert(!sent.some(m => m.type === 'die'), "a saved player never reports a death");
     g.die(true);

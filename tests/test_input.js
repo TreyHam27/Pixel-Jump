@@ -171,15 +171,15 @@ try {
     rg.revive();
     rg.update(1);
     assert(rg.player.vy < CONFIG.JUMP_FORCE, "revive keeps its bounce, vy " + rg.player.vy);
-    // Same for a spent extra life mid-run (the key is really held then).
+    // Same for a spent heart mid-run (the key is really held then).
     const eg = new Game();
     eg.startGame();
-    eg.state.extraLives = 1;
+    eg.state.hearts = 1;
     eg.player.grounded = true; eg.player.coyote = 8;
     eg.die(true);
     eg.input.keys.buffer = 6;
     eg.update(1);
-    assert(eg.player.vy < CONFIG.JUMP_FORCE, "extra-life launch isn't replaced by a hop, vy " + eg.player.vy);
+    assert(eg.player.vy < CONFIG.JUMP_FORCE, "heart launch isn't replaced by a hop, vy " + eg.player.vy);
     console.log("REVIVE BOUNCE SUCCESS");
 } catch (e) {
     console.error("FAILED:", e.stack || e);

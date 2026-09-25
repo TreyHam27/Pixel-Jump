@@ -207,7 +207,7 @@ try {
     assert(H.state.score > score0, "camera follows the active host instead of the frozen teammates");
     assert(H.player.y > 0, "no invisible ceiling from away teammates");
     // ...and after REMOTE_GONE_FRAMES they count as down for ending the run.
-    as(H, () => { H.state.extraLives = 0; H.die(true); });
+    as(H, () => { H.state.hearts = 0; H.die(true); });
     bus.pump();
     assert(H.state.running, "the run continues while the others are merely away");
     H.state.time = 1000 + REMOTE_GONE_FRAMES + 10;

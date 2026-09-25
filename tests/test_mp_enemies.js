@@ -190,11 +190,11 @@ try {
     console.log("PER-PERSON PICKUPS SUCCESS");
 
     // ---- A boss kill refills everyone's hearts, guests included.
-    [H, G, G2].forEach(g => { g.state.extraLives = 0; });
+    [H, G, G2].forEach(g => { g.state.hearts = 0; });
     as(H, () => { H.onBossDefeated(); H.net.send({ type: 'boss_down' }); });
     bus.pump();
-    assert([H, G, G2].every(g => g.state.extraLives === MAX_EXTRA_LIVES), "hearts refilled to " + MAX_EXTRA_LIVES);
-    assert(G.ui.lifeDisplay.innerText === MAX_EXTRA_LIVES + ' ❤️', "the guest's meter shows it");
+    assert([H, G, G2].every(g => g.state.hearts === MAX_HEARTS), "hearts refilled to " + MAX_HEARTS);
+    assert(G.ui.lifeDisplay.innerText === MAX_HEARTS + ' ❤️', "the guest's meter shows it");
     console.log("BOSS HEART REFILL SUCCESS");
 
     // ---- Sync carries how much of a power-up is left, sanitized.
@@ -202,12 +202,12 @@ try {
     assert(clean.pf === 1, "pf is clamped to 1");
     assert(H.sanitizeSync({ x: 1, y: 1, activePowerId: POWERS.SHIELD.id, pf: 'x' }).pf === 0, "junk pf is 0");
     assert(H.sanitizeSync({ x: 1, y: 1, activePowerId: null, pf: 0.5 }).pf === 0, "no power, no pf");
-    assert(H.sanitizeSync({ x: 1, y: 1, hl: 9 }).hl === MAX_EXTRA_LIVES && H.sanitizeSync({ x: 1, y: 1, hl: 'x' }).hl === 0, "hl is clamped");
+    assert(H.sanitizeSync({ x: 1, y: 1, hl: 9 }).hl === MAX_HEARTS && H.sanitizeSync({ x: 1, y: 1, hl: 'x' }).hl === 0, "hl is clamped");
     console.log("SYNC POWER FRACTION SUCCESS");
 
     // ---- Dead in co-op: say who the camera is following.
     G.player.invuln = 0;
-    as(G, () => { G.state.extraLives = 0; G.die(true); });
+    as(G, () => { G.state.hearts = 0; G.die(true); });
     as(G, () => G.update(1));
     assert(G.ui.spectateHud.hidden === false && /^SPECTATING /.test(G.ui.spectateHud.innerText), "spectating label: " + G.ui.spectateHud.innerText);
     console.log("SPECTATE SUCCESS");
@@ -215,7 +215,7 @@ try {
     // ---- Spectating shows the teammate's power-up, not your frozen one.
     as(G, () => G.update(1));
     G.player.activePower = POWERS.ROCKET; // frozen on the dead guest
-    G2.state.extraLives = 0;
+    G2.state.hearts = 0;
     as(G2, () => G2.die(true));
     as(H, () => { H.player.grantPower(POWERS.SHIELD); H.player.powerTimer = POWERS.SHIELD.time / 2; });
     step(4);
@@ -244,10 +244,10 @@ try {
     assert(view.includes(gemB), "the gem only G took shows, since the host hasn't taken it");
     const heart = { x: 100, y: 300, startY: 300, w: 28, h: 28, isGem: false, isHeart: true, wy: -123456, markedForDeletion: false };
     G.powerups.push(heart);
-    H.state.extraLives = 0;
+    H.state.hearts = 0;
     step(3);
     assert(watched.hearts === 0 && G.spectatePickups(watched).includes(heart), "hearts show while the host has none");
-    H.state.extraLives = 2;
+    H.state.hearts = 2;
     step(3);
     assert(watched.hearts === 2 && !G.spectatePickups(watched).includes(heart), "and hide once they have some");
     // The watched teammate's MAGNET pulls pickups in on the spectator's screen too.
