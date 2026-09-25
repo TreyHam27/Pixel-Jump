@@ -8,7 +8,7 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.7.3';
+const GAME_VERSION = '1.7.4';
 const NET_PROTOCOL = 4;
 
 const CONFIG = {
@@ -268,6 +268,7 @@ const ACHIEVEMENTS = [
             name: s.name,
             desc: 'Reach ' + s.unlock.toLocaleString('en-US') + 'm to unlock this Pixel',
             skin: true,
+            skinId: s.id,
             secret: !!s.secret,
             condition: (state) => state.bestHeight >= s.unlock
         }))
