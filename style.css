@@ -1762,9 +1762,11 @@ canvas {
 
 /* Below the HUD rows (score, BEST, power-up bar) and the system-message box,
    so a badge and a notice can show at the same time. */
+/* Sits in the #ui-layer column right under #system-alert (which always
+   keeps its space), so a badge never lands on top of a notice. */
 #achievement-pop {
-    position: absolute;
-    top: calc(190px + var(--safe-top));
+    position: relative;
+    margin-top: 10px;
     background: #ffd700;
     color: #000;
     padding: 10px 20px;
@@ -1778,10 +1780,12 @@ canvas {
 
 @keyframes slideIn {
     0% {
-        transform: translateY(-100px);
+        opacity: 0;
+        transform: translateY(-10px);
     }
 
     100% {
+        opacity: 1;
         transform: translateY(0);
     }
 }

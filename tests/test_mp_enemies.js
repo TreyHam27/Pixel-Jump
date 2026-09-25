@@ -250,6 +250,21 @@ try {
     H.state.extraLives = 2;
     step(3);
     assert(watched.hearts === 2 && !G.spectatePickups(watched).includes(heart), "and hide once they have some");
+    // The watched teammate's MAGNET pulls pickups in on the spectator's screen too.
+    const far = { x: watched.x + 120, y: watched.y, startY: watched.y, w: 16, h: 16, isShard: true, tier: 0, shardValue: 5, wy: -424242, markedForDeletion: false };
+    G.powerups.push(far);
+    const gap = () => Math.hypot(watched.x - far.x, watched.y - far.y);
+    const gap0 = gap();
+    H.player.grantPower(POWERS.MAGNET);
+    step(4);
+    assert(watched.activePower === POWERS.MAGNET && gap() < gap0 - 20, "the teammate's magnet pulls the gem: " + gap0 + " -> " + gap());
+    H.player.activePower = null;
+    step(2);
+    const gap1 = gap();
+    step(4);
+    assert(Math.abs(gap() - gap1) < 1, "no magnet, no pull");
+    console.log("SPECTATE MAGNET SUCCESS");
+
     as(G, () => G.mpRevive());
     assert(!G.visiblePickups().includes(gemB) && G.visiblePickups().includes(gemA), "respawned: back to G's own view");
     console.log("SPECTATE PICKUPS SUCCESS");

@@ -2564,6 +2564,18 @@ class Game {
         return this.powerups.filter(p => !(rp.picked && rp.picked.has(p.wy)) && (hearts || !p.isHeart));
     }
 
+    // While you're down, the teammate you're watching pulls pickups in with
+    // their MAGNET (or a gem-magnet Pixel) just as on their own screen.
+    pullForSpectated(rp, dt) {
+        const ability = (rp.skin && rp.skin.ability) || {};
+        const magnet = rp.activePower === POWERS.MAGNET;
+        if (!magnet && !ability.shardMagnetRadius) return;
+        this.spectatePickups(rp).forEach(p => {
+            if (magnet) rp.pullPickup(p, 200, dt);
+            if (p.isShard && ability.shardMagnetRadius) rp.pullPickup(p, ability.shardMagnetRadius, dt);
+        });
+    }
+
     // A teammate took a pickup. If we're watching them, show it go.
     applyRemotePick(d) {
         const rp = this.remotePlayers.get(d.pid);
@@ -3216,6 +3228,7 @@ class Game {
         // A dead co-op player's body is gone until they respawn: no physics,
         // no landing on platforms, no pickups.
         let event = this.player.isDead ? null : this.player.update(dt, this.input, this.platforms, this.visiblePickups());
+        if (this.state.multiplayer && this.player.isDead && this.spectatingPlayer) this.pullForSpectated(this.spectatingPlayer, dt);
 
         if (glitching) {
             const tmp = this.input.keys.left;
