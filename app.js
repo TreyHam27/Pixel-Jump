@@ -92,7 +92,7 @@ class Game {
             // inflate the score, and must not unlock them early. Older saves
             // only have lp_best, so they start from that.
             bestHeight: parseInt(localStorage.getItem('lp_best_height')) || parseInt(localStorage.getItem('lp_best')) || 0,
-            gems: parseInt(localStorage.getItem('lp_shards')) || 0,
+            gems: parseInt(localStorage.getItem('lp_gems') ?? localStorage.getItem('lp_shards')) || 0,
             loops: parseInt(localStorage.getItem('lp_loops')) || 0,
             skinIndex: Math.max(0, skinIndexById(localStorage.getItem('lp_skin'))),
             extraLives: parseInt(localStorage.getItem('lp_extraLives')) || 0,
@@ -256,6 +256,12 @@ class Game {
         // Position within the shop's pixel carousel — an index into
         // gemShopSkins(), not into SKINS.
         this.gemShopIndex = 0;
+
+        // Migration: gems were once called shards and saved as lp_shards.
+        if (localStorage.getItem('lp_shards') !== null) {
+            if (localStorage.getItem('lp_gems') === null) localStorage.setItem('lp_gems', this.state.gems);
+            localStorage.removeItem('lp_shards');
+        }
 
         // Migration: the shop used to sell a one-shot HARD SHIELD boost at the
         // same price as an extra life. Anyone still holding an unspent boost
@@ -1740,7 +1746,7 @@ class Game {
         }
         this.state.gems -= EXTRA_LIFE_COST;
         this.state.extraLives++;
-        localStorage.setItem('lp_shards', this.state.gems);
+        localStorage.setItem('lp_gems', this.state.gems);
         localStorage.setItem('lp_extraLives', this.state.extraLives);
         this.updateExtraLifeUI();
         this.renderGemShop();
@@ -1771,7 +1777,7 @@ class Game {
         }
         this.state.gems -= s.cost;
         this.ownedSkins.push(s.id);
-        localStorage.setItem('lp_shards', this.state.gems);
+        localStorage.setItem('lp_gems', this.state.gems);
         localStorage.setItem('lp_owned_skins', JSON.stringify(this.ownedSkins));
         this.equipSkin(index);
         this.renderGemShop();
@@ -2004,7 +2010,7 @@ class Game {
     addGems(n) {
         this.state.gems += n;
         if (this.state.running) this.state.runGems = (this.state.runGems || 0) + n;
-        localStorage.setItem('lp_shards', this.state.gems);
+        localStorage.setItem('lp_gems', this.state.gems);
         if (this.ui.gemDisplay) {
             this.ui.gemDisplay.innerText = fmtNum(this.state.gems) + " 💎";
             this.ui.gemDisplay.classList.remove('gem-pop');
