@@ -36,7 +36,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=1.8.6">
+    <link rel="stylesheet" href="style.css?v=1.9.0">
 </head>
 
 <body>
@@ -46,6 +46,10 @@
         <!-- (real network skin once live, house ad until then). See js/ads.js. -->
         <div id="ad-rail-left" class="ad-rail"></div>
         <div id="ad-rail-right" class="ad-rail"></div>
+
+        <!-- Phones: the black band the HUD sits in, above the playfield. The
+             Renderer measures it to size the canvas below it (see viewLayout). -->
+        <div id="hud-strip" aria-hidden="true"></div>
 
         <canvas id="gameCanvas" aria-label="Pixel Jump game">Pixel Jump needs a browser with canvas support.</canvas>
 
@@ -313,16 +317,16 @@
     </div>
 
     <!-- PeerJS 1.5.2, vendored (see js/vendor/README.md) -->
-    <script src="js/vendor/peerjs.min.js?v=1.8.6"></script>
-    <script src="js/config.js?v=1.8.6"></script>
-    <script src="js/sounds.js?v=1.8.6"></script>
-    <script src="js/background.js?v=1.8.6"></script>
-    <script src="js/input.js?v=1.8.6"></script>
-    <script src="js/renderer.js?v=1.8.6"></script>
-    <script src="js/entities.js?v=1.8.6"></script>
-    <script src="js/ads.js?v=1.8.6"></script>
-    <script src="js/network.js?v=1.8.6"></script>
-    <script src="app.js?v=1.8.6"></script>
+    <script src="js/vendor/peerjs.min.js?v=1.9.0"></script>
+    <script src="js/config.js?v=1.9.0"></script>
+    <script src="js/sounds.js?v=1.9.0"></script>
+    <script src="js/background.js?v=1.9.0"></script>
+    <script src="js/input.js?v=1.9.0"></script>
+    <script src="js/renderer.js?v=1.9.0"></script>
+    <script src="js/entities.js?v=1.9.0"></script>
+    <script src="js/ads.js?v=1.9.0"></script>
+    <script src="js/network.js?v=1.9.0"></script>
+    <script src="app.js?v=1.9.0"></script>
 </body>
 
 </html>

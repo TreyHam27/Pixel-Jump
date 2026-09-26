@@ -71,8 +71,22 @@ events, which is how the "can't start on a phone" bug was caught:
 PJ_TOUCH=1 node .claude/skills/run-pixel-jump/driver.mjs tap '#shop-open-btn' wait 600 ss shop-touch tap '#shop-back-btn' wait 600 start wait 500 eval '__game.state.running'
 ```
 
-High-DPI phone and URL options: `PJ_DPR=3` sets the device pixel ratio (the
-canvas backing store should then be 1200x1600). `PJ_PATH` is appended to the
+If a `PJ_TOUCH=1` run shows the Add to Home Screen gate instead of the menu,
+the page took the browser for a phone tab, and the gate also blocks starting a run.
+To test gameplay at phone sizes, pass a desktop UA, which keeps touch and the viewport:
+
+```bash
+PJ_UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36' \
+  PJ_TOUCH=1 PJ_W=393 PJ_H=852 node .claude/skills/run-pixel-jump/driver.mjs start wait 800 ss phone-run eval '[__game.renderer.layout, __game.renderer.viewExtra]'
+```
+
+Layouts: a portrait phone gets `strip`: a black HUD strip on top, the playfield
+running to the bottom edge, and `viewExtra` rows of extra sky above the 600x800
+frame, up to `VIEW_MAX_EXTRA`. A wide window gets `flank`, with the HUD beside
+the 3:4 column. Anything in between gets `overlay`, with the HUD in the column's corners.
+
+High-DPI phone and URL options: `PJ_DPR=3` sets the device pixel ratio. The
+canvas backing store is then capped at 2x: 1200 x 2*(800 + viewExtra). `PJ_PATH` is appended to the
 URL, e.g. `PJ_PATH='?beat=120&d=20260923'` (a same-day challenge link) or
 `PJ_PATH='?sw'` (registers the service worker, which is otherwise
 production-only). `PJ_UA` overrides the user agent, e.g. an iPhone Safari UA with

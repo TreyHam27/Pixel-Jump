@@ -2359,7 +2359,7 @@ class Game {
             y += (p2[1] - p1[1]) * t;
         }
         const screenY = y + this.state.score;
-        if (screenY > -50 && screenY < CONFIG.HEIGHT + 50) {
+        if (screenY > this.renderer.viewTop - 50 && screenY < CONFIG.HEIGHT + 50) {
             const skin = SKINS[skinIndexById(g.skin)] || SKINS[0];
             const dx = p2[0] - p1[0];
             const look = Math.abs(dx) >= 300 ? 0 : (dx > 3 ? 4 : (dx < -3 ? -4 : 0));
@@ -2387,7 +2387,7 @@ class Game {
         ];
         for (const tip of tips) {
             const h = tip.lines.length * 22 + 14;
-            if (tip.y + h < 0 || tip.y - h > CONFIG.HEIGHT) continue;
+            if (tip.y + h < this.renderer.viewTop || tip.y - h > CONFIG.HEIGHT) continue;
             ctx.save();
             ctx.globalAlpha = 0.45;
             ctx.fillStyle = '#000';
@@ -2712,7 +2712,7 @@ class Game {
         const best = this.state.bestMarkerScore;
         if (!(best > 0) || best <= (this.state.startMeters || 0)) return;
         const y = this.scoreLineY(best);
-        if (y < -20 || y > CONFIG.HEIGHT + 20) return;
+        if (y < this.renderer.viewTop - 20 || y > CONFIG.HEIGHT + 20) return;
         const ctx = this.renderer.ctx;
         ctx.save();
         ctx.strokeStyle = '#ff3366';
@@ -2742,7 +2742,7 @@ class Game {
         if (!this.challengeActive() || this.state.challengeBeaten) return;
         const ctx = this.renderer.ctx;
         const y = this.scoreLineY(this.challenge.meters);
-        if (y < -20 || y > CONFIG.HEIGHT + 20) return;
+        if (y < this.renderer.viewTop - 20 || y > CONFIG.HEIGHT + 20) return;
         ctx.save();
         ctx.strokeStyle = '#ffd700';
         ctx.lineWidth = 2;
@@ -3602,8 +3602,8 @@ class Game {
             }
         });
 
-        this.enemies.forEach(e => e.draw(this.renderer.ctx));
-        this.projectiles.forEach(p => p.draw(this.renderer.ctx));
+        this.enemies.forEach(e => this.drawFadingIn(e));
+        this.projectiles.forEach(p => this.drawFadingIn(p));
 
         if (this.state.running && this.settings.showGhost) this.drawGhost();
         if (this.state.running) this.drawBestLine();
@@ -3631,6 +3631,23 @@ class Game {
         }
 
         this.particles.draw(this.renderer.ctx);
+    }
+
+    // Spawns aimed just off the top of the 800-tall frame (meteors, the boss,
+    // drones) can land inside the extra sky of a tall view. Anything that
+    // first shows up there fades in over SPAWN_FADE_FRAMES instead of popping
+    // into existence. Purely cosmetic: spawn timing is the same everywhere.
+    drawFadingIn(e) {
+        const ctx = this.renderer.ctx;
+        if (e.shownAt === undefined) {
+            const inSky = e.y < 0 && e.y + (e.h || 0) > this.renderer.viewTop;
+            e.shownAt = inSky ? this.state.time : -Infinity;
+        }
+        const a = (this.state.time - e.shownAt) / SPAWN_FADE_FRAMES;
+        if (a >= 1) { e.draw(ctx); return; }
+        ctx.globalAlpha = Math.max(0, a);
+        e.draw(ctx);
+        ctx.globalAlpha = 1;
     }
 
     loop(timestamp) {

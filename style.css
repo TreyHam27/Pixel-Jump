@@ -40,14 +40,58 @@ body {
     justify-content: center;
     align-items: center;
     background: #000;
+    /* Where the HUD's corners are, as offsets in from the container's edges.
+       Zero means the window corners. Renderer.resize() picks a data-layout
+       and publishes the playfield's box (--pf-left/top/right/w/h), and the
+       layouts below move the HUD onto it. */
+    --hud-left: 0px;
+    --hud-right: 0px;
+    --hud-top: 0px;
+    /* Height of the phone HUD strip, not counting the notch. */
+    --hud-strip-h: 88px;
+}
+
+/* A 3:4 column too narrow to have the HUD beside it: the HUD sits in the
+   column's own top corners. */
+#game-container[data-layout="overlay"] {
+    --hud-left: var(--pf-left, 0px);
+    --hud-right: var(--pf-right, 0px);
+    --hud-top: var(--pf-top, 0px);
+}
+
+/* Phones: the playfield runs from under the HUD strip to the bottom edge
+   (under the home indicator too). */
+#game-container[data-layout="strip"] {
+    align-items: flex-end;
 }
 
 canvas {
     background: #080808;
-    box-shadow: 0 0 60px #000;
-    border: 2px solid #333;
+    /* A frame that takes no layout space (a border would push the canvas
+       past its fitted size). */
+    box-shadow: 0 0 0 1px #2a2a2a, 0 0 60px #000;
     max-width: 100%;
     max-height: 100%;
+}
+
+#game-container[data-layout="strip"] canvas {
+    box-shadow: none;
+}
+
+#hud-strip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(var(--hud-strip-h) + var(--safe-top));
+    background: #000;
+    pointer-events: none;
+    /* Always laid out so the Renderer can measure it, only shown on phones. */
+    visibility: hidden;
+}
+
+#game-container[data-layout="strip"] #hud-strip {
+    visibility: visible;
 }
 
 /* UI LAYOUT - Absolute positioning relative to the container */
@@ -77,8 +121,8 @@ canvas {
 
 #score-display {
     position: absolute;
-    top: calc(20px + var(--safe-top));
-    left: calc(20px + var(--safe-left));
+    top: calc(var(--hud-top) + 20px + var(--safe-top));
+    left: calc(var(--hud-left) + 20px + var(--safe-left));
     white-space: nowrap;
     font-size: clamp(26px, 8vw, 50px);
     font-weight: 900;
@@ -89,7 +133,7 @@ canvas {
 
 #best-display-hud {
     position: absolute;
-    top: calc(20px + var(--safe-top));
+    top: calc(var(--hud-top) + 20px + var(--safe-top));
     left: 50%;
     transform: translateX(-50%);
     white-space: nowrap;
@@ -102,8 +146,8 @@ canvas {
 
 #gem-display {
     position: absolute;
-    top: calc(8px + var(--safe-top));
-    right: calc(8px + var(--safe-right));
+    top: calc(var(--hud-top) + 8px + var(--safe-top));
+    right: calc(var(--hud-right) + 8px + var(--safe-right));
     white-space: nowrap;
     font-size: clamp(20px, 6.5vw, 40px);
     line-height: 1;
@@ -142,8 +186,8 @@ canvas {
    Dimmed at zero: that's when heart pickups show up in the level. */
 #life-display {
     position: absolute;
-    top: calc(8px + clamp(20px, 6.5vw, 40px) + 6px + var(--safe-top));
-    right: calc(8px + var(--safe-right));
+    top: calc(var(--hud-top) + 8px + clamp(20px, 6.5vw, 40px) + 6px + var(--safe-top));
+    right: calc(var(--hud-right) + 8px + var(--safe-right));
     white-space: nowrap;
     font-size: clamp(20px, 6.5vw, 40px);
     line-height: 1;
@@ -172,8 +216,8 @@ canvas {
    the score. */
 @media (max-width: 480px) {
     #best-display-hud {
-        top: calc(62px + var(--safe-top));
-        left: calc(20px + var(--safe-left));
+        top: calc(var(--hud-top) + 62px + var(--safe-top));
+        left: calc(var(--hud-left) + 20px + var(--safe-left));
         transform: none;
         font-size: 14px;
         text-align: left;
@@ -188,12 +232,12 @@ canvas {
     }
 
     #life-display {
-        top: calc(8px + clamp(18px, 6vw, 28px) + 6px + var(--safe-top));
+        top: calc(var(--hud-top) + 8px + clamp(18px, 6vw, 28px) + 6px + var(--safe-top));
         font-size: clamp(18px, 6vw, 28px);
     }
 
     .hud-btn {
-        top: calc(78px + var(--safe-top));
+        top: calc(var(--hud-top) + 78px + var(--safe-top));
     }
 
     #system-alert {
@@ -204,10 +248,66 @@ canvas {
     }
 }
 
+/* Phones (the strip layout): the numbers live in the black HUD strip above
+   the playfield. Score with BEST under it on the left, gems over hearts on
+   the right, pause in the middle. Run-time pills (power-up bar, target,
+   spectating, alerts) pin to the top of the playfield instead. */
+#game-container[data-layout="strip"] #hud {
+    height: calc(var(--hud-strip-h) + var(--safe-top));
+}
+
+#game-container[data-layout="strip"] #score-display {
+    top: calc(10px + var(--safe-top));
+    left: calc(16px + var(--safe-left));
+    font-size: clamp(26px, 8.5vw, 38px);
+}
+
+#game-container[data-layout="strip"] #best-display-hud {
+    top: calc(56px + var(--safe-top));
+    left: calc(16px + var(--safe-left));
+    transform: none;
+    font-size: 14px;
+    text-align: left;
+}
+
+#game-container[data-layout="strip"] #gem-display,
+#game-container[data-layout="strip"] #life-display {
+    right: calc(16px + var(--safe-right));
+    font-size: 26px;
+}
+
+#game-container[data-layout="strip"] #gem-display {
+    top: calc(12px + var(--safe-top));
+}
+
+#game-container[data-layout="strip"] #life-display {
+    top: calc(48px + var(--safe-top));
+}
+
+#game-container[data-layout="strip"] .hud-btn {
+    top: calc((var(--hud-strip-h) - 40px) / 2 + var(--safe-top));
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+#game-container[data-layout="strip"] #system-alert {
+    margin-top: 10px;
+}
+
+#game-container[data-layout="strip"] #power-hud {
+    top: calc(var(--pf-top, 0px) + 56px);
+}
+
+#game-container[data-layout="strip"] #challenge-hud,
+#game-container[data-layout="strip"] #spectate-hud {
+    top: calc(var(--pf-top, 0px) + 12px);
+}
+
 /* POWER UP HUD */
 #power-hud {
     position: absolute;
-    top: calc(80px + var(--safe-top));
+    top: calc(var(--hud-top) + 80px + var(--safe-top));
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -257,7 +357,7 @@ canvas {
     padding: 10px 22px;
     /* Below the HUD row (and the notch), and never wide enough to reach the
        pause button in the top-right corner. */
-    margin-top: calc(20px + var(--safe-top));
+    margin-top: calc(var(--hud-top) + 20px + var(--safe-top));
     font-weight: bold;
     font-size: 15px;
     width: fit-content;
@@ -1996,8 +2096,8 @@ canvas {
 .hud-btn {
     position: absolute;
     /* Below the gem and heart counters in the top-right corner. */
-    top: calc(102px + var(--safe-top));
-    right: calc(10px + var(--safe-right));
+    top: calc(var(--hud-top) + 102px + var(--safe-top));
+    right: calc(var(--hud-right) + 10px + var(--safe-right));
     width: 40px;
     height: 40px;
     padding: 0;
@@ -2386,7 +2486,8 @@ body.reduce-motion *::after {
 
 .touch-pad {
     position: absolute;
-    bottom: 14px;
+    /* Clear of the home indicator: phones play right down to the bottom edge. */
+    bottom: calc(14px + var(--safe-bottom));
     transform: translateX(-50%);
     display: flex;
     align-items: center;
@@ -2422,7 +2523,7 @@ body.reduce-motion *::after {
 /* ---------- Daily challenge target (from a shared link) ---------- */
 #challenge-hud {
     position: absolute;
-    top: calc(116px + var(--safe-top));
+    top: calc(var(--hud-top) + 116px + var(--safe-top));
     left: 50%;
     transform: translateX(-50%);
     padding: 3px 10px;
@@ -2445,7 +2546,7 @@ body.reduce-motion *::after {
    is where alerts and achievement pops appear). */
 @media (max-width: 480px) {
     #challenge-hud {
-        top: calc(26px + var(--safe-top));
+        top: calc(var(--hud-top) + 26px + var(--safe-top));
         font-size: 11px;
     }
 }
@@ -2464,7 +2565,7 @@ body.reduce-motion *::after {
 /* ---------- Co-op: spectating while dead, room code sharing ---------- */
 #spectate-hud {
     position: absolute;
-    top: calc(116px + var(--safe-top));
+    top: calc(var(--hud-top) + 116px + var(--safe-top));
     left: 50%;
     transform: translateX(-50%);
     padding: 4px 12px;
