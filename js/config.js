@@ -63,6 +63,27 @@ const HEART_RAMP_METERS = 8000;
 const HEART_MIN_GAP = 1000; // px of world height between hearts (> CONFIG.HEIGHT)
 const RUN_CARD_TAP_GRACE_MS = 600; // backdrop taps right after the run card opens are ignored
 const GEM_CHANCE = 0.4;
+// PLAYTEST ONLY (this branch is never merged): ?debug&w=700 tries a wider
+// column (400-1000). Nothing is saved while it's on (every lp_ write is
+// dropped), so real progress, records and daily ghosts stay clean.
+const PLAYTEST_WIDTH = (() => {
+    try {
+        const q = new URLSearchParams(location.search || '');
+        const w = Math.round(Number(q.get('w')));
+        return q.has('debug') && w >= 400 && w <= 1000 ? w : 0;
+    } catch (e) { return 0; }
+})();
+if (PLAYTEST_WIDTH) {
+    CONFIG.WIDTH = PLAYTEST_WIDTH;
+    if (typeof Storage !== 'undefined') {
+        const realSet = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+            if (String(k).startsWith('lp_')) return;
+            return realSet.call(this, k, v);
+        };
+    }
+}
+
 // Tall screens (portrait phones) see up to this much extra sky above the
 // 600x800 playfield. It's view-only: the game itself (score, camera, death
 // line, co-op ceiling) always runs in the 800-tall reference frame, and the

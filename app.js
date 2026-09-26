@@ -3667,7 +3667,19 @@ class Game {
 }
 
 window.onload = () => {
-    new Game();
+    const game = new Game();
+
+    // PLAYTEST ONLY: say which width this is, and hide today's ghost (it was
+    // recorded on the 600-wide layout, so it would fly through thin air).
+    if (PLAYTEST_WIDTH) {
+        game.settings.showGhost = false;
+        const badge = document.createElement('div');
+        badge.textContent = 'PLAYTEST: ' + PLAYTEST_WIDTH + ' WIDE · NOTHING SAVED';
+        badge.style.cssText = 'position:fixed;left:50%;bottom:8px;transform:translateX(-50%);z-index:999;' +
+            'padding:4px 12px;border:1px solid #ffd700;border-radius:999px;background:rgba(0,0,0,.7);' +
+            'color:#ffd700;font:bold 12px Orbitron,monospace;letter-spacing:1px;pointer-events:none';
+        document.body.appendChild(badge);
+    }
 
     // Installable / offline play. Only on the live https site (or a local
     // server opened with ?sw), so local development never serves stale
