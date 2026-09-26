@@ -8,8 +8,8 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.9.1';
-const NET_PROTOCOL = 5;
+const GAME_VERSION = '1.9.2';
+const NET_PROTOCOL = 6;
 
 const CONFIG = {
     WIDTH: 600,
@@ -20,7 +20,12 @@ const CONFIG = {
     JUMP_FORCE: -13.2,
     SUPER_JUMP_FORCE: -22,
     BOUNCE_FORCE: -25,
-    PLATFORM_BASE_GAP: 95,
+    // Vertical px between platforms. 110 since v1.9.2 (was 95), picked by
+    // playtest. A plain jump rises about 138px, so keep it at 128 or less
+    // (tests/test_platform_gap.js checks).
+    // Changing it changes level generation: bump PLATFORM_GEN_VERSION and
+    // NET_PROTOCOL too.
+    PLATFORM_BASE_GAP: 110,
     SCROLL_THRESHOLD: 0.5,
     DRONE_BASE_VELOCITY: 2,
     DRONE_MAX_VELOCITY: 8,
@@ -41,7 +46,7 @@ const CONFIG = {
 
 // Level generation version: bump when spawnPlatform() would build a different
 // layout from the same seed (saved ghosts from other versions are dropped).
-const PLATFORM_GEN_VERSION = 3;
+const PLATFORM_GEN_VERSION = 4;
 // Pickups rolled per platform. The power-up chance climbs from MIN at 0m to
 // MAX at POWERUP_RAMP_METERS; hearts are rarer, and only exist for a player
 // with no hearts left (see Game.visiblePickups()); otherwise 40% of
