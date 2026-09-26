@@ -2320,12 +2320,11 @@ class Game {
         }
     }
 
-    // Keeps the best solo run of the day on this layout.
+    // Keeps the latest solo run on today's layout, so the ghost is always
+    // your previous run (loadGhost drops it once the day's seed changes).
     saveGhost(finalScore) {
         const rec = this.ghostRec;
         if (!rec || this.state.multiplayer || rec.pts.length < 4) return;
-        const stored = this.loadGhost();
-        if (stored && stored.score >= finalScore) return;
         const ghost = {
             v: 2, gen: PLATFORM_GEN_VERSION, seed: this.state.runSeed, start: this.state.startMeters,
             score: finalScore, step: GHOST_STEP, pts: rec.pts,

@@ -33,11 +33,11 @@ try {
     mockGame.gameOver();
     const ghostAfterWorseRun = localStorage.getItem('lp_ghost');
 
-    if (ghostAfterWorseRun !== ghostAfterFirstBest) {
-        console.error("FAIL: worse run overwrote the best ghost recording");
+    if (ghostAfterWorseRun === ghostAfterFirstBest) {
+        console.error("FAIL: latest run didn't replace the previous ghost recording");
         process.exitCode = 1;
     } else {
-        console.log("GHOST PERSISTENCE SUCCESS");
+        console.log("GHOST LATEST-RUN SUCCESS");
     }
 } catch(e) {
     console.error("CRASH:", e.stack);

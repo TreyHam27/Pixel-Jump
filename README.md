@@ -19,7 +19,7 @@ A neon endless vertical jumper for the browser. Climb through eight biomes, dodg
 - **Boss fights:** every 3000m. The boss hovers and fires volleys, then telegraphs a dive to your level. Land on it while it's exposed. Each kill is worth +500m and 150 💎.
 - **Pixels (skins):** you unlock them by height, by buying them in the gem shop, or by finding the secret ones. Each has a perk, such as JUMP, EMP, GEMS x2, SHIELD START or SCORE x2.
 - **Gems (💎):** worth more in each higher biome, from 5 in the Atmosphere up to 100 in The Void, and coloured by biome.
-- **Daily layout:** solo runs use the day's seed, and your best run of the day replays as a ghost.
+- **Daily layout:** solo runs use the day's seed, and your previous run of the day replays as a ghost.
 - **Co-op:** 2-4 players via a 6-character room code (PeerJS WebRTC; COPY CODE shares it).
   - Levels are generated identically on every client.
   - The host runs every drone, bullet, meteor and the boss. Everyone faces the same enemies, stomps count toward one shared boss health bar, and a boss kill pays everyone.
