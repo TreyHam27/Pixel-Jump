@@ -94,6 +94,64 @@ canvas {
     visibility: visible;
 }
 
+/* ---------- Themed sides ----------
+   Around the 3:4 column (flank and overlay layouts), the window takes on the
+   current biome: its background colour, a soft glow in its platform colour,
+   a still star field and a vignette, and a glowing edge on the column.
+   Renderer.themeSides() sets the three colours when the biome changes;
+   registering them lets the CSS cross-fade between biomes. */
+@property --biome-bg {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: #050505;
+}
+
+@property --biome-glow {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: rgba(0, 255, 204, 0.09);
+}
+
+@property --biome-edge {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: rgba(0, 255, 204, 0.35);
+}
+
+#game-container:not([data-layout="strip"]) {
+    /* A stacking context, so the star layer below can sit behind the canvas. */
+    isolation: isolate;
+    background:
+        radial-gradient(ellipse 70% 90% at 50% 45%, var(--biome-glow), transparent 70%),
+        var(--biome-bg);
+    transition: --biome-bg 1.5s ease, --biome-glow 1.5s ease, --biome-edge 1.5s ease;
+}
+
+#game-container:not([data-layout="strip"])::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.65) 100%),
+        radial-gradient(1px 1px at 12% 18%, rgba(255, 255, 255, 0.45), transparent) 0 0 / 230px 230px,
+        radial-gradient(1px 1px at 68% 42%, rgba(255, 255, 255, 0.3), transparent) 0 0 / 230px 230px,
+        radial-gradient(1.5px 1.5px at 33% 77%, rgba(255, 255, 255, 0.35), transparent) 0 0 / 310px 310px,
+        radial-gradient(1px 1px at 86% 64%, rgba(255, 255, 255, 0.25), transparent) 0 0 / 310px 310px,
+        radial-gradient(1px 1px at 51% 9%, rgba(255, 255, 255, 0.3), transparent) 0 0 / 170px 170px;
+}
+
+#game-container:not([data-layout="strip"]) canvas {
+    box-shadow: 0 0 0 1px var(--biome-edge), 0 0 50px var(--biome-glow), 0 0 90px #000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #game-container {
+        transition: none;
+    }
+}
+
 /* UI LAYOUT - Absolute positioning relative to the container */
 #ui-layer {
     position: absolute;

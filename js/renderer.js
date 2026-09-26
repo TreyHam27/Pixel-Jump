@@ -101,7 +101,25 @@ class Renderer {
     }
 
     updateBiome(meters) {
-        this.currentBiome = biomeAt(meters);
+        const biome = biomeAt(meters);
+        if (biome !== this.themedBiome) this.themeSides(biome);
+        this.currentBiome = biome;
+    }
+
+    // The window around the column takes on the biome's colours (see the
+    // themed-sides block in style.css). Only runs when the biome changes; the
+    // CSS cross-fades between them.
+    themeSides(biome) {
+        this.themedBiome = biome;
+        const container = this.canvas.parentElement;
+        if (!container || !container.style || !container.style.setProperty) return;
+        const rgba = (hex, a) => {
+            const n = parseInt(hex.replace('#', '').replace(/^(.)(.)(.)$/, '$1$1$2$2$3$3'), 16);
+            return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+        };
+        container.style.setProperty('--biome-bg', biome.bg);
+        container.style.setProperty('--biome-glow', rgba(biome.platform, 0.09));
+        container.style.setProperty('--biome-edge', rgba(biome.platform, 0.35));
     }
 
     clear(offsetY) {
