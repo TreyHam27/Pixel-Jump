@@ -66,15 +66,22 @@ const GEM_CHANCE = 0.4;
 // PLAYTEST ONLY (this branch is never merged): ?debug&w=700 tries a wider
 // column (400-1000). Nothing is saved while it's on (every lp_ write is
 // dropped), so real progress, records and daily ghosts stay clean.
-const PLAYTEST_WIDTH = (() => {
+// ?debug&gap=115 tries sparser (or denser) platforms: px between them,
+// 80-135 (95 today; a jump rises about 145px, so more than about 135 can
+// leave the next platform out of reach).
+const PLAYTEST_PARAM = (name, min, max) => {
     try {
         const q = new URLSearchParams(location.search || '');
-        const w = Math.round(Number(q.get('w')));
-        return q.has('debug') && w >= 400 && w <= 1000 ? w : 0;
+        const v = Math.round(Number(q.get(name)));
+        return q.has('debug') && v >= min && v <= max ? v : 0;
     } catch (e) { return 0; }
-})();
-if (PLAYTEST_WIDTH) {
-    CONFIG.WIDTH = PLAYTEST_WIDTH;
+};
+const PLAYTEST_WIDTH = PLAYTEST_PARAM('w', 400, 1000);
+const PLAYTEST_GAP = PLAYTEST_PARAM('gap', 80, 135);
+const PLAYTESTING = !!(PLAYTEST_WIDTH || PLAYTEST_GAP);
+if (PLAYTEST_WIDTH) CONFIG.WIDTH = PLAYTEST_WIDTH;
+if (PLAYTEST_GAP) CONFIG.PLATFORM_BASE_GAP = PLAYTEST_GAP;
+if (PLAYTESTING) {
     if (typeof Storage !== 'undefined') {
         const realSet = Storage.prototype.setItem;
         Storage.prototype.setItem = function (k, v) {
