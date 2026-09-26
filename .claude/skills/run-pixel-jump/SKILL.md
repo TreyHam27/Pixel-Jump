@@ -42,8 +42,10 @@ Steps run in order:
 | `start` | force-click CLICK TO START |
 | `left <ms>` / `right <ms>` | hold the arrow key |
 | `jump` | tap Space |
+| `key <key>` | press any key, e.g. `key Escape` |
 | `wait <ms>` | sleep |
 | `click <css>` | force-click any selector |
+| `tap <css>` | touch-tap a selector with `PJ_TOUCH=1` (a forced click otherwise) |
 | `ss <name>` | screenshot to `$PJ_OUT/<name>.png` (default `./pj-shots`) |
 | `score` | print `#score-display` |
 | `text <css>` | print an element's text |
@@ -80,8 +82,7 @@ Other useful selectors: `#prev-btn` / `#next-btn` (skin picker), `#to-sp-btn`,
 `#mp-host-btn`, `#mp-join-btn`, `#shop-life-btn`, `#gem-prev-btn` / `#gem-next-btn`,
 `#records-open-btn` / `#records-back-btn`, `#settings-open-btn` / `#settings-close-btn`,
 `#pause-btn` (or `key Escape`), `#pause-resume-btn`, `#pause-quit-btn`, and the
-end-of-run card's `#run-again-btn` / `#run-menu-btn`. A run's first start shows a
-one-time controls hint (`lp_seen_hint`).
+end-of-run card's `#run-again-btn` / `#run-menu-btn`.
 
 ## Run (human path)
 
@@ -101,8 +102,10 @@ node tests/run_all.js boss mp   # only files whose name contains a filter
 node tests/test_perks.js        # one file, full output
 ```
 
-The mocks `unref()` game timers so a test exits as soon as its code finishes;
-a test that genuinely needs to wait should use `sleep(ms)` from the helpers.
+The mocks `unref()` game timers so a test exits as soon as its code finishes.
+A test that awaits timers passes `setupMocks({ realTimers: true })`, calls
+`failIfUnfinished()` and ends with `process.exit()`, or Node can exit 0
+halfway through; inside it, wait with `sleep(ms)` from the helpers.
 
 ## Gotchas
 
@@ -123,8 +126,9 @@ a test that genuinely needs to wait should use `sleep(ms)` from the helpers.
   that depends on saved progress, set the state inside that run.
 - **Falling below the screen ends the run** and returns you to the menu. The
   run's score then shows in LAST RUN, HIGH SCORE and the Hall of Fame.
-- **Ads and co-op networking** have no live backend. The ad rails show house
-  ads, and co-op can only be tested as far as its menu with a single browser.
+- **Ads and co-op networking** have no live backend. Ads are off
+  (`ADS_ENABLED = false`), so the ad rails stay empty, and co-op can only be
+  tested as far as its menu with a single browser.
 - **The static server port is 8765.** Set `PJ_PORT` if that port is busy. The
   driver doesn't check what's already listening on it.
 
