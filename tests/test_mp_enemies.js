@@ -176,14 +176,16 @@ try {
     console.log("SMOOTHING SUCCESS");
 
     // ---- Pickups are per person: host and guest can both take the same gem.
-    const gemH = H.powerups.find(p => p.isGem);
-    const gemG = gemH && G.powerups.find(p => p.isGem && p.x === gemH.x &&
-        Math.abs((p.startY - G.state.score) - (gemH.startY - H.state.score)) < 1);
-    assert(gemH && gemG, "the same gem exists on both clients");
+    // The same gem (same wy) on both clients, placed on the pinned players.
+    // Made here rather than found: the random level may not have an untaken one.
+    const gemAt = () => ({ x: 50, y: 400, startY: 400, w: 16, h: 16, isGem: true, tier: 0, gemValue: 5, wy: -777777, markedForDeletion: false });
+    const gemH = gemAt(), gemG = gemAt();
+    H.powerups.push(gemH);
+    G.powerups.push(gemG);
     const walletH = H.state.gems, walletG = G.state.gems;
-    [gemH, gemG].forEach(p => { p.x = 50; p.y = p.startY = 400; });
     step(1);
-    assert(H.state.gems === walletH + gemH.gemValue && G.state.gems === walletG + gemG.gemValue, "both collect it");
+    assert(H.state.gems === walletH + gemH.gemValue && G.state.gems === walletG + gemG.gemValue,
+        "both collect it: H " + walletH + "->" + H.state.gems + ", G " + walletG + "->" + G.state.gems);
     assert(gemH.mine && gemG.mine && !H.visiblePickups().includes(gemH) && !G.visiblePickups().includes(gemG), "and it's gone for each");
     const hostPid = H.net.myId;
     assert(G.remotePlayers.get(hostPid).picked.has(gemH.wy), "the party hears what the host took");
@@ -232,6 +234,15 @@ try {
     // ---- Spectating shows the level as the teammate sees it.
     const watched = G.spectatingPlayer;
     const free = G.powerups.filter(p => p.isGem && !p.mine && Number.isInteger(p.wy));
+    // The level is random per run and sometimes has fewer than two gems in
+    // view; top up with a matching gem in both games.
+    for (let i = free.length; i < 2; i++) {
+        const mk = () => ({ x: 200 + i * 60, y: 350, startY: 350, w: 16, h: 16, isGem: true, tier: 0, gemValue: 5, wy: -900000 - i, markedForDeletion: false });
+        const g = mk();
+        G.powerups.push(g);
+        H.powerups.push(mk());
+        free.push(g);
+    }
     assert(free.length >= 2, "two gems on screen");
     const [gemA, gemB] = free;
     gemB.mine = true; // G took B before going down
@@ -244,9 +255,14 @@ try {
     assert(view.includes(gemB), "the gem only G took shows, since the host hasn't taken it");
     const heart = { x: 100, y: 300, startY: 300, w: 28, h: 28, isGem: false, isHeart: true, wy: -123456, markedForDeletion: false };
     G.powerups.push(heart);
+    // A heart the level spawned next to the host would be collected in these
+    // frames (that's the hearts-at-zero rule working), so clear them first.
+    H.powerups = H.powerups.filter(p => !p.isHeart);
     H.state.hearts = 0;
     step(3);
-    assert(watched.hearts === 0 && G.spectatePickups(watched).includes(heart), "hearts show while the host has none");
+    assert(watched.hearts === 0, "the host's 0 hearts synced, got " + watched.hearts);
+    assert(G.powerups.includes(heart), "heart still in the level: y=" + heart.y + " deleted=" + heart.markedForDeletion);
+    assert(G.spectatePickups(watched).includes(heart), "hearts show while the host has none");
     H.state.hearts = 2;
     step(3);
     assert(watched.hearts === 2 && !G.spectatePickups(watched).includes(heart), "and hide once they have some");
