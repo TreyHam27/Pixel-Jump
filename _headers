@@ -1,0 +1,11 @@
+# Cloudflare Pages response headers (GitHub Pages ignores this file).
+# The service worker and page must always be revalidated so a deploy reaches
+# players on their next load; versioned assets (?v=) can cache normally.
+/sw.js
+  Cache-Control: no-cache
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache

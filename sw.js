@@ -9,7 +9,7 @@
 //
 // VERSION must match GAME_VERSION in js/config.js (tests/test_version.js
 // checks); bumping it drops the old caches.
-const VERSION = '1.9.2';
+const VERSION = '1.10.0';
 const CACHE = 'pixel-jump-' + VERSION;
 const FONT_CACHE = 'pixel-jump-fonts';
 
@@ -20,6 +20,7 @@ const SHELL = [
     'style.css?v=' + VERSION,
     'js/vendor/peerjs.min.js?v=' + VERSION,
     'js/config.js?v=' + VERSION,
+    'js/migrate.js?v=' + VERSION,
     'js/sounds.js?v=' + VERSION,
     'js/background.js?v=' + VERSION,
     'js/input.js?v=' + VERSION,

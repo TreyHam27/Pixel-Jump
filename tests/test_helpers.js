@@ -88,6 +88,7 @@ function setupMocks(opts = {}) {
 function loadGameSource() {
     const files = [
         'js/config.js',
+        'js/migrate.js',
         'js/sounds.js',
         'js/background.js',
         'js/input.js',
