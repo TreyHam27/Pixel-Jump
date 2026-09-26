@@ -1,0 +1,16 @@
+# Files Cloudflare must not upload as part of the site (wrangler.jsonc serves
+# the repo root). Only the game itself goes up.
+.git
+.github
+.claude
+.wrangler
+node_modules
+tests
+cloudflare
+wrangler.jsonc
+package.json
+package-lock.json
+bun.lockb
+README.md
+CLAUDE.md
+.gitignore
