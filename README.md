@@ -68,6 +68,9 @@ To drive the real game in headless Chromium (screenshots, touch emulation), see 
 | `js/renderer.js`, `js/background.js` | Canvas drawing |
 | `js/sounds.js` | Synthesized chiptune sound effects (Web Audio) |
 | `js/ads.js` | Ad integration seams (off) |
+| `js/migrate.js` | Carries saves from the old host to `NEW_ORIGIN` when the site moves |
+| `cloudflare/turn-worker/` | Cloudflare Worker that hands out Realtime TURN logins for co-op |
+| `_headers` | Cache headers for Cloudflare Pages |
 
 ## Deploying
 
@@ -81,3 +84,15 @@ GitHub Pages serves `main` directly, so every merge goes live straight away.
   - To try it locally, open `http://localhost:8765/?sw`.
 - **Link previews** use `og-image.png` and the absolute URLs in `index.html`'s `<head>`. Update them if the site moves.
 - **Vendored libraries** live in `js/vendor/` (see its README).
+
+### Moving hosts (GitHub Pages → Cloudflare Pages)
+
+Saves are per-origin `localStorage`, so a new domain starts empty unless they're carried over.
+
+1. Deploy the same `main` to the new host and point the domain at it.
+2. Set `NEW_ORIGIN` in `js/config.js` (e.g. `'https://example.com/'`), update the `<head>` URLs, bump the version and merge.
+   - On `OLD_HOSTS` the page now packs the `lp_` saves (minus the daily ghost) into `NEW_ORIGIN#pjsave=…` and redirects.
+   - The new host imports them once, only if it has no progress of its own, then clears the hash.
+3. Keep the old host up for a few weeks so returning players pass through it, then retire it.
+
+TURN: deploy `cloudflare/turn-worker/` (`npx wrangler deploy`, then `wrangler secret put TURN_KEY_ID` and `TURN_API_TOKEN`), set `ALLOWED_ORIGINS` in its `wrangler.toml`, and point `TURN_CREDENTIALS_URL` at the Worker.

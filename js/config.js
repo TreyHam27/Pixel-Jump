@@ -8,8 +8,13 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.9.2';
+const GAME_VERSION = '1.10.0';
 const NET_PROTOCOL = 6;
+
+// Where the game lives. On OLD_HOSTS the page carries the player's saves over
+// to NEW_ORIGIN and redirects there (js/migrate.js). Empty = no move yet.
+const NEW_ORIGIN = '';
+const OLD_HOSTS = ['treyham27.github.io'];
 
 const CONFIG = {
     WIDTH: 600,
@@ -151,10 +156,14 @@ const MAX_HEARTS = 3;
 const MAX_PARTY_SIZE = 4;
 // TURN relay for co-op on strict networks (school/office WiFi, some mobile
 // carriers) where two browsers can't connect directly. Host and join fetch
-// relay logins from this Metered Open Relay URL:
-//   https://<app>.metered.live/api/v1/turn/credentials?apiKey=<key>
-// The key is public by design (it's in the page); the free plan stops at
-// 20 GB/month with no charge, and co-op then falls back to direct-only.
+// relay logins from this URL, which must return an iceServers array:
+// - Metered Open Relay (current):
+//     https://<app>.metered.live/api/v1/turn/credentials?apiKey=<key>
+//   The key is public by design (it's in the page); the free plan stops at
+//   20 GB/month with no charge, and co-op then falls back to direct-only.
+// - Cloudflare Realtime TURN (1,000 GB/month free): the Worker in
+//   cloudflare/turn-worker/ keeps the secret token and hands out logins;
+//   point this at its URL once it's deployed.
 // WebRTC still prefers a direct link, so only games that need it use the
 // relay. Empty = no relay.
 const TURN_CREDENTIALS_URL = 'https://pixeljump.metered.live/api/v1/turn/credentials?apiKey=f430cd6be005e6cd08915b58d886132f11ba';

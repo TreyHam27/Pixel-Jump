@@ -3667,7 +3667,12 @@ class Game {
 }
 
 window.onload = () => {
-    new Game();
+    // Before Game reads any save: leave the old host, or unpack saves that
+    // just arrived from it.
+    const transfer = runSaveTransfer();
+    if (transfer === 'redirect') return;
+    const game = new Game();
+    if (transfer === 'imported') game.notify('PROGRESS TRANSFERRED', 'success');
 
     // Installable / offline play. Only on the live https site (or a local
     // server opened with ?sw), so local development never serves stale

@@ -1,0 +1,10 @@
+// Cloudflare Workers static-assets site: the game files at the repo root,
+// served as-is (no build). .assetsignore keeps everything else out.
+// The co-op TURN Worker is separate: cloudflare/turn-worker/.
+{
+  "name": "pixel-jump",
+  "compatibility_date": "2026-09-25",
+  "assets": {
+    "directory": "."
+  }
+}

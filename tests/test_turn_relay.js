@@ -98,6 +98,24 @@ try {
         console.log("SANITIZE SUCCESS");
     }
 
+    // ---- Cloudflare Realtime TURN (via cloudflare/turn-worker): one entry
+    //      mixing stun:, turn: and turns: urls under one login.
+    {
+        const CF = [{
+            urls: ['stun:stun.cloudflare.com:3478', 'turn:turn.cloudflare.com:3478?transport=udp',
+                'turn:turn.cloudflare.com:3478?transport=tcp', 'turns:turn.cloudflare.com:443?transport=tcp'],
+            username: 'u', credential: 'c'
+        }];
+        assert(JSON.stringify(sanitizeIceServers(CF)) === JSON.stringify(CF), "Cloudflare entry passes unchanged");
+        calls = 0; respondWith(CF);
+        const nm = new NetworkManager();
+        nm.relayUrl = 'https://pixel-jump-turn.example.workers.dev/';
+        const peer = await hostOnce(nm);
+        assert(calls === 1 && peer.opts.config.iceServers.length === 4, "3 STUN + the Cloudflare entry");
+        nm.disconnect();
+        console.log("CLOUDFLARE SHAPE SUCCESS");
+    }
+
     // ---- A relay that never answers, or fails, never blocks hosting.
     {
         calls = 0;
