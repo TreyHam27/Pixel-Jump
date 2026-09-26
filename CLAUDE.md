@@ -70,7 +70,7 @@ GitHub Pages serves `main` as-is, so a merge is live immediately. CI (`.github/w
   - `joinGen` tokens abort stale join and connect loops.
   - Peers are retired before `destroy()` so teardown can't trigger a reconnect.
 - **Trust boundary:** `handleNetworkData()`.
-  - The host accepts only `handshake`, `sync`, `die`, `revive`, `hit` and `stomp` from guests.
+  - The host accepts only `handshake`, `sync`, `die`, `revive`, `hit`, `stomp` and `pick` from guests.
   - It relays sanitized copies (`sanitizeSync`), stamped with the sender's id.
   - Guests only listen to their host.
 - **The host is authoritative** (`isAuthority()`). It alone spawns and simulates drones, lasers, meteors, projectiles and the boss, and stamps each with a `nid`.
