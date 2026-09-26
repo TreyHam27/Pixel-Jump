@@ -304,6 +304,59 @@ canvas {
     top: calc(var(--pf-top, 0px) + 12px);
 }
 
+/* Wide windows (the flank layout): the HUD sits beside the column instead of
+   in the window corners. Score and BEST are against its left edge; gems,
+   hearts and pause are against its right. Sizes follow the gutter, so the
+   numbers fit however narrow it gets. This block is its own commit:
+   reverting it puts the HUD back in the window corners. */
+#game-container[data-layout="flank"] {
+    --flank-gap: 24px;
+    --flank-num: min(50px, calc(var(--pf-left, 350px) / 7));
+    --flank-count: min(40px, calc(var(--pf-left, 350px) / 8));
+}
+
+#game-container[data-layout="flank"] #score-display,
+#game-container[data-layout="flank"] #best-display-hud {
+    left: auto;
+    right: calc(var(--pf-right, 0px) + var(--pf-w, 0px) + var(--flank-gap));
+    transform: none;
+    text-align: right;
+}
+
+#game-container[data-layout="flank"] #score-display {
+    top: calc(var(--pf-top, 0px) + 16px + var(--safe-top));
+    font-size: var(--flank-num);
+}
+
+#game-container[data-layout="flank"] #best-display-hud {
+    top: calc(var(--pf-top, 0px) + 28px + var(--flank-num) + var(--safe-top));
+    font-size: min(24px, calc(var(--pf-left, 350px) / 14));
+}
+
+#game-container[data-layout="flank"] #gem-display,
+#game-container[data-layout="flank"] #life-display,
+#game-container[data-layout="flank"] .hud-btn {
+    right: auto;
+    left: calc(var(--pf-left, 0px) + var(--pf-w, 0px) + var(--flank-gap));
+}
+
+#game-container[data-layout="flank"] #gem-display,
+#game-container[data-layout="flank"] #life-display {
+    font-size: var(--flank-count);
+}
+
+#game-container[data-layout="flank"] #gem-display {
+    top: calc(var(--pf-top, 0px) + 20px + var(--safe-top));
+}
+
+#game-container[data-layout="flank"] #life-display {
+    top: calc(var(--pf-top, 0px) + 30px + var(--flank-count) + var(--safe-top));
+}
+
+#game-container[data-layout="flank"] .hud-btn {
+    top: calc(var(--pf-top, 0px) + 44px + 2 * var(--flank-count) + var(--safe-top));
+}
+
 /* POWER UP HUD */
 #power-hud {
     position: absolute;
