@@ -67,8 +67,8 @@ const GEM_CHANCE = 0.4;
 // column (400-1000). Nothing is saved while it's on (every lp_ write is
 // dropped), so real progress, records and daily ghosts stay clean.
 // ?debug&gap=115 tries sparser (or denser) platforms: px between them,
-// 80-135 (95 today; a jump rises about 145px, so more than about 135 can
-// leave the next platform out of reach).
+// 80-128 (see CONFIG.PLATFORM_BASE_GAP for today's value; a plain jump
+// rises about 138px, and tests/test_platform_gap.js allows 128 at most).
 const PLAYTEST_PARAM = (name, min, max) => {
     try {
         const q = new URLSearchParams(location.search || '');
@@ -77,7 +77,7 @@ const PLAYTEST_PARAM = (name, min, max) => {
     } catch (e) { return 0; }
 };
 const PLAYTEST_WIDTH = PLAYTEST_PARAM('w', 400, 1000);
-const PLAYTEST_GAP = PLAYTEST_PARAM('gap', 80, 135);
+const PLAYTEST_GAP = PLAYTEST_PARAM('gap', 80, 128);
 const PLAYTESTING = !!(PLAYTEST_WIDTH || PLAYTEST_GAP);
 if (PLAYTEST_WIDTH) CONFIG.WIDTH = PLAYTEST_WIDTH;
 if (PLAYTEST_GAP) CONFIG.PLATFORM_BASE_GAP = PLAYTEST_GAP;
