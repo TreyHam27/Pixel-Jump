@@ -61,7 +61,9 @@ class SoundManager {
         const now = this.ctx.currentTime;
 
         switch (type) {
-            case 'powerup':
+            case 'reward':
+                // The gem / reward chirp: gems, breaking a shield or rocket, EMP,
+                // boss kills and achievements.
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(400, now);
                 osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
@@ -93,7 +95,7 @@ class SoundManager {
                 osc.start(now);
                 osc.stop(now + 0.4);
                 break;
-            case 'power':
+            case 'powerup':
                 // A quick rising arpeggio, distinct from the gem blip.
                 osc.type = 'square';
                 [330, 440, 554, 660, 880].forEach((f, i) => osc.frequency.setValueAtTime(f, now + i * 0.055));

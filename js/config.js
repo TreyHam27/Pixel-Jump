@@ -8,7 +8,7 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.8.4';
+const GAME_VERSION = '1.8.5';
 const NET_PROTOCOL = 5;
 
 const CONFIG = {
@@ -56,6 +56,7 @@ const HEART_CHANCE_START = 0.04;
 const HEART_CHANCE_END = 0.01;
 const HEART_RAMP_METERS = 8000;
 const HEART_MIN_GAP = 1000; // px of world height between hearts (> CONFIG.HEIGHT)
+const RUN_CARD_TAP_GRACE_MS = 600; // backdrop taps right after the run card opens are ignored
 const GEM_CHANCE = 0.4;
 // How far above the top of the screen platforms are generated in advance.
 const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
