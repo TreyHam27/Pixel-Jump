@@ -59,7 +59,7 @@ try {
     assert(Math.abs(s60 - s144) <= 1, "ghost samples differ: " + s60 + " vs " + s144);
     console.log("GHOST CADENCE SUCCESS");
 
-    // Ghost rules: saved for today's layout, only replaced by a better run,
+    // Ghost rules: saved for today's layout, replaced by every later run,
     // ignored on another day or in co-op, and the old format is dropped.
     localStorage.removeItem('lp_ghost');
     const g = new Game();
@@ -72,15 +72,16 @@ try {
 
     g.startGame();
     assert(g.ghostPlayback && g.ghostPlayback.score === 500, "the next run on the same layout races it");
+    for (let i = 0; i < 60; i++) { g.player.y = 400; g.player.vy = 0; g.update(1); }
     g.state.score = 1000;
     g.gameOver();
-    assert(JSON.parse(localStorage.getItem('lp_ghost')).score === 500, "a worse run keeps the better ghost");
+    assert(JSON.parse(localStorage.getItem('lp_ghost')).score === 100, "a worse run still becomes the ghost");
 
     g.startGame();
     for (let i = 0; i < 60; i++) { g.player.y = 400; g.player.vy = 0; g.update(1); }
     g.state.score = 9000;
     g.gameOver();
-    assert(JSON.parse(localStorage.getItem('lp_ghost')).score === 900, "a better run replaces it");
+    assert(JSON.parse(localStorage.getItem('lp_ghost')).score === 900, "a better run replaces it too");
 
     const other = JSON.parse(localStorage.getItem('lp_ghost'));
     other.seed = 19991231;
