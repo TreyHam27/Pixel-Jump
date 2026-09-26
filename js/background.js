@@ -5,9 +5,11 @@ class Background {
     constructor(canvasWidth, canvasHeight) {
         this.width = canvasWidth;
         this.height = canvasHeight;
+        // Star counts are per 800px of height, so a taller field stays as dense.
+        const k = canvasHeight / 800;
         this.layers = [
-            { speed: 0.1, elements: this.generatePoints(100, "#222") }, // Far stars
-            { speed: 0.2, elements: this.generatePoints(50, "#444") },  // Mid stars
+            { speed: 0.1, elements: this.generatePoints(Math.round(100 * k), "#222") }, // Far stars
+            { speed: 0.2, elements: this.generatePoints(Math.round(50 * k), "#444") },  // Mid stars
             { speed: 0.5, elements: this.generateNebulae(3) }           // Rare nebulae
         ];
     }
@@ -38,13 +40,15 @@ class Background {
         return nebulae;
     }
 
-    draw(ctx, offset) {
+    // `top` is the screen y the field starts at (negative when a tall view
+    // shows sky above the 800-tall frame).
+    draw(ctx, offset, top = 0) {
         this.layers.forEach(layer => {
             const yOffset = (offset * layer.speed) % this.height;
 
             ctx.fillStyle = layer.elements[0].color;
             layer.elements.forEach(el => {
-                let drawY = (el.y + yOffset) % this.height;
+                let drawY = top + (el.y + yOffset) % this.height;
                 if (el.size > 10) { // Nebula
                     // The gradient is built once, around the origin, and
                     // moved into place: no new gradient objects every frame.

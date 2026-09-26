@@ -52,6 +52,10 @@ GitHub Pages serves `main` as-is, so a merge is live immediately. CI (`.github/w
 - `state.score` is the total camera scroll in px, so meters = `score / 10`. The displayed score is `runScore()`, which adds `bonusScore` from boss kills.
 - World y is `y - state.score`. All network messages carry world y (`wy`).
 - Scrolling goes through `scrollCamera(diff)`, which shifts every entity. Entities with their own anchors implement `shiftY(d)`.
+- **Tall screens are view-only.**
+  - The game always runs in the 600x800 reference frame: the camera line, death line, co-op ceiling and score.
+  - On portrait phones, `Renderer.viewLayout()` adds `renderer.viewExtra` rows of sky above it, drawn at negative y.
+  - Only drawing may use `renderer.viewTop`, for things like draw culls. Gameplay must never read it, or screens would play differently. `tests/test_view_sizing.js` guards this.
 
 **Level generation is deterministic.** Co-op clients and the daily ghost rely on it.
 - `spawnPlatform(wy)` depends only on the platform's world y, `biomeAt(meters)`, and the `seededRandom()` LCG.

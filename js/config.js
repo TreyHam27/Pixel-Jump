@@ -8,7 +8,7 @@ const ADS_ENABLED = false;
 // deploy never mixes cached old scripts with new ones; NET_PROTOCOL must
 // match for two players to share a co-op run. Bump NET_PROTOCOL whenever the
 // co-op messages, level generation, or the SKINS/POWERS order change.
-const GAME_VERSION = '1.8.6';
+const GAME_VERSION = '1.9.0';
 const NET_PROTOCOL = 5;
 
 const CONFIG = {
@@ -58,8 +58,19 @@ const HEART_RAMP_METERS = 8000;
 const HEART_MIN_GAP = 1000; // px of world height between hearts (> CONFIG.HEIGHT)
 const RUN_CARD_TAP_GRACE_MS = 600; // backdrop taps right after the run card opens are ignored
 const GEM_CHANCE = 0.4;
-// How far above the top of the screen platforms are generated in advance.
-const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT;
+// Tall screens (portrait phones) see up to this much extra sky above the
+// 600x800 playfield. It's view-only: the game itself (score, camera, death
+// line, co-op ceiling) always runs in the 800-tall reference frame, and the
+// extra rows are drawn above its top edge, at negative screen y.
+const VIEW_MAX_EXTRA = 500;
+// How far above the top of the screen platforms are generated in advance
+// (enough to fill the tallest view).
+const PLATFORM_LOOKAHEAD = CONFIG.HEIGHT + VIEW_MAX_EXTRA;
+// CSS px each side of the 3:4 column needs before the HUD moves out beside
+// it (the 'flank' layout) instead of sitting in its corners.
+const FLANK_MIN_GUTTER = 170;
+// Frames an enemy that first appears in a tall view's extra sky takes to fade in.
+const SPAWN_FADE_FRAMES = 12;
 // Ghost recording: one sample every GHOST_STEP frames of game time, capped
 // at GHOST_MAX_POINTS samples (about half an hour of climbing).
 const GHOST_STEP = 6;

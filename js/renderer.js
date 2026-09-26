@@ -1,10 +1,37 @@
+// Picks how the playfield fills an availW x availH container (CSS px):
+//  - 'strip': portrait phones and tall windows. The playfield is full width
+//    and runs from under the HUD strip (stripH tall) to the bottom edge; the
+//    extra height shows as extra sky above the 600x800 frame, capped at
+//    VIEW_MAX_EXTRA (past that the canvas stops growing and the spare space
+//    sits under the strip).
+//  - 'flank': a 3:4 column with room either side for the HUD.
+//  - 'overlay': a 3:4 column too narrow to flank; the HUD sits in its corners.
+// Returns the canvas CSS size and the extra logical px of sky (an integer).
+function viewLayout(availW, availH, stripH) {
+    const aspect = CONFIG.WIDTH / CONFIG.HEIGHT;
+    const playH = availH - stripH;
+    if (availW > 0 && playH > availW / aspect + 1) {
+        const maxH = availW * (CONFIG.HEIGHT + VIEW_MAX_EXTRA) / CONFIG.WIDTH;
+        const cssH = Math.floor(Math.min(playH, maxH));
+        const extra = Math.max(0, Math.min(VIEW_MAX_EXTRA, Math.round(CONFIG.WIDTH * cssH / availW) - CONFIG.HEIGHT));
+        return { mode: 'strip', cssW: availW, cssH: cssH, extra: extra };
+    }
+    let w = availW, h = availW / aspect;
+    if (h > availH) { h = availH; w = availH * aspect; }
+    const gutter = (availW - w) / 2;
+    return { mode: gutter >= FLANK_MIN_GUTTER ? 'flank' : 'overlay', cssW: Math.floor(w), cssH: Math.floor(h), extra: 0 };
+}
+
 class Renderer {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
-        this.background = new Background(CONFIG.WIDTH, CONFIG.HEIGHT);
+        // Built for the tallest view, so resizing never regenerates the stars.
+        this.background = new Background(CONFIG.WIDTH, CONFIG.HEIGHT + VIEW_MAX_EXTRA);
         this.currentBiome = BIOMES[0];
         this.dpr = 1;
+        this.layout = 'flank';
+        this.viewExtra = 0;
         this.onResize = null; // set by the Game (touch-control layout, sprites)
         this.resize();
         // Debounced: dragging a window edge fires dozens of these.
@@ -20,30 +47,57 @@ class Renderer {
         }
     }
 
-    // Letterboxes the 600x800 playfield into its container (which is sized
-    // with dvh, so mobile browser toolbars don't cover the bottom), and sizes
-    // the backing store for the screen's pixel density so it stays sharp.
-    // All drawing stays in the logical 600x800 units.
+    // Fits the playfield into its container (sized with dvh, so mobile
+    // browser toolbars don't cover the bottom; see viewLayout() for the three
+    // layouts) and sizes the backing store for the screen's pixel density so
+    // it stays sharp. Drawing stays in logical 600-wide units; the transform
+    // shifts it down by viewExtra, so the 800-tall reference frame always
+    // ends at the canvas bottom and any extra sky sits above y = 0.
     resize() {
         const container = this.canvas.parentElement;
         const availW = (container && container.clientWidth) || window.innerWidth;
         const availH = (container && container.clientHeight) || window.innerHeight;
-        const aspect = CONFIG.WIDTH / CONFIG.HEIGHT;
-        let w = availW, h = availW / aspect;
-        if (h > availH) { h = availH; w = availH * aspect; }
-        this.canvas.style.width = Math.floor(w) + 'px';
-        this.canvas.style.height = Math.floor(h) + 'px';
+        const strip = document.getElementById('hud-strip');
+        const layout = viewLayout(availW, availH, (strip && strip.offsetHeight) || 0);
+        this.layout = layout.mode;
+        this.viewExtra = layout.extra;
+        this.canvas.style.width = layout.cssW + 'px';
+        this.canvas.style.height = layout.cssH + 'px';
 
         const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
         const bw = Math.round(CONFIG.WIDTH * dpr);
-        const bh = Math.round(CONFIG.HEIGHT * dpr);
+        const bh = Math.round((CONFIG.HEIGHT + layout.extra) * dpr);
         if (this.canvas.width !== bw || this.canvas.height !== bh) {
             this.canvas.width = bw;   // (resets the context state)
             this.canvas.height = bh;
         }
         this.dpr = dpr;
-        if (this.ctx.setTransform) this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (this.ctx.setTransform) this.ctx.setTransform(dpr, 0, 0, dpr, 0, layout.extra * dpr);
+        this.publishLayout(container);
         if (this.onResize) this.onResize();
+    }
+
+    // The top edge of what's on screen, in game coordinates: 0 on a 3:4 view,
+    // negative on a tall one. Only drawing may use this. Gameplay stays in
+    // the 800-tall reference frame so every screen plays the same.
+    get viewTop() {
+        return -(this.viewExtra || 0);
+    }
+
+    // Tells the CSS which layout is active and where the playfield sits
+    // (--pf-left/top/right/w/h, relative to the container), so the HUD can
+    // anchor to the playfield instead of the window.
+    publishLayout(container) {
+        if (!container || !container.style || !container.style.setProperty) return;
+        if (container.setAttribute) container.setAttribute('data-layout', this.layout);
+        if (!this.canvas.getBoundingClientRect || !container.getBoundingClientRect) return;
+        const c = this.canvas.getBoundingClientRect();
+        const box = container.getBoundingClientRect();
+        container.style.setProperty('--pf-left', (c.left - box.left) + 'px');
+        container.style.setProperty('--pf-top', (c.top - box.top) + 'px');
+        container.style.setProperty('--pf-right', (box.right - c.right) + 'px');
+        container.style.setProperty('--pf-w', c.width + 'px');
+        container.style.setProperty('--pf-h', c.height + 'px');
     }
 
     updateBiome(meters) {
@@ -52,18 +106,20 @@ class Renderer {
 
     clear(offsetY) {
         this.ctx.fillStyle = this.currentBiome.bg;
-        this.ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
-        this.background.draw(this.ctx, offsetY);
+        this.ctx.fillRect(0, this.viewTop, CONFIG.WIDTH, CONFIG.HEIGHT - this.viewTop);
+        this.background.draw(this.ctx, offsetY, -VIEW_MAX_EXTRA);
     }
 
     drawGrid(offsetY) {
         this.ctx.strokeStyle = this.currentBiome.grid;
         this.ctx.lineWidth = 1;
         this.ctx.beginPath();
+        const top = this.viewTop;
         for (let i = 0; i < CONFIG.WIDTH; i += 40) {
-            this.ctx.moveTo(i, 0); this.ctx.lineTo(i, CONFIG.HEIGHT);
+            this.ctx.moveTo(i, top); this.ctx.lineTo(i, CONFIG.HEIGHT);
         }
         let gridY = offsetY % 40;
+        while (gridY > top) gridY -= 40;
         for (let i = gridY; i < CONFIG.HEIGHT; i += 40) {
             this.ctx.moveTo(0, i); this.ctx.lineTo(CONFIG.WIDTH, i);
         }
@@ -189,7 +245,7 @@ class Renderer {
                 ctx.fillStyle = grad;
             }
             ctx.globalAlpha = 0.12 + 0.5 * near;
-            ctx.fillRect(Math.min(x0, x1), 0, width, CONFIG.HEIGHT);
+            ctx.fillRect(Math.min(x0, x1), this.viewTop, width, CONFIG.HEIGHT - this.viewTop);
         }
         ctx.restore();
     }
