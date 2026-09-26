@@ -579,6 +579,13 @@ class Game {
         on(this.ui.recordsBackBtn, () => this.setMenuPanel('sp'));
         on(this.ui.runAgainBtn, () => this.runCardPlayAgain());
         on(this.ui.runMenuBtn, () => this.closeRunCard());
+        // Tapping beside the card closes it, like MENU. A short grace period
+        // stops a tap still landing from the run from dismissing it unseen.
+        if (this.ui.runCard) this.ui.runCard.onclick = (e) => {
+            if (!e || e.target !== this.ui.runCard) return;
+            if (performance.now() - (this.runCardOpenedAt || 0) < RUN_CARD_TAP_GRACE_MS) return;
+            this.closeRunCard();
+        };
 
         const setting = (el, key, read) => {
             if (!el || !el.addEventListener) return;
@@ -768,6 +775,7 @@ class Game {
         this.ui.runCardWait.hidden = !guest;
         this.ui.runCard.hidden = false;
         this.runCardOpen = true;
+        this.runCardOpenedAt = performance.now();
     }
 
     // Space/Enter on the end-of-run card: PLAY AGAIN, unless a button has
@@ -1956,7 +1964,7 @@ class Game {
             hits++;
         });
         this.projectiles.forEach(p => { if (p instanceof Projectile) p.markedForDeletion = true; });
-        if (hits) sounds.play('powerup');
+        if (hits) sounds.play('reward');
     }
 
     // The player the boss hovers over: the lowest one still alive (the one the
@@ -2010,7 +2018,7 @@ class Game {
             p.invuln = 45;
             this.knockBackFrom(boss);
             this.particles.spawn(p.x, p.y, color, 20, "blast");
-            sounds.play('powerup');
+            sounds.play('reward');
             return;
         }
         if (boss.isExposed()) {
@@ -2041,7 +2049,7 @@ class Game {
         this.setHearts(MAX_HEARTS);
         this.state.nextBossAt = Math.floor(this.state.score / 10) + CONFIG.BOSS_LOOP_DISTANCE;
         this.notify(`TITAN DOWN  +${BOSS_BONUS_METERS}m  +${BOSS_GEM_BOUNTY} 💎  HEARTS FULL`, 'reward');
-        sounds.play('powerup');
+        sounds.play('reward');
     }
 
     // Banks gems and pops the counter.
@@ -2151,6 +2159,7 @@ class Game {
         // An integer counter, so every co-op client derives identical heights.
         this.state.nextPlatWY = (CONFIG.HEIGHT - 140) - this.state.score;
         this.state.lastHeartWY = null;
+        this.state.heartBlockWY = null;
         this.state.rescueNetT = 0;
         // The high score before this run, marked in the level so you can see
         // yourself pass it (highScore itself climbs along with you).
@@ -2617,12 +2626,15 @@ class Game {
 
     // The pickups this player can see and collect. Hearts are part of every
     // client's level, but only exist for a player with no hearts left:
-    // picking one up hides the rest, and spending that life brings them back.
+    // picking one up hides the rest, and spending that life brings them back
+    // (except any near where it was spent: see useSpareLife).
     // In co-op, pickups you took stay in the level (flagged `mine`) so a
     // spectating view can still show them for a teammate who hasn't.
     visiblePickups() {
         const hearts = this.state.hearts <= 0;
-        return this.powerups.filter(p => !p.mine && (hearts || !p.isHeart));
+        const block = this.state.heartBlockWY;
+        const blocked = p => block !== null && block !== undefined && p.wy >= block;
+        return this.powerups.filter(p => !p.mine && (!p.isHeart || (hearts && !blocked(p))));
     }
 
     // While you're down: the level as the teammate you're watching sees it,
@@ -2900,6 +2912,10 @@ class Game {
     // saved.
     useSpareLife() {
         if (this.consumeHeart()) {
+            // Hearts only show at 0 lives, so one already on screen would
+            // appear now and could be grabbed on the rebound. Hide any heart
+            // from this screen and the next one up.
+            this.state.heartBlockWY = -this.state.score - CONFIG.HEIGHT;
             this.rescuePlayer("#ff3366", "HEART SPENT — " + this.state.hearts + " LEFT");
             return true;
         }
@@ -3214,7 +3230,7 @@ class Game {
         this.achievementShowing = true;
         this.ui.achievement.innerText = text;
         this.ui.achievement.style.display = 'block';
-        sounds.play('powerup');
+        sounds.play('reward');
         setTimeout(() => {
             this.ui.achievement.style.display = 'none';
             // A beat of clear air so back-to-back badges read as two separate
@@ -3352,13 +3368,13 @@ class Game {
         } else if (event && event.event === "gem") {
             this.addGems((event.value || 1) * (perks.gemMult || 1));
             this.particles.spawn(event.x + 8, event.y + 8, event.color || "#00ffff", 10);
-            sounds.play('powerup');
+            sounds.play('reward');
         } else if (event && event.event === "heart") {
             this.collectHeart(event);
         } else if (event && event.event === "powerup") {
             this.state.powersCollected++;
             this.particles.spawn(event.x + 12, event.y + 12, this.player.activePower.color, 20);
-            sounds.play('power');
+            sounds.play('powerup');
         }
 
         this.updateDronePulse(dt, perks);
@@ -3406,14 +3422,14 @@ class Game {
                     this.player.powerTimer = 0;
                     this.destroyHostile(e);
                     this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
-                    sounds.play('powerup');
+                    sounds.play('reward');
                     continue;
                 }
                 if (this.player.activePower && this.player.activePower.name === "HARD SHIELD") {
                     this.player.activePower = null;
                     this.destroyHostile(e);
                     this.particles.spawn(this.player.x, this.player.y, "#00ffaa", 20, "blast");
-                    sounds.play('powerup');
+                    sounds.play('reward');
                     continue;
                 }
                 this.die(true);
@@ -3436,14 +3452,14 @@ class Game {
                     this.player.powerTimer = 0;
                     this.destroyHostile(p);
                     this.particles.spawn(this.player.x, this.player.y, POWERS.ROCKET.color, 20, "blast");
-                    sounds.play('powerup');
+                    sounds.play('reward');
                     continue;
                 }
                 if (this.player.activePower && this.player.activePower.name === "HARD SHIELD") {
                     this.player.activePower = null;
                     this.destroyHostile(p);
                     this.particles.spawn(this.player.x, this.player.y, "#00ffaa", 20, "blast");
-                    sounds.play('powerup');
+                    sounds.play('reward');
                     continue;
                 }
                 this.die(true); // Projectiles are deadly

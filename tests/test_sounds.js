@@ -44,7 +44,7 @@ class FakeCtx {
 global.window = { AudioContext: FakeCtx, addEventListener() {} };
 eval(fs.readFileSync(path.join(__dirname, '..', 'js', 'sounds.js'), 'utf8') + `
 sounds.unlock();
-for (const type of ['jump', 'death', 'powerup', 'heart', 'heart_lost', 'power', 'hit']) {
+for (const type of ['jump', 'death', 'reward', 'heart', 'heart_lost', 'powerup', 'hit']) {
     nodes.length = 0;
     sounds.play(type);
     const sources = nodes.filter(n => n.start);
